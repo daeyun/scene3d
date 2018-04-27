@@ -94,3 +94,5 @@ TEST_CASE("Intersection") {
     REQUIRE(2 == hits[1].prim_id);
   }
 }
+
+
