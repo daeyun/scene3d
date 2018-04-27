@@ -37,7 +37,7 @@ house_ids = sorted(files_by_house_id.keys())
 
 # %%
 
-first_n = 60
+first_n = 5
 
 for house_id in house_ids[:first_n]:
     out_dir = '/data2/scene3d/tmp0/renderings/{}'.format(house_id)

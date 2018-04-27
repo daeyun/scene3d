@@ -17,7 +17,7 @@ def run_command(command, cwd=None):
     assert isinstance(command, (tuple, list))
     if cwd is not None:
         log.debug('CWD: {}'.format(cwd))
-    log.debug(subprocess.list2cmdline(command))
+    log.info(subprocess.list2cmdline(command))
 
     start_time = time.time()
     p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)

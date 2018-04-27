@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <set>
 
 #include "spdlog/spdlog.h"
 #include "nanort.h"
@@ -19,6 +20,12 @@ struct SuncgCamera {
   double y_fov;
   double score;  // scene coverage score
 };
+
+const std::vector<string> background_name_substrings{"Floor", "Wall", "Ceiling", "Room", "Level"};
+const std::set<std::string> suncg_doors_and_windows
+    {"122", "126", "133", "209", "210", "211", "212", "213", "214", "246", "247", "326", "327", "331", "361", "73", "752", "753", "754", "755", "756", "757", "758", "759", "760", "761", "762", "763",
+     "764", "765", "766", "767", "768", "769", "770", "771", "s__1276", "s__1762", "s__1763", "s__1764", "s__1765", "s__1766", "s__1767", "s__1768", "s__1769", "s__1770", "s__1771", "s__1772",
+     "s__1773", "s__2010", "s__2011", "s__2012", "s__2013", "s__2014", "s__2015", "s__2016", "s__2017", "s__2019"};
 
 int main(int argc, const char **argv) {
   cxxopts::Options options("render", "Render multi-layer depth images");
@@ -121,7 +128,6 @@ int main(int argc, const char **argv) {
   printf("  Bmax               : %f, %f, %f\n", bmax[0], bmax[1], bmax[2]);
 
   // Routine to determine if a triangle belongs to background.
-  std::vector<string> background_name_substrings{"Floor", "Wall", "Ceiling", "Room", "Level"};
   auto is_background = [&](int face_index) -> bool {
     Expects(face_index < node_name_for_each_face.size());
     auto node_name = node_name_for_each_face[face_index];
@@ -130,6 +136,13 @@ int main(int argc, const char **argv) {
       if (node_name.find(substr) != std::string::npos) {
         ret = true;
         break;
+      }
+    }
+    if (!ret and node_name.find("Model#") != std::string::npos) {
+      string model_id = node_name.substr(node_name.find('#') + 1);
+      if (suncg_doors_and_windows.find(model_id) != suncg_doors_and_windows.end()) {
+        // If the model id matches a window or a door, it is the background.
+        ret = true;
       }
     }
     return ret;

@@ -25,3 +25,6 @@
 [submodule "cpp/third_party/repos/cxxopts"]
 	path = cpp/third_party/repos/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git
+[submodule "cpp/third_party/repos/Catch2"]
+	path = cpp/third_party/repos/Catch2
+	url = https://github.com/catchorg/Catch2.git

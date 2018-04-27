@@ -8,3 +8,6 @@ target_link_libraries(file_io spdlog assimp common cpp_gsl Boost::filesystem blo
 
 add_library(camera camera.cc camera.h)
 target_link_libraries(camera common cpp_gsl)
+
+add_library(ray_mesh_intersection ray_mesh_intersection.cc ray_mesh_intersection.h)
+target_link_libraries(ray_mesh_intersection PRIVATE common CGAL)
