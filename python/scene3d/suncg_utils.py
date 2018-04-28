@@ -19,11 +19,14 @@ def __preprocess_house_json(house_json):
     """
     Remove plant and person meshes.
     """
-    for i in range(len(house_json['levels'])):
-        for j in range(len(house_json['levels'][i]['nodes'])):
-            model_id = house_json['levels'][i]['nodes'][j]['modelId']
-            if model_id in __suncg_plant_and_person_ids:
-                house_json['levels'][i]['nodes'][j]['valid'] = 0
+    if 'levels' in house_json:
+        for i in range(len(house_json['levels'])):
+            if 'nodes' in house_json['levels'][i]:
+                for j in range(len(house_json['levels'][i]['nodes'])):
+                    if 'modelId' in house_json['levels'][i]['nodes'][j]:
+                        model_id = house_json['levels'][i]['nodes'][j]['modelId']
+                        if model_id in __suncg_plant_and_person_ids:
+                            house_json['levels'][i]['nodes'][j]['valid'] = 0
     return house_json
 
 

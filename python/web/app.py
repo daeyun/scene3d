@@ -10,7 +10,7 @@ from scene3d import suncg_utils
 
 app = Flask(__name__)
 
-filenames = sorted(glob.glob('/data2/scene3d/tmp0/**/*_depth_rescaled.png', recursive=True))
+filenames = sorted(glob.glob('/data2/scene3d/v1/renderings/**/*_depth_rescaled.png', recursive=True))
 
 
 @app.route('/')
@@ -38,10 +38,10 @@ def hello_world():
         camera_id = int(m[1])
 
         pbrs_path = '/static_data/pbrs/mlt_v2/{}/{:06d}_mlt.png'.format(house_id, camera_id)
-        pbrs_depth_path = '/static_data/scene3d/tmp0/renderings/{}/{:06d}_depth_rescaled.png'.format(house_id, camera_id)
+        pbrs_depth_path = '/static_data/scene3d/v1/renderings/{}/{:06d}_depth_rescaled.png'.format(house_id, camera_id)
 
-        scene3d_depth0 = '/static_data/scene3d/tmp0/renderings/{}/{:06d}_00_vis.png'.format(house_id, camera_id)
-        scene3d_depth1 = '/static_data/scene3d/tmp0/renderings/{}/{:06d}_01_vis.png'.format(house_id, camera_id)
+        scene3d_depth0 = '/static_data/scene3d/v1/renderings/{}/{:06d}_00_vis.png'.format(house_id, camera_id)
+        scene3d_depth1 = '/static_data/scene3d/v1/renderings/{}/{:06d}_01_vis.png'.format(house_id, camera_id)
 
         house_mesh_url = "/build_house_mesh/house_id/{}/house.obj".format(house_id)
 
