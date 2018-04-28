@@ -13,6 +13,7 @@ import numpy as np
 
 from scene3d import io_utils
 from scene3d import log
+from scene3d import config
 from scene3d import render_depth
 from scene3d import suncg_utils
 
@@ -62,7 +63,7 @@ def thread_worker(thread_id):
         tmp_house_obj_file = path.join(tmp_out_root, 'house_obj_default/{}/house.obj'.format(thread_id))
         obj_filename = suncg_utils.house_obj_from_json(house_id=house_id, out_file=tmp_house_obj_file)
 
-        source_room_camera_file = '/data2/pbrs/camera_v2/{}/room_camera.txt'.format(house_id)
+        source_room_camera_file = path.join(config.pbrs_root, 'camera_v2/{}/room_camera.txt'.format(house_id))
 
         # make new camera file. after filtering out ones ignored provided by pbrs.
         out_room_camera_file = path.join(tmp_out_root, '{}/room_camera.txt'.format(thread_id))
@@ -94,7 +95,7 @@ def thread_worker(thread_id):
 
         # Code for generating visualization. Disabled for now.
         # TODO(daeyun): refactor
-        if True:
+        if False:
             cmap = matplotlib.cm.get_cmap('viridis')
             cmap_array = np.array([cmap(item)[:3] for item in np.arange(0, 1, 1.0 / 256)]).astype(np.float32)
 
@@ -114,7 +115,7 @@ def thread_worker(thread_id):
                     out_png_filename = filename.split('.bin')[0] + '_vis.png'
                     imageio.imwrite(out_png_filename, colored[i])
 
-                pbrs_depth = imageio.imread('/data2/pbrs/depth_v2/{}/{:06d}_depth.png'.format(house_id, camera_id))
+                pbrs_depth = imageio.imread(path.join(config.pbrs_root, 'depth_v2/{}/{:06d}_depth.png'.format(house_id, camera_id)))
                 pbrs_depth = (pbrs_depth - pbrs_depth.min()) / (pbrs_depth.max() - pbrs_depth.min())
                 pbrs_depth = (pbrs_depth * 255).astype(np.uint8)
 
@@ -122,7 +123,7 @@ def thread_worker(thread_id):
 
 
 def main():
-    files = glob.glob('/data2/pbrs/mlt_v2/**/*.png')
+    files = glob.glob(path.join(config.pbrs_root, 'mlt_v2/**/*.png'))
     files = sorted(files)
 
     global files_by_house_id
