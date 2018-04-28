@@ -2,7 +2,7 @@
 #include "spdlog/spdlog.h"
 
 #include "lib/common.h"
-#include "lib/ray_mesh_intersection.h"
+#include "lib/ray_mesh_intersection_cgal.h"
 
 TEST_CASE("Intersection") {
   const std::vector<std::array<float, 3>> vertices{

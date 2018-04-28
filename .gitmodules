@@ -13,9 +13,6 @@
 [submodule "cpp/third_party/repos/GSL"]
 	path = cpp/third_party/repos/GSL
 	url = https://github.com/Microsoft/GSL.git
-[submodule "cpp/third_party/repos/nanort"]
-	path = cpp/third_party/repos/nanort
-	url = https://github.com/lighttransport/nanort.git
 [submodule "cpp/third_party/repos/spdlog"]
 	path = cpp/third_party/repos/spdlog
 	url = https://github.com/gabime/spdlog.git
@@ -28,3 +25,6 @@
 [submodule "cpp/third_party/repos/Catch2"]
 	path = cpp/third_party/repos/Catch2
 	url = https://github.com/catchorg/Catch2.git
+[submodule "cpp/third_party/repos/nanort"]
+	path = cpp/third_party/repos/nanort
+	url = git@github.com:daeyun/nanort.git

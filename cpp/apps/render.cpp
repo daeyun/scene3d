@@ -4,13 +4,13 @@
 #include <set>
 
 #include "spdlog/spdlog.h"
-#include "nanort.h"
 #include "cxxopts.hpp"
 #include "gsl/gsl_assert"
 
 #include "lib/file_io.h"
 #include "lib/common.h"
 #include "lib/camera.h"
+#include "lib/ray_mesh_intersection.h"
 
 struct SuncgCamera {
   Vec3 cam_eye;
@@ -104,28 +104,9 @@ int main(int argc, const char **argv) {
 
   LOGGER->info("{} faces, {} vertices", faces.size(), vertices.size());
 
-  nanort::TriangleMesh<float> triangle_mesh(vertices.data()->data(), faces.data()->data(), sizeof(float) * 3);
-  nanort::TriangleSAHPred<float> triangle_pred(vertices.data()->data(), faces.data()->data(), sizeof(float) * 3);
+  scenecompletion::RayTracer ray_tracer(faces, vertices);
 
-  nanort::BVHBuildOptions<float> build_options;
-//  build_options.cache_bbox = false;
-
-  nanort::BVHAccel<float> accel;
-
-  LOGGER->info("Building BVH tree");
-  bool build_ok = accel.Build(static_cast<const unsigned int>(faces.size()), triangle_mesh, triangle_pred, build_options);
-  Ensures(build_ok);
-
-  nanort::BVHBuildStatistics stats = accel.GetStatistics();
-
-  printf("  BVH statistics:\n");
-  printf("    # of leaf   nodes: %d\n", stats.num_leaf_nodes);
-  printf("    # of branch nodes: %d\n", stats.num_branch_nodes);
-  printf("  Max tree depth     : %d\n", stats.max_tree_depth);
-  float bmin[3], bmax[3];
-  accel.BoundingBox(bmin, bmax);
-  printf("  Bmin               : %f, %f, %f\n", bmin[0], bmin[1], bmin[2]);
-  printf("  Bmax               : %f, %f, %f\n", bmax[0], bmax[1], bmax[2]);
+  ray_tracer.PrintStats();
 
   // Routine to determine if a triangle belongs to background.
   auto is_background = [&](int face_index) -> bool {
@@ -165,20 +146,6 @@ int main(int argc, const char **argv) {
 
     auto camera = scenecompletion::PerspectiveCamera(cam_eye, cam_eye + cam_view_dir, cam_up, frustum);
 
-/* Old blender setting
-  // mm
-  double sensor_width = 4.54;
-  //  double sensor_height = 3.42;
-  double focal_length = 4.10;
-
-  // pixels
-  int image_width = 960;
-  int image_height = 540;
-
-  // Distance to the image plane
-  double image_focal_length = static_cast<double>(image_width) * focal_length / sensor_width;
-*/
-
     const int image_width = flags["width"].as<int>();
     const int image_height = flags["height"].as<int>();
 
@@ -207,57 +174,33 @@ int main(int argc, const char **argv) {
 
     vector<vector<float>> depth_images(2);
 
-    nanort::TriangleIntersector<> triangle_intersector(vertices.data()->data(), faces.data()->data(), sizeof(float) * 3);
-
     for (int y = 0; y < image_height; y++) {
       for (int x = 0; x < image_width; x++) {
         Vec3 image_plane_coord{static_cast<double>(x) + 0.5, image_height - (static_cast<double>(y) + 0.5), -image_focal_length};
         Vec3 cam_ray_direction = (image_plane_coord - image_optical_center).normalized();
 
-        nanort::Ray<float> ray;
-        ray.org[0] = static_cast<float>(ray_origin[0]);
-        ray.org[1] = static_cast<float>(ray_origin[1]);
-        ray.org[2] = static_cast<float>(ray_origin[2]);
-
         Vec3 ray_direction;
         camera.CamToWorldNormal(cam_ray_direction, &ray_direction);
 
-        ray.dir[0] = static_cast<float>(ray_direction[0]);
-        ray.dir[1] = static_cast<float>(ray_direction[1]);
-        ray.dir[2] = static_cast<float>(ray_direction[2]);
+        vector<float> depth_values;
 
-        int depth_i = 0;
-        nanort::TriangleIntersection<> isect{};
-        bool hit = accel.Traverse(ray, triangle_intersector, &isect);
-        if (hit) {
-          auto displacement = isect.t;
-          // Depth value is the distance perpendicular to the image plane.
-          auto depth_value = static_cast<float>(-cam_ray_direction[2] * displacement);
-          depth_images[depth_i].push_back(depth_value);
+        // Depth values are collected in the callback function, in the order traversed.
+        ray_tracer.Traverse(ray_origin, ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
+          depth_values.push_back(t);
+
+          // Stop traversal if the triangle ID corresponds to a background.
+          return !is_background(prim_id);
+        });
+
+        if (depth_values.empty()) {
+          depth_images[0].push_back(NAN);
+          depth_images[1].push_back(NAN);
+        } else if (depth_values.size() == 1) {
+          depth_images[0].push_back(depth_values[0]);
+          depth_images[1].push_back(depth_values[0]);
         } else {
-          depth_images[depth_i].push_back(NAN);
-        }
-
-        depth_i = 1;
-        while (true) {
-          nanort::TriangleIntersection<> isect{};
-          bool hit = accel.Traverse(ray, triangle_intersector, &isect);
-          if (hit) {
-            auto displacement = isect.t;
-            // Depth value is the distance perpendicular to the image plane.
-            auto depth_value = static_cast<float>(-cam_ray_direction[2] * displacement);
-
-            if (is_background(isect.prim_id)) {
-              depth_images[depth_i].push_back(depth_value);
-              break;
-            } else {
-              ray.min_t = static_cast<float>(displacement + 0.0001);
-            }
-
-          } else {
-            depth_images[depth_i].push_back(NAN);
-            break;
-          }
+          depth_images[0].push_back(depth_values[0]);  // front
+          depth_images[1].push_back(depth_values[depth_values.size() - 1]);  // background
         }
       }
     }
