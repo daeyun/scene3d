@@ -59,7 +59,7 @@ def thread_worker(thread_id):
         io_utils.ensure_dir_exists(out_dir)
 
         # build house obj
-        tmp_house_obj_file = '/tmp/scene3d/house_obj_default/{}/house.obj'.format(thread_id)
+        tmp_house_obj_file = path.join(tmp_out_root, 'house_obj_default/{}/house.obj'.format(thread_id))
         obj_filename = suncg_utils.house_obj_from_json(house_id=house_id, out_file=tmp_house_obj_file)
 
         source_room_camera_file = '/data2/pbrs/camera_v2/{}/room_camera.txt'.format(house_id)
