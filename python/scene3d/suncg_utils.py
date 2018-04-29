@@ -1,7 +1,7 @@
 import os
 from os import path
 
-import ujson
+import json
 
 from scene3d import log
 from scene3d import config
@@ -38,13 +38,13 @@ def house_obj_from_json(house_id, out_file='/tmp/scene3d/house_obj_default/house
     io_utils.assert_file_exists(house_json_filename)
 
     with open(house_json_filename, 'r') as f:
-        house_json = ujson.load(f)
+        house_json = json.load(f)
 
     house_json = __preprocess_house_json(house_json)
 
     new_house_json_filename = path.join(path.dirname(out_file), 'house_p.json')
     with open(new_house_json_filename, 'w') as f:
-        ujson.dump(house_json, f)
+        json.dump(house_json, f)
 
     if path.isfile(out_file):
         os.remove(out_file)

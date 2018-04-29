@@ -83,3 +83,22 @@ print(source_room_camera_file)
 print(tmp_render_out_dir)
 
 output_files = render_depth.run_render(obj_filename=house_obj_filename, camera_filename=source_room_camera_file, out_dir=tmp_render_out_dir)
+
+# %%
+
+import ujson
+import json
+
+# these json files (among other ones) had problems using ujson. Switches to json.
+# TODO(daeyun): Need to check the generated renderings for these house ids.
+
+filename = path.join(config.suncg_root, 'house/180c78c5f67d602cf9aa9936aace1ce9/house.json')
+# filename = path.join(config.suncg_root, 'house/75b00c3aac6b31c24e4d20a57407d1e9/house.json')
+
+# TODO(daeyun): also check these ids (scn2scne segfaults for some reason):
+# 43071b3dec29e9dcd2ea0e3703e1e020, 4d6d17661df14cac393403e23f954b71.
+
+print(filename)
+with open(filename, 'r') as f:
+    content = json.load(f)
+print(content)
