@@ -21,11 +21,14 @@ def run_command(command, cwd=None):
 
     start_time = time.time()
     p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd)
-    return_code = p.wait()
-    log.debug('return code: {}'.format(return_code))
+
+    # buffered in memory
+    stdout, stderr = p.communicate()
     elapsed = time.time() - start_time
 
-    stdout, stderr = p.communicate()
+    return_code = p.returncode
+    log.debug('return code: {}'.format(return_code))
+
     stdout = stdout.decode('utf-8')
     stderr = stderr.decode('utf-8')
 

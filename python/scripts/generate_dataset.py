@@ -17,19 +17,19 @@ from scene3d import log
 from scene3d import config
 from scene3d import render_depth
 from scene3d import suncg_utils
+from scene3d import pbrs_utils
 
 num_threads = 11
+out_root = '/data2/scene3d/v1'
+# Can be any directory. Temporary output files are written here.
+tmp_out_root = '/tmp/scene3d'
+
 global_lock = threading.Lock()
 global_start_time = time.time()
-
 files_by_house_id = collections.defaultdict(list)
 camera_ids_by_house_id = collections.defaultdict(list)
 house_ids = []
-
-out_root = '/data2/scene3d/v1'
-
-# Can be any directory. Temporary output files are written here.
-tmp_out_root = '/tmp/scene3d'
+num_total = 0
 
 
 def record_completed_house_id(house_id):
@@ -120,6 +120,7 @@ def thread_worker(thread_id):
     global house_ids
     global global_lock
     global global_start_time
+    global num_total
 
     while True:
         """
@@ -133,7 +134,6 @@ def thread_worker(thread_id):
             house_ids = house_ids[1:]
 
             num_remaining = len(house_ids)
-            num_total = len(files_by_house_id)
             num_processed = num_total - num_remaining
             remaining_seconds = (time.time() - global_start_time) / num_processed * num_remaining
             log.info('Thread id: {}. processing {}. {} out of {}. ETA: {:.1f} minutes'.format(
@@ -148,29 +148,13 @@ def thread_worker(thread_id):
             print(ex)
 
 
-def load_pbrs_filenames():
-    # List of png filenames in pbrs.
-    cache_file = path.join(config.pbrs_root, 'mlt_v2_files.json')
-    if path.isfile(cache_file):
-        with open(cache_file, 'r') as f:
-            rel_filenames = json.load(f)
-        ret = [path.join(config.pbrs_root, file) for file in rel_filenames]
-    else:
-        files = glob.glob(path.join(config.pbrs_root, 'mlt_v2/**/*.png'))
-        files = sorted(files)
-        rel_filenames = [path.relpath(file, config.pbrs_root) for file in files]
-        with open(cache_file, 'w') as f:
-            json.dump(rel_filenames, f)
-        ret = files
-    return ret
-
-
 def main():
-    files = load_pbrs_filenames()
+    files = pbrs_utils.load_pbrs_filenames()
 
     global files_by_house_id
     global camera_ids_by_house_id
     global house_ids
+    global num_total
 
     for file in files:
         m = re.findall(r'mlt_v2/([^/]+?)/(\d+?)_mlt.png', file)
@@ -190,6 +174,7 @@ def main():
 
     # This is the global work queue. Excludes house ids present in the completed file list.
     house_ids = remaining_house_ids
+    num_total = len(house_ids)
 
     processes = [threading.Thread(target=thread_worker, args=(tid,)) for tid in range(num_threads)]
 
