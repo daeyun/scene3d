@@ -4,6 +4,14 @@ from os import path
 
 from scene3d import config
 
+excluded_house_ids = {
+    '16457772c699601ea06b99ede30e80de',  # obj import error. meshlab doesn't seem to work on this mesh either, for some reason.
+    '43071b3dec29e9dcd2ea0e3703e1e020',  # scn2scn segfaults
+    '4d6d17661df14cac393403e23f954b71',  # scn2scn segfaults
+    'abc44a95da3f3738d4a8629e85ef6405',  # scn2scn segfaults
+    'd69819a0392af9ecb62a5889eb8a53d3',  # scn2scn segfaults
+}
+
 
 def load_pbrs_filenames():
     # List of png filenames in pbrs.
