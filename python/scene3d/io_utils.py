@@ -583,3 +583,14 @@ def read_obj(filename):
     pyassimp.release(scene)
 
     return fv
+
+
+def read_lines_and_strip(filename):
+    """
+    Reads lines from a text file, removes trailing whitespaces from each, then excludes empty items.
+    :param filename:
+    :return:
+    """
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+    return list(filter(bool, [item.strip() for item in lines]))
