@@ -1,30 +1,31 @@
-import numpy as np
+from os import path
 
+import cv2
+import numpy as np
 from torch.utils import data
+
 from scene3d import config
 from scene3d import io_utils
-from scene3d import log
-from os import path
-import cv2
 
 
 class MultiLayerDepth(data.Dataset):
-    def __init__(self, first_n=None, train=True, input_scale=1):
+    def __init__(self, train=True, first_n=None, rgb_scale=1.0, subtract_mean=True, image_hw=(480, 640)):
         self.filename_prefixes = io_utils.read_lines_and_strip(path.join(config.scene3d_root, 'v1/renderings.txt'))
 
+        eval_set_size = 16000
+
         if train:
-            train_first_n = int(len(self.filename_prefixes) * 0.95)
-            self.filename_prefixes = self.filename_prefixes[:train_first_n]
+            self.filename_prefixes = self.filename_prefixes[:-eval_set_size]
         else:
-            train_first_n = int(len(self.filename_prefixes) * 0.95)
-            self.filename_prefixes = self.filename_prefixes[train_first_n:]
+            self.filename_prefixes = self.filename_prefixes[-eval_set_size:]
 
         if first_n is not None and first_n > 0:
             self.filename_prefixes = self.filename_prefixes[:first_n]
 
-        self.input_image_size = (480, 640)
-        self.rgb_mean = np.array([178.17808226, 158.50391329, 142.51412396], dtype=np.float32)
-        self.input_scale = input_scale
+        self.image_hw = image_hw
+        self.rgb_mean = np.array([178.1781, 158.5039, 142.5141], dtype=np.float32)
+        self.rgb_scale = rgb_scale
+        self.subtract_mean = subtract_mean
 
     def __len__(self):
         return len(self.filename_prefixes)
@@ -36,19 +37,34 @@ class MultiLayerDepth(data.Dataset):
             path.join(config.scene3d_root, 'v1/renderings', example_name + '_01.bin'),
         ]
 
+        # Prepare GT depth images.
         depth = io_utils.read_array_compressed(bin_filenames[0], dtype=np.float32)
         background_depth = io_utils.read_array_compressed(bin_filenames[1], dtype=np.float32)
-        target_depth = np.array([depth, background_depth])
+        target_depth = np.stack((depth, background_depth), axis=2)
+        h, w, _ = target_depth.shape
+        if (h, w) != tuple(self.image_hw):
+            target_depth = cv2.resize(target_depth, dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST)
 
+        # 0: room layout.
+        # 1: diff between room layout and depth.
+        target_depth = np.stack([target_depth[:, :, 1], target_depth[:, :, 1] - target_depth[:, :, 0]], axis=0)
+
+        # Prepare input RGB image.
         png_filename = path.join(config.pbrs_root, 'mlt_v2', example_name + '_mlt.png')
+        in_rgb = cv2.cvtColor(cv2.imread(png_filename), cv2.COLOR_BGR2RGB)
+        h, w, ch = in_rgb.shape
+        assert ch == 3
+        if (h, w) != tuple(self.image_hw):
+            in_rgb = cv2.resize(in_rgb, dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_LINEAR)
+        in_rgb = in_rgb.transpose((2, 0, 1)).astype(np.float32)
+        if self.subtract_mean:
+            in_rgb -= self.rgb_mean.reshape(3, 1, 1)
+        if self.rgb_scale != 1.0:
+            in_rgb *= self.rgb_scale
 
-        in_bgr = cv2.imread(png_filename)
-        in_rgb = cv2.cvtColor(in_bgr, cv2.COLOR_BGR2RGB)
-        in_rgb = in_rgb.transpose([2, 0, 1]).astype(np.float32)
-        in_rgb -= self.rgb_mean[:, None, None]
-
-        if self.input_scale != 1:
-            in_rgb *= self.input_scale
+        # Making sure values are contiguous in memory, in case it matters.
+        in_rgb = in_rgb.copy()
+        target_depth = target_depth.copy()
 
         # NOTE: target_depth contains nan values. They need to be replaced or excluded when computing the loss function.
         return example_name, in_rgb, target_depth

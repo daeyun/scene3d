@@ -31,31 +31,20 @@ parser.add_argument('--model', type=str, default='deeplab')
 args = parser.parse_args()
 
 available_experiments = ['multi-layer', 'single-layer']
-available_models = ['deeplab', 'unet_v0']
+available_models = ['unet_v0']
 
 
 def loss_calc(pred, target):
     assert pred.shape[1] > 1
-
     mask = ~torch.isnan(target)
-
-    target_depth_bg = target[:, 1, None]
-    target_depth_diff = target_depth_bg - target[:, 0, None]
-
-    new_target = torch.cat((target_depth_bg, target_depth_diff), dim=1)
-    new_target_log = torch.log2(new_target + 0.1)
-
-    target_variable = autograd.Variable(new_target_log).cuda()
-    return (target_variable - pred).abs()[mask].mean()
+    return (torch.log2(target[mask] + 0.5) - pred[mask]).abs().mean()
 
 
 def loss_calc_single_depth(pred, target):
     assert pred.shape[1] == 1
-    target_single_depth = target[:, 0, None]
+    target_single_depth = target[:, 0, None] - target[:, 1, None]
     mask = ~torch.isnan(target_single_depth)
-    target_log = torch.log2(target_single_depth + 0.1)
-    target_torch = autograd.Variable(target_log).cuda()
-    return (target_torch - pred).abs()[mask].mean()
+    return (torch.log2(target_single_depth[mask] + 0.5) - pred[mask]).abs().mean()
 
 
 def main():
@@ -69,7 +58,7 @@ def main():
     cudnn.enabled = True
     cudnn.benchmark = True
 
-    depth_dataset = v1.MultiLayerDepth(train=True, first_n=args.first_n, input_scale=1.0 / 255)
+    depth_dataset = v1.MultiLayerDepth(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
 
     loader = data.DataLoader(depth_dataset, batch_size=args.batch_size, num_workers=args.num_data_workers,
                              shuffle=True, drop_last=True, pin_memory=True)
@@ -77,12 +66,7 @@ def main():
     log.info('Number of examples: %d', len(depth_dataset))
 
     if args.model == 'deeplab':
-        if args.experiment == 'multi-layer':
-            model = deeplab.Res_Deeplab(num_classes=2)
-        elif args.experiment == 'single-layer':
-            model = deeplab.Res_Deeplab(num_classes=1)
-        else:
-            raise NotImplementedError()
+        raise NotImplementedError()
     elif args.model == 'unet_v0':
         if args.experiment == 'multi-layer':
             model = unet.Unet0(out_channels=2)
@@ -101,7 +85,7 @@ def main():
     optimizer = optim.Adam(params, lr=0.0005)
     optimizer.zero_grad()
 
-    interp = nn.Upsample(size=depth_dataset.input_image_size, mode='bilinear', align_corners=True)
+    # interp = nn.Upsample(size=depth_dataset.image_hw, mode='bilinear', align_corners=True)
 
     log.info('Initialized model.')
 
@@ -109,10 +93,11 @@ def main():
     for i_epoch in range(args.max_epochs):
         for i_iter, batch in enumerate(loader):
             example_name, in_rgb, target_depth = batch
-            in_rgb = autograd.Variable(in_rgb).cuda()
+            in_rgb = in_rgb.cuda()
+            target_depth = target_depth.cuda()
             optimizer.zero_grad()
 
-            pred = interp(model(in_rgb))
+            pred = model(in_rgb)
 
             if args.experiment == 'multi-layer':
                 loss = loss_calc(pred, target_depth)
