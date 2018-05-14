@@ -24,13 +24,13 @@ parser.add_argument('--batch_size', type=int, default=3)
 parser.add_argument('--num_data_workers', type=int, default=5)
 parser.add_argument('--save_dir', type=str, default='/data2/out/scene3d/v1/default')
 parser.add_argument('--experiment', type=str, default='multi-layer')
-parser.add_argument('--max_epochs', type=int, default=20)
-parser.add_argument('--save_every', type=int, default=10000)
+parser.add_argument('--max_epochs', type=int, default=30)
+parser.add_argument('--save_every', type=int, default=2000)
 parser.add_argument('--first_n', type=int, default=0)
-parser.add_argument('--model', type=str, default='deeplab')
+parser.add_argument('--model', type=str, default='unet_v0')
 args = parser.parse_args()
 
-available_experiments = ['multi-layer', 'single-layer']
+available_experiments = ['multi-layer', 'single-layer', 'nyu40-segmentation']
 available_models = ['unet_v0']
 
 
@@ -47,6 +47,12 @@ def loss_calc_single_depth(pred, target):
     return (torch.log2(target_single_depth[mask] + 0.5) - pred[mask]).abs().mean()
 
 
+def loss_calc_classification(pred, target):
+    target = target.long().cuda()
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=255).cuda()
+    return criterion(pred, target)
+
+
 def main():
     log.info(args)
     assert args.save_dir.startswith('/'), args.save_dir
@@ -58,7 +64,14 @@ def main():
     cudnn.enabled = True
     cudnn.benchmark = True
 
-    depth_dataset = v1.MultiLayerDepth(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    if args.experiment == 'multi-layer':
+        depth_dataset = v1.MultiLayerDepth(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    elif args.experiment == 'single-layer':
+        depth_dataset = v1.MultiLayerDepth(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    elif args.experiment == 'nyu40-segmentation':
+        depth_dataset = v1.NYU40Segmentation(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    else:
+        raise NotImplementedError()
 
     loader = data.DataLoader(depth_dataset, batch_size=args.batch_size, num_workers=args.num_data_workers,
                              shuffle=True, drop_last=True, pin_memory=True)
@@ -72,6 +85,8 @@ def main():
             model = unet.Unet0(out_channels=2)
         elif args.experiment == 'single-layer':
             model = unet.Unet0(out_channels=1)
+        elif args.experiment == 'nyu40-segmentation':
+            model = unet.Unet0(out_channels=40)
         else:
             raise NotImplementedError()
     else:
@@ -92,17 +107,19 @@ def main():
     global_step = 0
     for i_epoch in range(args.max_epochs):
         for i_iter, batch in enumerate(loader):
-            example_name, in_rgb, target_depth = batch
+            example_name, in_rgb, target = batch
             in_rgb = in_rgb.cuda()
-            target_depth = target_depth.cuda()
+            target = target.cuda()
             optimizer.zero_grad()
 
             pred = model(in_rgb)
 
             if args.experiment == 'multi-layer':
-                loss = loss_calc(pred, target_depth)
+                loss = loss_calc(pred, target)
             elif args.experiment == 'single-layer':
-                loss = loss_calc_single_depth(pred, target_depth)
+                loss = loss_calc_single_depth(pred, target)
+            elif args.experiment == 'nyu40-segmentation':
+                loss = loss_calc_classification(pred, target)
 
             loss.backward()
             optimizer.step()
