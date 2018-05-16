@@ -247,6 +247,13 @@ def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU4
         model.eval()
     assert not model.training
 
+    def loss_calc_classification(pred, target):
+        target = target.long().cuda()
+        criterion = torch.nn.CrossEntropyLoss(ignore_index=255).cuda()
+        return criterion(pred, target)
+
+    loss_list = []
+
     for ind in indices:
         example_name, in_rgb_np, target_category_np = depth_dataset[ind]
 
@@ -254,6 +261,10 @@ def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU4
 
         pred = model(in_rgb)
         assert pred.shape[1] == 40, 'Channel dimension must be 40.'
+
+        loss = loss_calc_classification(pred, torch.Tensor(target_category_np[None]).cuda())
+        loss_np = torch_utils.recursive_torch_to_numpy(loss)
+        loss_list.append(loss_np)
 
         rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + depth_dataset.rgb_mean).round().astype(np.uint8)
         pred_np = torch_utils.recursive_torch_to_numpy(pred)[0]  # (40, h, w)
@@ -265,6 +276,9 @@ def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU4
 
         target_category_np_colorized = colorize_segmentation(target_category_np)
         pred_np_colorized = colorize_segmentation(pred_np_argmax)
+
+        del pred
+        del loss
 
         if visualize:
             print('Example ID:', example_name)
@@ -284,3 +298,5 @@ def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU4
             pt.title('$GT$', fontsize=16)
 
             pt.show()
+
+    return np.mean(loss_list)

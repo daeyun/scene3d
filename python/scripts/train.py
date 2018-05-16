@@ -30,7 +30,7 @@ parser.add_argument('--first_n', type=int, default=0)
 parser.add_argument('--model', type=str, default='unet_v0')
 args = parser.parse_args()
 
-available_experiments = ['multi-layer', 'single-layer', 'nyu40-segmentation']
+available_experiments = ['multi-layer', 'single-layer', 'nyu40-segmentation', 'multi-layer-and-segmentation', 'single-layer-and-segmentation']
 available_models = ['unet_v0']
 
 
@@ -70,6 +70,10 @@ def main():
         depth_dataset = v1.MultiLayerDepth(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
     elif args.experiment == 'nyu40-segmentation':
         depth_dataset = v1.NYU40Segmentation(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    elif args.experiment == 'multi-layer-and-segmentation':
+        depth_dataset = v1.MultiLayerDepthNYU40Segmentation(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    elif args.experiment == 'single-layer-and-segmentation':
+        depth_dataset = v1.MultiLayerDepthNYU40Segmentation(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
     else:
         raise NotImplementedError()
 
@@ -87,6 +91,10 @@ def main():
             model = unet.Unet0(out_channels=1)
         elif args.experiment == 'nyu40-segmentation':
             model = unet.Unet0(out_channels=40)
+        elif args.experiment == 'multi-layer-and-segmentation':
+            model = unet.Unet0(out_channels=42)
+        elif args.experiment == 'single-layer-and-segmentation':
+            model = unet.Unet0(out_channels=41)
         else:
             raise NotImplementedError()
     else:
@@ -109,17 +117,33 @@ def main():
         for i_iter, batch in enumerate(loader):
             example_name, in_rgb, target = batch
             in_rgb = in_rgb.cuda()
-            target = target.cuda()
             optimizer.zero_grad()
 
             pred = model(in_rgb)
 
             if args.experiment == 'multi-layer':
+                target = target.cuda()
                 loss = loss_calc(pred, target)
             elif args.experiment == 'single-layer':
+                target = target.cuda()
                 loss = loss_calc_single_depth(pred, target)
             elif args.experiment == 'nyu40-segmentation':
+                target = target.cuda()
                 loss = loss_calc_classification(pred, target)
+            elif args.experiment == 'multi-layer-and-segmentation':
+                target_depth = target[0].cuda()
+                target_category = target[1].cuda()
+                loss_category = loss_calc_classification(pred[:, :40], target_category)
+                loss_depth = loss_calc(pred[:, 40:], target_depth)
+                loss = loss_category * 0.4 + loss_depth
+            elif args.experiment == 'single-layer-and-segmentation':
+                target_depth = target[0].cuda()
+                target_category = target[1].cuda()
+                loss_category = loss_calc_classification(pred[:, :40], target_category)
+                loss_depth = loss_calc_single_depth(pred[:, 40:], target_depth)
+                loss = loss_category * 0.4 + loss_depth
+            else:
+                raise NotImplementedError()
 
             loss.backward()
             optimizer.step()
