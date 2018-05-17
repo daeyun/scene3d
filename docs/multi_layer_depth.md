@@ -6,6 +6,8 @@ See the source code [cpp/apps/render.cpp](../cpp/apps/render.cpp) or use the `./
 
 Before rendering, prepare the `.obj` mesh and a `.txt` file containing camera parameters (see [resources/depth_render/cam.txt](../resources/depth_render/cam.txt) for an example).
 
+#### Cameras
+
 There should be one line for each camera (same format as (pbrs)[https://github.com/yindaz/pbrs]):
 
 ```
@@ -15,7 +17,11 @@ There should be one line for each camera (same format as (pbrs)[https://github.c
 - `fov` is the field-of-view angle measured from the principal-axis, so it should be half of the end-to-end angle, in radians. 
 - `score` is not used, so it can be any value.
 
-Example command:
+#### Mesh
+
+Names of background objects should contains one of "Floor", "Wall", "Ceiling", "Room", "Level", "floor", "background". See [cpp/apps/render.cpp](../cpp/apps/render.cpp).
+
+### Example command
 
 ```
 ./render -h 300 -w 400 --obj resources/depth_render/mocap_liangjian01_scene0.obj --out_dir ./out_depth --cameras resources/depth_render/cam.txt
