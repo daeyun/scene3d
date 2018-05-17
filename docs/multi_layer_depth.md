@@ -67,7 +67,7 @@ pt.figure()
 pt.imshow(background)
 ```
 
-![plot0](images/ml_depth_plot_0.png) ![plot1](images/ml_depth_plot_1.png) ![plot2](images/ml_depth_plot_2.png) ![plot3](images/ml_depth_plot_3.png) ![plot5](images/ml_depth_plot_5.png)
+![plot0](images/ml_depth_plot_0.png) ![plot1](images/ml_depth_plot_1.png) ![plot2](images/ml_depth_plot_2.png) ![plot4](images/ml_depth_plot_4.png) ![plot5](images/ml_depth_plot_5.png)
 
 If you wanted a more self-contained version:
 
