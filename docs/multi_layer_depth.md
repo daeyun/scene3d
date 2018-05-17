@@ -8,7 +8,7 @@ Before rendering, prepare the `.obj` mesh and a `.txt` file containing camera pa
 
 #### Cameras
 
-There should be one line for each camera (same format as (pbrs)[https://github.com/yindaz/pbrs]):
+There should be one line for each camera (same format as [pbrs](https://github.com/yindaz/pbrs)):
 
 ```
 [camera position x] [camera position y] [camera position z] [view direction x] [view direction y] [view direction z] [up x] [up y] [up z] [x fov] [y fov] [score]
