@@ -1,10 +1,10 @@
 ## How to use the multi-layer depth renderer
 
-Compile the `render` executable using the provided build script [cpp/scripts/build_all.sh](cpp/scripts/build_all.sh) or download a compiled binary from [github.com/daeyun/scene3d/releases](https://github.com/daeyun/scene3d/releases).
+Compile the `render` executable using the provided build script [cpp/scripts/build_all.sh](../cpp/scripts/build_all.sh) or download a compiled binary from [github.com/daeyun/scene3d/releases](https://github.com/daeyun/scene3d/releases).
 
-See the source code [cpp/apps/render.cpp](cpp/apps/render.cpp) or use the `./render --help` command to see the options.
+See the source code [cpp/apps/render.cpp](../cpp/apps/render.cpp) or use the `./render --help` command to see the options.
 
-Before rendering, prepare the `.obj` mesh and a `.txt` file containing camera parameters (see [resources/depth_render/cam.txt](resources/depth_render/cam.txt) for an example).
+Before rendering, prepare the `.obj` mesh and a `.txt` file containing camera parameters (see [resources/depth_render/cam.txt](../resources/depth_render/cam.txt) for an example).
 
 There should be one line for each camera (same format as (pbrs)[https://github.com/yindaz/pbrs]):
 
@@ -47,7 +47,21 @@ Install [blosc](https://github.com/Blosc/c-blosc) with `pip install blosc`. Then
 from scene3d import io_utils
 
 images = io_utils.read_array_compressed('out_depth/000000.bin', dtype=np.float32)
+background = io_utils.read_array_compressed('out_depth/000000_bg.bin', dtype=np.float32)
 ```
+
+Then,
+
+```python
+import matplotlib.pyplot as pt
+for i in range(len(images)):
+    pt.figure()
+    pt.imshow(images[i])
+pt.figure()
+pt.imshow(background)
+```
+
+![plot0](images/ml_depth_plot_0.png) ![plot1](images/ml_depth_plot_1.png) ![plot2](images/ml_depth_plot_2.png) ![plot3](images/ml_depth_plot_3.png) ![plot4](images/ml_depth_plot_4.png) ![plot5](images/ml_depth_plot_5.png)
 
 If you wanted a more self-contained version:
 
