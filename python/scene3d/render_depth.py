@@ -12,6 +12,9 @@ renderer_executable = path.abspath(path.join(path.dirname(__file__), '../../cpp/
 
 
 def run_render(obj_filename, camera_filename, out_dir):
+    # TODO(daeyun): This python wrapper is not up-to-date because the c++ code changed.
+    raise NotImplementedError()
+
     assert obj_filename.endswith('.obj'), obj_filename
     assert camera_filename.endswith('.txt'), camera_filename
     io_utils.ensure_dir_exists(out_dir)
