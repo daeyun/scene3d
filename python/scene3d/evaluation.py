@@ -300,3 +300,265 @@ def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU4
             pt.show()
 
     return np.mean(loss_list)
+
+
+def eval_single_depth_and_segmentation_model(model: torch.nn.Module, seg_and_depth_dataset: v1.MultiLayerDepthNYU40Segmentation, indices, visualize=True):
+    if model.training:
+        model.eval()
+    assert not model.training
+
+    def loss_calc_classification(pred, target):
+        target = target.long().cuda()
+        criterion = torch.nn.CrossEntropyLoss(ignore_index=255).cuda()
+        return criterion(pred, target)
+
+    loss_list_seg = []
+    loss_list_depth = []
+
+    for ind in indices:
+        example_name, in_rgb_np, targets = seg_and_depth_dataset[ind]
+
+        in_rgb = torch.Tensor(in_rgb_np[None]).cuda()
+
+        pred = model(in_rgb)
+        assert pred.shape[1] == 41, 'Channel dimension must be 41.'
+
+        pred_seg = pred[:, :40]
+        pred_depth = pred[:, 40:]
+        target_seg = targets[1]
+        target_depth = targets[0]
+
+        loss = loss_calc_classification(pred_seg, torch.Tensor(target_seg[None]).cuda())
+        loss_np = torch_utils.recursive_torch_to_numpy(loss)
+        loss_list_seg.append(loss_np)
+
+        rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + seg_and_depth_dataset.rgb_mean).round().astype(np.uint8)
+        pred_np = torch_utils.recursive_torch_to_numpy(pred_seg)[0]  # (40, h, w)
+
+        target_category_np_flat = target_seg.ravel()
+        target_category_np_flat[target_category_np_flat == 255] = 40  # black color
+
+        pred_np_argmax = np.argmax(pred_np, axis=0).astype(np.uint8)
+
+        target_category_np_colorized = colorize_segmentation(target_seg)
+        pred_np_colorized = colorize_segmentation(pred_np_argmax)
+
+        if visualize:
+            print('Example ID:', example_name)
+
+            pt.figure(figsize=(18, 4))
+            pt.subplot(1, 3, 1)  # 1
+            pt.imshow(rgb_np)
+            pt.axis('off')
+            pt.title('$GT$', fontsize=16)
+            pt.subplot(1, 3, 2)  # 2
+            pt.imshow(pred_np_colorized)
+            pt.axis('off')
+            pt.title('$Pred$', fontsize=16)
+            pt.subplot(1, 3, 3)  # 3
+            pt.imshow(target_category_np_colorized)
+            pt.axis('off')
+            pt.title('$GT$', fontsize=16)
+
+            pt.show()
+
+        # depth
+
+        rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + seg_and_depth_dataset.rgb_mean).round().astype(np.uint8)
+        pred_log_np = torch_utils.recursive_torch_to_numpy(pred_depth)[0, 0]  # (h, w)
+        pred_np = np.power(2, pred_log_np) - 0.5
+        target_depth = target_depth.transpose(1, 2, 0)
+        single_target_np = target_depth[:, :, 0] - target_depth[:, :, 1]
+        single_target_log_np = np.log2(single_target_np + 0.5)
+
+        mask = ~np.isnan(target_depth[:, :, 0])
+
+        loss_map = np.abs(single_target_np - pred_np)
+        loss = loss_map[mask].mean()
+        assert ~np.isnan(loss), 'nan: index {}'.format(ind)
+        loss_map_log = np.abs(single_target_log_np - pred_log_np)
+
+        loss_list_depth.append(loss)
+
+        if visualize:
+            # too small or too large values are clipped for visualization.
+            # tmax = single_target_np.max()
+            # tmin = single_target_np.min()
+            # pred_np[tmax<pred_np] = tmax
+            # pred_np[tmin>pred_np] = tmin
+
+            pt.figure(figsize=(22, 4))
+            pt.subplot(1, 3, 1)  # 1
+            pt.imshow(pred_np)
+            pt.axis('off')
+            pt.colorbar()
+            pt.title('$Pred$', fontsize=16)
+            pt.subplot(1, 3, 2)  # 2
+            pt.imshow(single_target_np)
+            pt.axis('off')
+            pt.colorbar()
+            pt.title('$GT$', fontsize=16)
+            pt.subplot(1, 3, 3)  # 3
+            pt.imshow(loss_map, cmap='Reds')
+            pt.axis('off')
+            pt.clim(0, 1)
+            pt.colorbar()
+            pt.title('L1 error:  {:.3f}   (log scale: {:.3f})'.format(loss_map[mask].mean(), loss_map_log[mask].mean()), fontsize=11)
+
+            pt.show()
+
+    return np.mean(loss_list_seg), np.mean(loss_list_depth)
+
+
+def eval_multi_depth_and_segmentation_model(model: torch.nn.Module, seg_and_depth_dataset: v1.MultiLayerDepthNYU40Segmentation, indices, visualize=True):
+    if model.training:
+        model.eval()
+    assert not model.training
+
+    def loss_calc_classification(pred, target):
+        target = target.long().cuda()
+        criterion = torch.nn.CrossEntropyLoss(ignore_index=255).cuda()
+        return criterion(pred, target)
+
+    loss_list_seg = []
+    loss_list_depth = []
+
+    for ind in indices:
+        example_name, in_rgb_np, targets = seg_and_depth_dataset[ind]
+
+        in_rgb = torch.Tensor(in_rgb_np[None]).cuda()
+
+        pred = model(in_rgb)
+        assert pred.shape[1] == 42, 'Channel dimension must be 42.'
+
+        pred_seg = pred[:, :40]
+        pred_depth = pred[:, 40:]
+        target_seg = targets[1]
+        target_depth = targets[0]
+
+        loss = loss_calc_classification(pred_seg, torch.Tensor(target_seg[None]).cuda())
+        loss_np = torch_utils.recursive_torch_to_numpy(loss)
+        loss_list_seg.append(loss_np)
+
+        rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + seg_and_depth_dataset.rgb_mean).round().astype(np.uint8)
+        pred_np = torch_utils.recursive_torch_to_numpy(pred_seg)[0]  # (40, h, w)
+
+        target_category_np_flat = target_seg.ravel()
+        target_category_np_flat[target_category_np_flat == 255] = 40  # black color
+
+        pred_np_argmax = np.argmax(pred_np, axis=0).astype(np.uint8)
+
+        target_category_np_colorized = colorize_segmentation(target_seg)
+        pred_np_colorized = colorize_segmentation(pred_np_argmax)
+
+        if visualize:
+            print('Example ID:', example_name)
+
+            pt.figure(figsize=(18, 4))
+            pt.subplot(1, 3, 1)  # 1
+            pt.imshow(rgb_np)
+            pt.axis('off')
+            pt.title('$GT$', fontsize=16)
+            pt.subplot(1, 3, 2)  # 2
+            pt.imshow(pred_np_colorized)
+            pt.axis('off')
+            pt.title('$Pred$', fontsize=16)
+            pt.subplot(1, 3, 3)  # 3
+            pt.imshow(target_category_np_colorized)
+            pt.axis('off')
+            pt.title('$GT$', fontsize=16)
+
+            pt.show()
+
+        # depth
+
+        rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + seg_and_depth_dataset.rgb_mean).round().astype(np.uint8)
+        pred_log_np = torch_utils.recursive_torch_to_numpy(pred_depth)[0].transpose(1, 2, 0)  # (h, w, 2)
+        pred_np = np.power(2, pred_log_np) - 0.5
+        target_depth = target_depth.transpose(1, 2, 0)  # (h, w, 2)
+        target_log_np = np.log2(target_depth + 0.5)
+        single_target_np = target_depth[:, :, 0] - target_depth[:, :, 1]
+        single_pred_np = pred_np[:, :, 0] - pred_np[:, :, 1]
+
+        mask = ~np.isnan(target_depth[:, :, 0])
+
+        loss_map = np.abs(target_depth - pred_np)
+        loss_map_log = np.abs(target_log_np - pred_log_np)
+        single_loss_map = np.abs(single_target_np - single_pred_np)
+        loss = loss_map[mask].mean()
+        assert ~np.isnan(loss), 'nan: index {}'.format(ind)
+        single_loss = single_loss_map[mask].mean()
+
+        loss_list_depth.append((loss, single_loss))
+
+        if visualize:
+            # too small or too large values are clipped for visualization.
+            # tmax = single_target_np.max()
+            # tmin = single_target_np.min()
+            # pred_np[tmax<pred_np] = tmax
+            # pred_np[tmin>pred_np] = tmin
+
+            print('Example ID:', example_name)
+
+            pt.figure()
+            pt.imshow(rgb_np)
+            pt.axis('off')
+            pt.title('$Input$', fontsize=16)
+
+            pt.figure(figsize=(22, 4))
+            pt.subplot(1, 3, 1)  # 1
+            pt.imshow(pred_np[:, :, 0])
+            pt.axis('off')
+            pt.colorbar()
+            pt.title('$Pred_{bg}$', fontsize=16)
+            pt.subplot(1, 3, 2)  # 2
+            pt.imshow(target_depth[:, :, 0])
+            pt.axis('off')
+            pt.colorbar()
+            pt.title('$GT_{bg}$', fontsize=16)
+            pt.subplot(1, 3, 3)  # 3
+            pt.imshow(loss_map[:, :, 0], cmap='Reds')
+            pt.axis('off')
+            pt.clim(0, 1)
+            pt.colorbar()
+            pt.title('L1 error:  {:.3f}   (log scale: {:.3f})'.format(loss_map[:, :, 0][mask].mean(), loss_map_log[:, :, 0][mask].mean()), fontsize=11)
+
+            pt.figure(figsize=(22, 4))
+            pt.subplot(1, 3, 1)  # 1
+            pt.imshow(pred_np[:, :, 1])
+            pt.axis('off')
+            pt.colorbar()
+            pt.title('$Pred_{fg}$', fontsize=16)
+            pt.subplot(1, 3, 2)  # 2
+            pt.imshow(target_depth[:, :, 1])
+            pt.axis('off')
+            pt.colorbar()
+            pt.title('$GT_{fg}$', fontsize=16)
+            pt.subplot(1, 3, 3)  # 3
+            pt.imshow(loss_map[:, :, 1], cmap='Reds')
+            pt.axis('off')
+            pt.clim(0, 1)
+            pt.colorbar()
+            pt.title('L1 error:  {:.3f}   (log scale: {:.3f})'.format(loss_map[:, :, 1][mask].mean(), loss_map_log[:, :, 1][mask].mean()), fontsize=11)
+
+            pt.figure(figsize=(22, 4))
+            pt.subplot(1, 3, 1)  # 1
+            pt.imshow(single_pred_np)
+            pt.axis('off')
+            pt.colorbar()
+            pt.title('$Pred_{bg} - Pred_{fg}$', fontsize=16)
+            pt.subplot(1, 3, 2)  # 2
+            pt.imshow(single_target_np)
+            pt.axis('off')
+            pt.colorbar()
+            pt.title('$GT_{bg} - GT_{fg}$', fontsize=16)
+            pt.subplot(1, 3, 3)  # 3
+            pt.imshow(single_loss_map, cmap='Reds')
+            pt.axis('off')
+            pt.clim(0, 1)
+            pt.colorbar()
+            pt.title('L1 error:  {:.3f}'.format(single_loss_map[mask].mean()), fontsize=11)
+
+            pt.show()
+
+    return np.mean(loss_list_seg), np.mean(loss_list_depth, axis=0)
