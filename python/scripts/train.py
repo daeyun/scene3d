@@ -7,6 +7,7 @@ from os import path
 import itertools
 import cv2
 import time
+import re
 from scene3d.dataset import v1
 from torch.utils import data
 import time
@@ -14,6 +15,7 @@ from torch.backends import cudnn
 from scene3d.net import deeplab
 from scene3d.net import unet
 from scene3d import log
+from scene3d import torch_utils
 from torch import optim
 from torch import nn
 from torch import autograd
@@ -21,13 +23,14 @@ import argparse
 
 parser = argparse.ArgumentParser(description='training')
 parser.add_argument('--batch_size', type=int, default=3)
-parser.add_argument('--num_data_workers', type=int, default=5)
+parser.add_argument('--num_data_workers', type=int, default=4)
 parser.add_argument('--save_dir', type=str, default='/data2/out/scene3d/v1/default')
 parser.add_argument('--experiment', type=str, default='multi-layer')
-parser.add_argument('--max_epochs', type=int, default=30)
+parser.add_argument('--max_epochs', type=int, default=200)
 parser.add_argument('--save_every', type=int, default=2000)
 parser.add_argument('--first_n', type=int, default=0)
 parser.add_argument('--model', type=str, default='unet_v0')
+parser.add_argument('--load_checkpoint', type=str, default='')
 args = parser.parse_args()
 
 available_experiments = ['multi-layer', 'single-layer', 'nyu40-segmentation', 'multi-layer-and-segmentation', 'single-layer-and-segmentation']
@@ -82,23 +85,34 @@ def main():
 
     log.info('Number of examples: %d', len(depth_dataset))
 
-    if args.model == 'deeplab':
-        raise NotImplementedError()
-    elif args.model == 'unet_v0':
-        if args.experiment == 'multi-layer':
-            model = unet.Unet0(out_channels=2)
-        elif args.experiment == 'single-layer':
-            model = unet.Unet0(out_channels=1)
-        elif args.experiment == 'nyu40-segmentation':
-            model = unet.Unet0(out_channels=40)
-        elif args.experiment == 'multi-layer-and-segmentation':
-            model = unet.Unet0(out_channels=42)
-        elif args.experiment == 'single-layer-and-segmentation':
-            model = unet.Unet0(out_channels=41)
+    if args.load_checkpoint:
+        assert path.isfile(args.load_checkpoint)
+        assert args.load_checkpoint.endswith('.pth')
+        log.info('Loading from checkpoint file {}'.format(args.load_checkpoint))
+        model = torch_utils.load_torch_model(args.load_checkpoint, use_cpu=False)
+        global_step = int(re.findall(r'_([0-9]+).pth', args.load_checkpoint)[0])
+        global_step += 1
+    else:
+        if args.model == 'deeplab':
+            raise NotImplementedError()
+        elif args.model == 'unet_v0':
+            if args.experiment == 'multi-layer':
+                model = unet.Unet0(out_channels=2)
+            elif args.experiment == 'single-layer':
+                model = unet.Unet0(out_channels=1)
+            elif args.experiment == 'nyu40-segmentation':
+                model = unet.Unet0(out_channels=40)
+            elif args.experiment == 'multi-layer-and-segmentation':
+                model = unet.Unet0(out_channels=42)
+            elif args.experiment == 'single-layer-and-segmentation':
+                model = unet.Unet0(out_channels=41)
+            else:
+                raise NotImplementedError()
         else:
             raise NotImplementedError()
-    else:
-        raise NotImplementedError()
+        global_step = 0
+
+    log.info('global step: {}'.format(global_step))
 
     model.train()
     model.cuda()
@@ -112,7 +126,6 @@ def main():
 
     log.info('Initialized model.')
 
-    global_step = 0
     for i_epoch in range(args.max_epochs):
         for i_iter, batch in enumerate(loader):
             example_name, in_rgb, target = batch
