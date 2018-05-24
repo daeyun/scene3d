@@ -2,8 +2,14 @@ import torch
 import matplotlib
 import matplotlib.pyplot as pt
 import torch.utils.data
+import shutil
 import torch.nn
 from scene3d import torch_utils
+from scene3d import pbrs_utils
+from scene3d import transforms
+from scene3d import io_utils
+from scene3d import camera
+from scene3d import mve
 from scene3d.dataset import v1
 import numpy as np
 
@@ -75,6 +81,27 @@ def eval_single_depth_model(model: torch.nn.Module, depth_dataset: v1.MultiLayer
             pt.show()
 
     return np.mean(loss_list)
+
+
+def eval_multi_depth_model_get_output(model: torch.nn.Module, depth_dataset: v1.MultiLayerDepth, index):
+    if model.training:
+        model.eval()
+    assert not model.training
+
+    loss_list = []
+    single_loss_list = []
+
+    example_name, in_rgb_np, target_np = depth_dataset[index]
+    in_rgb = torch.Tensor(in_rgb_np[None]).cuda()
+
+    pred = model(in_rgb)
+    assert pred.shape[1] == 2, 'Channel dimension must be 2.'
+
+    # rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + depth_dataset.rgb_mean).round().astype(np.uint8)
+    pred_log_np = torch_utils.recursive_torch_to_numpy(pred)[0]  # (2, h, w)
+    pred_np = np.power(2, pred_log_np) - 0.5
+
+    return pred_np
 
 
 def eval_multi_depth_model(model: torch.nn.Module, depth_dataset: v1.MultiLayerDepth, indices, visualize=True):
@@ -562,3 +589,51 @@ def eval_multi_depth_and_segmentation_model(model: torch.nn.Module, seg_and_dept
             pt.show()
 
     return np.mean(loss_list_seg), np.mean(loss_list_depth, axis=0)
+
+
+def multi_layer_depth_mesh_recon(model, depth_dataset, index):
+    # TODO: need to clean up the tmp directory paths
+    raise NotImplementedError()
+
+    # prepare camera
+    house_id = depth_dataset[0][0].split('/')[0]
+    camera_id = depth_dataset[0][0].split('/')[1]
+    items = pbrs_utils.get_camera_params_line(house_id, camera_id).split()
+    campos = np.array([float(v) for v in items[:3]])
+    viewdir = np.array([float(v) for v in items[3:6]])
+    up = np.array([float(v) for v in items[6:9]])
+    Rt = transforms.lookat_matrix(cam_xyz=campos, obj_xyz=campos + viewdir, up=up)
+    cam = camera.OrthographicCamera.from_Rt(Rt, wh=depth_dataset.image_hw[::-1])
+    xl = 0.5 * cam.wh[0] / np.tan(float(items[9]))
+    yl = 0.5 * cam.wh[1] / np.tan(float(items[10]))
+    focal_length_pixels = (xl + yl) * 0.5
+    focal_length = focal_length_pixels / np.max(cam.wh)
+
+    # get output
+    out = eval_multi_depth_model_get_output(model=model, depth_dataset=depth_dataset, index=index)
+
+    outfile = '/tmp/scene3d/scenedir/depth_meshes/mesh_0000.ply'
+
+    d = out[0][None]
+    mve.save_as_mve_views('/tmp/scene3d/scenedir', masked_depth_images=d, ortho_cameras=[cam], focal_length=focal_length)
+    mve.convert_mve_views_to_meshes('/tmp/scene3d/scenedir')
+    shutil.move(outfile, '/tmp/scene3d/scenedir/mesh0.ply')
+
+    mask = out[1] < 0.07
+
+    d = (out[0] - out[1]).copy()
+    d[mask] = np.nan
+    d = d[None]
+    mve.save_as_mve_views('/tmp/scene3d/scenedir', masked_depth_images=d, ortho_cameras=[cam], focal_length=focal_length)
+    mve.convert_mve_views_to_meshes('/tmp/scene3d/scenedir')
+    shutil.move(outfile, '/tmp/scene3d/scenedir/mesh1.ply')
+
+    d = out[0] - out[1]
+    d = d[None]
+    mve.save_as_mve_views('/tmp/scene3d/scenedir', masked_depth_images=d, ortho_cameras=[cam], focal_length=focal_length)
+    mve.convert_mve_views_to_meshes('/tmp/scene3d/scenedir')
+    shutil.move(outfile, '/tmp/scene3d/scenedir/mesh2.ply')
+
+    fv0 = io_utils.read_ply('/tmp/scene3d/scenedir/mesh0.ply')
+    fv1 = io_utils.read_ply('/tmp/scene3d/scenedir/mesh1.ply')
+    io_utils.merge_meshes(fv0, fv1)

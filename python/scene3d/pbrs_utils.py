@@ -1,8 +1,10 @@
 import glob
 import json
+import typing
 from os import path
 
 from scene3d import config
+from scene3d import io_utils
 
 excluded_house_ids = {
     '16457772c699601ea06b99ede30e80de',  # obj import error. meshlab doesn't seem to work on this mesh either, for some reason.
@@ -28,3 +30,11 @@ def load_pbrs_filenames():
             json.dump(rel_filenames, f)
         ret = files
     return ret
+
+
+def get_camera_params_line(house_id: str, camera_id: typing.Union[str, int] = None):
+    camera_filename = path.join(config.pbrs_root, 'camera_v2', house_id, 'room_camera.txt')
+    lines = io_utils.read_lines_and_strip(camera_filename)
+    if camera_id is None:
+        return lines
+    return lines[int(camera_id)]
