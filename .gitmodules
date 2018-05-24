@@ -28,3 +28,6 @@
 [submodule "cpp/third_party/repos/nanort"]
 	path = cpp/third_party/repos/nanort
 	url = git@github.com:daeyun/nanort.git
+[submodule "cpp/third_party/repos/mve"]
+	path = cpp/third_party/repos/mve
+	url = https://github.com/daeyun/mve.git
