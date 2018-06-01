@@ -660,7 +660,7 @@ def depth_normals(depth, worldpts, viewdir, window_size=5, min_near_pts=4, visua
     normals[flip] *= -1
 
     if visualize:
-        from dshin import geom3d
+        from scene3d import geom3d
         pts = imxyz[~np.isnan(normals).any(axis=2)]
         vecs = normals[~np.isnan(normals).any(axis=2)]
         edges = np.stack((pts, pts + vecs * 0.05), axis=1)

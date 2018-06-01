@@ -69,7 +69,6 @@ dependencies:
   - pytorch=0.4.0=py36_cuda8.0.61_cudnn7.1.2_1
   - torchvision=0.2.1=py36_1
   - pip:
-    - dshin==0.1
     - numpy-stl==2.5.0
     - plyfile==0.5
     - pyassimp==4.1.3
