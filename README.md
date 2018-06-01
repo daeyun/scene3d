@@ -6,7 +6,19 @@ Clone the repository with the `--recurse-submodules` option to download third pa
 git clone --recurse-submodules git@github.com:daeyun/scene3d.git
 ```
 
-Build instructions for C++
+#### Setting up Python virtual environment
+
+Download the Python 3.6 version of [Anaconda](https://www.anaconda.com/download/).
+
+From the repository's root directory, run the following command to create a new Conda environment and install and dependencies. `scene3d` can be replaced with any name you want.
+
+```
+conda env create --file python/environment.yml --name scene3d
+```
+
+More info on managing Conda environments can be found [here](https://conda.io/docs/user-guide/tasks/manage-environments.html).
+
+#### Build instructions for C++
 
 ```
 ./cpp/third_party/build_scripts/SUNCGtoolbox.sh
