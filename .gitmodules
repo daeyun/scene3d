@@ -22,12 +22,12 @@
 [submodule "cpp/third_party/repos/Catch2"]
 	path = cpp/third_party/repos/Catch2
 	url = https://github.com/catchorg/Catch2.git
-[submodule "cpp/third_party/repos/nanort"]
-	path = cpp/third_party/repos/nanort
-	url = git@github.com:daeyun/nanort.git
 [submodule "cpp/third_party/repos/mve"]
 	path = cpp/third_party/repos/mve
 	url = https://github.com/daeyun/mve.git
 [submodule "cpp/third_party/repos/eigen"]
 	path = cpp/third_party/repos/eigen
 	url = https://github.com/eigenteam/eigen-git-mirror.git
+[submodule "cpp/third_party/repos/nanort"]
+	path = cpp/third_party/repos/nanort
+	url = https://github.com/daeyun/nanort.git
