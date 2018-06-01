@@ -28,3 +28,6 @@
 [submodule "cpp/third_party/repos/mve"]
 	path = cpp/third_party/repos/mve
 	url = https://github.com/daeyun/mve.git
+[submodule "cpp/third_party/repos/eigen"]
+	path = cpp/third_party/repos/eigen
+	url = https://github.com/eigenteam/eigen-git-mirror.git
