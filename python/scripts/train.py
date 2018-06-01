@@ -14,6 +14,7 @@ import time
 from torch.backends import cudnn
 from scene3d.net import deeplab
 from scene3d.net import unet
+from scene3d.net import unet_no_bn
 from scene3d import log
 from scene3d import torch_utils
 from torch import optim
@@ -34,7 +35,7 @@ parser.add_argument('--load_checkpoint', type=str, default='')
 args = parser.parse_args()
 
 available_experiments = ['multi-layer', 'single-layer', 'nyu40-segmentation', 'multi-layer-and-segmentation', 'single-layer-and-segmentation']
-available_models = ['unet_v0']
+available_models = ['unet_v0', 'unet_v0_no_bn']
 
 
 def loss_calc(pred, target):
@@ -106,6 +107,19 @@ def main():
                 model = unet.Unet0(out_channels=42)
             elif args.experiment == 'single-layer-and-segmentation':
                 model = unet.Unet0(out_channels=41)
+            else:
+                raise NotImplementedError()
+        elif args.model == 'unet_v0_no_bn':
+            if args.experiment == 'multi-layer':
+                model = unet_no_bn.Unet0(out_channels=2)
+            elif args.experiment == 'single-layer':
+                model = unet_no_bn.Unet0(out_channels=1)
+            elif args.experiment == 'nyu40-segmentation':
+                model = unet_no_bn.Unet0(out_channels=40)
+            elif args.experiment == 'multi-layer-and-segmentation':
+                model = unet_no_bn.Unet0(out_channels=42)
+            elif args.experiment == 'single-layer-and-segmentation':
+                model = unet_no_bn.Unet0(out_channels=41)
             else:
                 raise NotImplementedError()
         else:
