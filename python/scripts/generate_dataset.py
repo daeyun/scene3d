@@ -19,8 +19,8 @@ from scene3d import render_depth
 from scene3d import suncg_utils
 from scene3d import pbrs_utils
 
-num_threads = 11
-out_root = '/data2/scene3d/v1'
+num_threads = 12
+out_root = '/data2/scene3d/v2'
 # Can be any directory. Temporary output files are written here.
 tmp_out_root = '/tmp/scene3d'
 
@@ -70,7 +70,7 @@ def generate_depth_images(thread_id, house_id):
 
     # Saved to a tmp directory first and then renamed and moved later. Not all cameras were used so the output files needed to be renamed to match pbrs's.
     tmp_render_out_dir = path.join(tmp_out_root, '{}/renderings'.format(thread_id))
-    output_files = render_depth.run_render(obj_filename=obj_filename, camera_filename=out_room_camera_file, out_dir=tmp_render_out_dir)
+    output_files = render_depth.run_render(obj_filename=obj_filename, camera_filename=out_room_camera_file, out_dir=tmp_render_out_dir, hw=(480 // 2, 640 // 2))
 
     # sanity check. two images per camera for now.
     assert len(output_files) == len(camera_ids_by_house_id[house_id]) * 2
@@ -79,11 +79,11 @@ def generate_depth_images(thread_id, house_id):
     camera_ids = camera_ids_by_house_id[house_id]
     output_files_by_camera_id = collections.defaultdict(list)
     for i, output_file in enumerate(output_files):
-        m = re.findall(r'/(\d+)_(\d+).bin$', output_file)[0]
+        m = re.findall(r'/(\d+)(_bg)?.bin$', output_file)[0]
         camera_index = int(m[0])
-        image_index = int(m[1])
+        suffix = m[1]  # empty if not a background file.
         camera_id = camera_ids[camera_index]
-        new_bin_filename = path.join(out_dir, '{:06d}_{:02d}.bin'.format(camera_id, image_index))
+        new_bin_filename = path.join(out_dir, '{:06d}{}.bin'.format(camera_id, suffix))
         shutil.copyfile(output_file, new_bin_filename)
         output_files_by_camera_id[camera_id].append(new_bin_filename)
 

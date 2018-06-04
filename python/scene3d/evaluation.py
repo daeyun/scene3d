@@ -269,6 +269,15 @@ def colorize_segmentation(seg40_image: np.ndarray):
     return ret
 
 
+def segmentation_accuracy(pred, target):
+    pred_np = np.squeeze(torch_utils.recursive_torch_to_numpy(pred))
+    target_np = np.squeeze(torch_utils.recursive_torch_to_numpy(target)).astype(np.uint8)
+    pred_np_argmax = np.argmax(pred_np, axis=0).astype(np.uint8)
+    assert target_np.shape == pred_np_argmax.shape
+    accuracy = (pred_np_argmax == target_np).sum() / np.prod(target_np.shape)
+    return accuracy
+
+
 def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU40Segmentation, indices, visualize=True):
     if model.training:
         model.eval()
@@ -280,6 +289,7 @@ def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU4
         return criterion(pred, target)
 
     loss_list = []
+    accuracy_list = []
 
     for ind in indices:
         example_name, in_rgb_np, target_category_np = depth_dataset[ind]
@@ -292,6 +302,9 @@ def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU4
         loss = loss_calc_classification(pred, torch.Tensor(target_category_np[None]).cuda())
         loss_np = torch_utils.recursive_torch_to_numpy(loss)
         loss_list.append(loss_np)
+
+        accuracy = segmentation_accuracy(pred, target_category_np)
+        accuracy_list.append(accuracy)
 
         rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + depth_dataset.rgb_mean).round().astype(np.uint8)
         pred_np = torch_utils.recursive_torch_to_numpy(pred)[0]  # (40, h, w)
@@ -326,7 +339,7 @@ def eval_nyu40_segmentation_model(model: torch.nn.Module, depth_dataset: v1.NYU4
 
             pt.show()
 
-    return np.mean(loss_list)
+    return np.mean(loss_list), np.mean(accuracy_list)
 
 
 def eval_single_depth_and_segmentation_model(model: torch.nn.Module, seg_and_depth_dataset: v1.MultiLayerDepthNYU40Segmentation, indices, visualize=True):
@@ -339,8 +352,16 @@ def eval_single_depth_and_segmentation_model(model: torch.nn.Module, seg_and_dep
         criterion = torch.nn.CrossEntropyLoss(ignore_index=255).cuda()
         return criterion(pred, target)
 
+    def loss_calc_single_depth(pred, target):
+        assert pred.shape[1] == 1
+        target_single_depth = target[:, 0, None] - target[:, 1, None]
+        mask = ~torch.isnan(target_single_depth)
+        return (torch.log2(target_single_depth[mask] + 0.5) - pred[mask]).abs().mean()
+
     loss_list_seg = []
     loss_list_depth = []
+    accuracy_list = []
+    learning_log_loss_list = []
 
     for ind in indices:
         example_name, in_rgb_np, targets = seg_and_depth_dataset[ind]
@@ -358,6 +379,9 @@ def eval_single_depth_and_segmentation_model(model: torch.nn.Module, seg_and_dep
         loss = loss_calc_classification(pred_seg, torch.Tensor(target_seg[None]).cuda())
         loss_np = torch_utils.recursive_torch_to_numpy(loss)
         loss_list_seg.append(loss_np)
+
+        accuracy = segmentation_accuracy(pred, target_seg)
+        accuracy_list.append(accuracy)
 
         rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + seg_and_depth_dataset.rgb_mean).round().astype(np.uint8)
         pred_np = torch_utils.recursive_torch_to_numpy(pred_seg)[0]  # (40, h, w)
@@ -407,6 +431,9 @@ def eval_single_depth_and_segmentation_model(model: torch.nn.Module, seg_and_dep
 
         loss_list_depth.append(loss)
 
+        learning_log_loss = torch_utils.recursive_torch_to_numpy(loss_calc_single_depth(pred_depth, torch.Tensor(target_depth.transpose(2,0,1)[None]).cuda()))
+        learning_log_loss_list.append(learning_log_loss)
+
         if visualize:
             # too small or too large values are clipped for visualization.
             # tmax = single_target_np.max()
@@ -434,7 +461,7 @@ def eval_single_depth_and_segmentation_model(model: torch.nn.Module, seg_and_dep
 
             pt.show()
 
-    return np.mean(loss_list_seg), np.mean(loss_list_depth)
+    return np.mean(loss_list_seg), np.mean(loss_list_depth), np.mean(accuracy_list), np.mean(learning_log_loss_list)
 
 
 def eval_multi_depth_and_segmentation_model(model: torch.nn.Module, seg_and_depth_dataset: v1.MultiLayerDepthNYU40Segmentation, indices, visualize=True):
@@ -449,6 +476,7 @@ def eval_multi_depth_and_segmentation_model(model: torch.nn.Module, seg_and_dept
 
     loss_list_seg = []
     loss_list_depth = []
+    accuracy_list = []
 
     for ind in indices:
         example_name, in_rgb_np, targets = seg_and_depth_dataset[ind]
@@ -466,6 +494,9 @@ def eval_multi_depth_and_segmentation_model(model: torch.nn.Module, seg_and_dept
         loss = loss_calc_classification(pred_seg, torch.Tensor(target_seg[None]).cuda())
         loss_np = torch_utils.recursive_torch_to_numpy(loss)
         loss_list_seg.append(loss_np)
+
+        accuracy = segmentation_accuracy(pred, target_seg)
+        accuracy_list.append(accuracy)
 
         rgb_np = (in_rgb_np.transpose(1, 2, 0) * 255 + seg_and_depth_dataset.rgb_mean).round().astype(np.uint8)
         pred_np = torch_utils.recursive_torch_to_numpy(pred_seg)[0]  # (40, h, w)
@@ -588,7 +619,7 @@ def eval_multi_depth_and_segmentation_model(model: torch.nn.Module, seg_and_dept
 
             pt.show()
 
-    return np.mean(loss_list_seg), np.mean(loss_list_depth, axis=0)
+    return np.mean(loss_list_seg), np.mean(loss_list_depth, axis=0), np.mean(accuracy_list)
 
 
 def multi_layer_depth_mesh_recon(model, depth_dataset, index):
