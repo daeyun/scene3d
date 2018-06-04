@@ -14,3 +14,6 @@ target_link_libraries(ray_mesh_intersection_cgal PRIVATE common CGAL)
 
 add_library(ray_mesh_intersection ray_mesh_intersection.cc ray_mesh_intersection.h)
 target_link_libraries(ray_mesh_intersection PUBLIC common nanort)
+
+add_library(multi_layer_depth_renderer multi_layer_depth_renderer.cc multi_layer_depth_renderer.h)
+target_link_libraries(multi_layer_depth_renderer PUBLIC common nanort ray_mesh_intersection file_io camera)

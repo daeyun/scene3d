@@ -11,7 +11,7 @@
 
 #include "lib/common.h"
 
-namespace scenecompletion {
+namespace scene3d {
 bool ReadTriangles(const std::string &filename,
                    const std::function<void(const std::array<std::array<float, 3>, 3> &)> &triangle_handler);
 

@@ -8,7 +8,7 @@
 #include <CGAL/AABB_triangle_primitive.h>
 #include <CGAL/squared_distance_3.h>
 
-namespace scenecompletion {
+namespace scene3d {
 typedef CGAL::Simple_cartesian<double> K;
 typedef K::Triangle_3 CGAL_Triangle;
 typedef std::list<CGAL_Triangle>::iterator Iterator;

@@ -6,7 +6,7 @@
 
 #include "common.h"
 
-namespace scenecompletion {
+namespace scene3d {
 struct FrustumParams {
   double left = -1;
   double right = 1;
@@ -155,11 +155,11 @@ class OrthographicCamera : public Camera {
     projection_mat_inv_ = projection_mat_.inverse();
   }
 
-  const Mat44 &projection_mat() const {
+  const Mat44 &projection_mat() const override {
     return projection_mat_;
   }
 
-  const Mat44 &projection_mat_inv() const {
+  const Mat44 &projection_mat_inv() const override {
     return projection_mat_inv_;
   }
 
@@ -189,11 +189,11 @@ class PerspectiveCamera : public Camera {
     projection_mat_inv_ = projection_mat_.inverse();
   }
 
-  const Mat44 &projection_mat() const {
+  const Mat44 &projection_mat() const override {
     return projection_mat_;
   }
 
-  const Mat44 &projection_mat_inv() const {
+  const Mat44 &projection_mat_inv() const override {
     return projection_mat_inv_;
   }
 

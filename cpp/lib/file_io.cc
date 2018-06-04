@@ -24,7 +24,7 @@
 
 #include "lib/common.h"
 
-namespace scenecompletion {
+namespace scene3d {
 namespace fs = boost::filesystem;
 
 bool ReadTriangles(const std::string &filename,
@@ -37,7 +37,10 @@ bool ReadTriangles(const std::string &filename,
   }
 
   Assimp::Importer importer;
-  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate);
+
+  // List of post-processing flags can be found here:
+  // http://sir-kimmi.de/assimp/lib_html/postprocess_8h.html#a64795260b95f5a4b3f3dc1be4f52e410
+  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
 
   if (!scene) {
     LOGGER->error("ERROR in {}: {}", filename, importer.GetErrorString());
@@ -93,7 +96,10 @@ bool ReadFacesAndVertices(const std::string &filename,
   }
 
   Assimp::Importer importer;
-  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate);
+
+  // List of post-processing flags can be found here:
+  // http://sir-kimmi.de/assimp/lib_html/postprocess_8h.html#a64795260b95f5a4b3f3dc1be4f52e410
+  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
 
   if (!scene) {
     LOGGER->error("ERROR in {}: {}", filename, importer.GetErrorString());

@@ -10,7 +10,7 @@
 
 #include "nanort.h"
 
-namespace scenecompletion {
+namespace scene3d {
 class RayTracer {
  public:
   RayTracer(const std::vector<std::array<unsigned int, 3>> &faces,
@@ -26,7 +26,7 @@ class RayTracer {
 
   }
 
-  void Traverse(const Vec3 &ray_origin, const Vec3 &ray_direction, const std::function<bool(float t, float u, float v, unsigned int prim_id)> &callback) {
+  void Traverse(const Vec3 &ray_origin, const Vec3 &ray_direction, std::function<bool(float t, float u, float v, unsigned int prim_id)> callback) const {
     nanort::Ray<float> ray;
 
     ray.org[0] = static_cast<float>(ray_origin[0]);
@@ -72,6 +72,14 @@ class RayTracer {
     accel_.BoundingBox(bmin, bmax);
     printf("  Bmin               : %f, %f, %f\n", bmin[0], bmin[1], bmin[2]);
     printf("  Bmax               : %f, %f, %f\n", bmax[0], bmax[1], bmax[2]);
+  }
+
+  const Vec3 vertex(size_t i) {
+    return Vec3{vertices_[i][0], vertices_[i][1], vertices_[i][2]};
+  }
+
+  const std::array<unsigned int, 3> face(size_t i) {
+    return {faces_[i][0], faces_[i][1], faces_[i][2]};
   }
 
  private:

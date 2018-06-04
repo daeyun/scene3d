@@ -2,15 +2,11 @@
 #include <fstream>
 #include <algorithm>
 #include <set>
+#include <lib/multi_layer_depth_renderer.h>
 
-#include "spdlog/spdlog.h"
 #include "cxxopts.hpp"
-#include "gsl/gsl_assert"
 
 #include "lib/file_io.h"
-#include "lib/common.h"
-#include "lib/camera.h"
-#include "lib/ray_mesh_intersection.h"
 
 struct CameraParams {
   Vec3 cam_eye;
@@ -20,12 +16,6 @@ struct CameraParams {
   double y_fov;
   double score;  // scene coverage score. not used at the moment.
 };
-
-const std::vector<string> background_name_substrings{"Floor", "Wall", "Ceiling", "Room", "Level", "floor", "background"};
-const std::set<std::string> suncg_doors_and_windows
-    {"122", "126", "133", "209", "210", "211", "212", "213", "214", "246", "247", "326", "327", "331", "361", "73", "752", "753", "754", "755", "756", "757", "758", "759", "760", "761", "762", "763",
-     "764", "765", "766", "767", "768", "769", "770", "771", "s__1276", "s__1762", "s__1763", "s__1764", "s__1765", "s__1766", "s__1767", "s__1768", "s__1769", "s__1770", "s__1771", "s__1772",
-     "s__1773", "s__2010", "s__2011", "s__2012", "s__2013", "s__2014", "s__2015", "s__2016", "s__2017", "s__2019"};
 
 int main(int argc, const char **argv) {
   cxxopts::Options options("render", "Render multi-layer depth images");
@@ -63,8 +53,8 @@ int main(int argc, const char **argv) {
 
   std::vector<std::array<unsigned int, 3>> faces;
   std::vector<std::array<float, 3>> vertices;
-  std::vector<int> node_id_for_each_face;
-  std::vector<std::string> node_name_for_each_face;
+  std::vector<int> prim_id_to_node_id;
+  std::vector<std::string> prim_id_to_node_name;
 
   LOGGER->info("Reading file {}", camera_filename);
 
@@ -97,117 +87,56 @@ int main(int argc, const char **argv) {
 
   LOGGER->info("Reading file {}", obj_filename);
 
-  bool ok = scenecompletion::ReadFacesAndVertices(obj_filename, &faces, &vertices, &node_id_for_each_face, &node_name_for_each_face);
+  bool ok = scene3d::ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
 
   // Sanity check.
-  Ensures(faces.size() == node_id_for_each_face.size());
-  Ensures(faces.size() == node_name_for_each_face.size());
+  Ensures(faces.size() == prim_id_to_node_id.size());
+  Ensures(faces.size() == prim_id_to_node_name.size());
 
   LOGGER->info("{} faces, {} vertices", faces.size(), vertices.size());
 
-  scenecompletion::RayTracer ray_tracer(faces, vertices);
-
+  scene3d::RayTracer ray_tracer(faces, vertices);
   ray_tracer.PrintStats();
 
-  // Routine to determine if a triangle belongs to background.
-  auto is_background = [&](int face_index) -> bool {
-    Expects(face_index < node_name_for_each_face.size());
-    auto node_name = node_name_for_each_face[face_index];
-    bool ret = false;
-    for (const string &substr: background_name_substrings) {
-      if (node_name.find(substr) != std::string::npos) {
-        ret = true;
-        break;
-      }
-    }
-    if (!ret and node_name.find("Model#") != std::string::npos) {
-      string model_id = node_name.substr(node_name.find('#') + 1);
-      if (suncg_doors_and_windows.find(model_id) != suncg_doors_and_windows.end()) {
-        // If the model id matches a window or a door, it is the background.
-        ret = true;
-      }
-    }
-    return ret;
-  };
+  const size_t width = static_cast<size_t>(flags["width"].as<int>());
+  const size_t height = static_cast<size_t>(flags["height"].as<int>());
+  const size_t max_hits = static_cast<size_t>(flags["max_hits"].as<int>());
 
   for (int camera_i = 0; camera_i < suncg_cameras.size(); ++camera_i) {
     CameraParams suncg_cam = suncg_cameras[camera_i];
     LOGGER->info("Rendering camera {}", camera_i);
 
-    Vec3 cam_eye = suncg_cam.cam_eye;
-    Vec3 cam_view_dir = suncg_cam.cam_view_dir;
-    Vec3 cam_up = suncg_cam.cam_up;
+    auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+        &ray_tracer,
+        suncg_cam.cam_eye,
+        suncg_cam.cam_view_dir,
+        suncg_cam.cam_up,
+        suncg_cam.x_fov,
+        suncg_cam.y_fov,
+        width,
+        height,
+        max_hits,
+        prim_id_to_node_name
+    );
 
-    double xf = suncg_cam.x_fov;
-    double yf = suncg_cam.y_fov;
-
-    scenecompletion::FrustumParams frustum;
-    frustum.far = 10000;
-    frustum.near = 0.001;
-
-    auto camera = scenecompletion::PerspectiveCamera(cam_eye, cam_eye + cam_view_dir, cam_up, frustum);
-
-    const size_t image_width = static_cast<size_t>(flags["width"].as<int>());
-    const size_t image_height = static_cast<size_t>(flags["height"].as<int>());
-
-    // Distance to the image plane according to the x fov.
-    double xl = 0.5 * image_width / std::tan(xf);
-    // Distance to the image plane according to the y fov.
-    double yl = 0.5 * image_height / std::tan(yf);
-
-    // For now, we assume the aspect ratio is always 1.0. So the distance to image plane should end up being the same according to both x and y.
-    // Otherwise the image size or focal length is wrong. This can also happen because of precision error.
-    // 0.01 is an arbitrary threshold.
-    if (std::abs(xl - yl) > 0.01) {
-      LOGGER->warn("xf: {}, yf: {}, width: {}, height: {}, xl: {}, yl: {}", xf, yf, image_width, image_height, xl, yl);
-      throw std::runtime_error("Inconsistent distance to image plane.");
-    }
-
-    // Compute the average of the two distances. There are probably other, better ways to do this.
-    double image_focal_length = (xl + yl) * 0.5;
-
-    Vec3 image_optical_center{image_width * 0.5, image_height * 0.5, 0};
-
-    const Vec3 cam_ray_origin{0, 0, 0};
-
-    Vec3 ray_origin;
-    camera.CamToWorld(cam_ray_origin, &ray_origin);
-
-    const size_t max_hits = static_cast<size_t>(flags["max_hits"].as<int>());
-
-    vector<vector<unique_ptr<vector<float>>>> grid_depth_values(image_height);
+    vector<vector<unique_ptr<vector<float>>>> grid_depth_values(height);
     vector<float> background_values;
-    for (int y = 0; y < image_height; y++) {
-      grid_depth_values[y].resize(image_width);
+    for (int y = 0; y < height; y++) {
+      grid_depth_values[y].resize(width);
     }
 
     size_t num_layers = 0;
     bool found_at_least_one_backgrond_value = false;
 
-    for (int y = 0; y < image_height; y++) {
-      for (int x = 0; x < image_width; x++) {
-        Vec3 image_plane_coord{static_cast<double>(x) + 0.5, image_height - (static_cast<double>(y) + 0.5), -image_focal_length};
-        Vec3 cam_ray_direction = (image_plane_coord - image_optical_center).normalized();
-
-        Vec3 ray_direction;
-        camera.CamToWorldNormal(cam_ray_direction, &ray_direction);
-
-        // Stack of depth values. e.g.  [FG, O1, O2, ... ,BG]. Can be empty if the ray hits nothing.
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
         auto depth_values = make_unique<vector<float>>();
-        bool found_background = false;
-
-        // Depth values are collected in the callback function, in the order traversed.
-        ray_tracer.Traverse(ray_origin, ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
-          depth_values->push_back(t);
-
-          // Stop traversal if the triangle ID corresponds to a background.
-          found_background = is_background(prim_id);
-          return !found_background;
-        });
+        int depth_value_index = renderer.depth_values(x, y, depth_values.get());
+        bool found_background = depth_value_index >= 0;
 
         num_layers = std::max(num_layers, depth_values->size());
         if (found_background) {
-          background_values.push_back(depth_values->at(depth_values->size() - 1));
+          background_values.push_back(depth_values->at(static_cast<size_t>(depth_value_index)));
           found_at_least_one_backgrond_value = true;
         } else {
           background_values.push_back(NAN);
@@ -230,8 +159,8 @@ int main(int argc, const char **argv) {
     depth_images.resize(n);
 
     for (int i = 0; i < n; ++i) {
-      for (int y = 0; y < image_height; y++) {
-        for (int x = 0; x < image_width; x++) {
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
           // Populate the depth image buffer in row-major order.
           if (i < grid_depth_values[y][x]->size()) {
             depth_images[i].push_back(grid_depth_values[y][x]->at(static_cast<size_t>(i)));
@@ -244,7 +173,7 @@ int main(int argc, const char **argv) {
 
     // Buffer of data to save. Contains (N, H, W) tensor data.
     vector<float> all_depth_values;
-    all_depth_values.reserve(image_height * image_width * n);
+    all_depth_values.reserve(height * width * n);
     for (const auto &depth_image : depth_images) {
       all_depth_values.insert(all_depth_values.end(), depth_image.begin(), depth_image.end());
     }
@@ -253,8 +182,8 @@ int main(int argc, const char **argv) {
     snprintf(buff, sizeof(buff), "%s/%06d", out_dir.c_str(), camera_i);
     string out_filename = std::string(buff) + ".bin";
 
-    const vector<int> shape{static_cast<int>(n), static_cast<int>(image_height), static_cast<int>(image_width)};
-    scenecompletion::SerializeTensor<float>(out_filename, all_depth_values.data(), shape);
+    const vector<int> shape{static_cast<int>(n), static_cast<int>(height), static_cast<int>(width)};
+    scene3d::SerializeTensor<float>(out_filename, all_depth_values.data(), shape);
 
     // NOTE: This line is important. The python script parses this line to determine which files were generated. Must start with "Output file: "
     std::cout << "Output file: " << out_filename << std::endl;
@@ -262,7 +191,7 @@ int main(int argc, const char **argv) {
     if (found_at_least_one_backgrond_value) {
       snprintf(buff, sizeof(buff), "%s/%06d", out_dir.c_str(), camera_i);
       string out_filename_bg = std::string(buff) + "_bg.bin";
-      scenecompletion::SerializeTensor<float>(out_filename_bg, background_values.data(), {image_height, image_width});
+      scene3d::SerializeTensor<float>(out_filename_bg, background_values.data(), {height, width});
       std::cout << "Output file: " << out_filename_bg << std::endl;
     }
   }

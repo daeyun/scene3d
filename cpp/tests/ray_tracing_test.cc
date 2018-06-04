@@ -23,15 +23,15 @@ TEST_CASE("Intersection") {
       array<unsigned int, 3>{6, 7, 8},
   };
 
-  scenecompletion::AABBTree tree(faces, vertices);
+  scene3d::AABBTree tree(faces, vertices);
 
   SECTION("Intersect three triangles") {
-    auto ray = scenecompletion::Ray{
+    auto ray = scene3d::Ray{
         .o = {0.2, 0.2, 1.0},
         .d = {0, 0, -1.0},
     };
 
-    std::vector<scenecompletion::RayIntersection> hits;
+    std::vector<scene3d::RayIntersection> hits;
     tree.MultiHitTraverse(ray, &hits);
 
     REQUIRE(3 == hits.size());
@@ -44,12 +44,12 @@ TEST_CASE("Intersection") {
   }
 
   SECTION("Intersect three triangles in reverse order") {
-    auto ray = scenecompletion::Ray{
+    auto ray = scene3d::Ray{
         .o = {0.2, 0.2, -1.0},
         .d = {0, 0, 1.0},
     };
 
-    std::vector<scenecompletion::RayIntersection> hits;
+    std::vector<scene3d::RayIntersection> hits;
     tree.MultiHitTraverse(ray, &hits);
 
     REQUIRE(3 == hits.size());
@@ -62,12 +62,12 @@ TEST_CASE("Intersection") {
   }
 
   SECTION("Intersect two triangles") {
-    auto ray = scenecompletion::Ray{
+    auto ray = scene3d::Ray{
         .o = {0.2, 0.2, -0.25},
         .d = {0, 0, 1.0},
     };
 
-    std::vector<scenecompletion::RayIntersection> hits;
+    std::vector<scene3d::RayIntersection> hits;
     tree.MultiHitTraverse(ray, &hits);
 
     REQUIRE(2 == hits.size());
@@ -77,12 +77,12 @@ TEST_CASE("Intersection") {
   }
 
   SECTION("Intersect two triangles 2") {
-    auto ray = scenecompletion::Ray{
+    auto ray = scene3d::Ray{
         .o = {0.05, 0.05, 1.0},
         .d = {0, 0, -1.0},
     };
 
-    std::vector<scenecompletion::RayIntersection> hits;
+    std::vector<scene3d::RayIntersection> hits;
     tree.MultiHitTraverse(ray, &hits);
 
     REQUIRE(2 == hits.size());

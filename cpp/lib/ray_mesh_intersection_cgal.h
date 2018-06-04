@@ -4,7 +4,7 @@
 
 #include "common.h"
 
-namespace scenecompletion {
+namespace scene3d {
 
 // Forward declation for encapsulation.
 struct CGAL_Triangles;
