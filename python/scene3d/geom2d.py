@@ -8,6 +8,9 @@ import numpy as np
 from matplotlib.patches import Polygon
 import matplotlib.cm as cm
 
+cmap_viridis = cm.get_cmap('viridis')
+cmap_viridis_array = np.array([cmap_viridis(item)[:3] for item in np.arange(0, 1, 1.0 / 256)]).astype(np.float32)
+
 
 def draw_triangles(triangles, ax=None, facecolor='blue', alpha=1):
     """
@@ -145,3 +148,18 @@ def montage(images, in_order='chw', gridwidth=None, empty_value=0):
         rows.append(row)
     m = np.vstack(rows)
     return m.astype(imtype)
+
+
+def apply_colormap(img, cmap_name='viridis'):
+    if cmap_name != 'viridis':
+        raise NotImplementedError(cmap_name)
+    assert img.ndim == 2
+
+    nan_mask = np.isnan(img)
+    min_value = img[~nan_mask].min()
+    max_value = img[~nan_mask].max()
+
+    im = np.round((img - min_value) / (max_value - min_value) * 255).astype(np.uint8)
+    ret = cmap_viridis_array[im]
+    ret[nan_mask, :] = 1
+    return ret

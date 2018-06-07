@@ -11,14 +11,47 @@ import random
 import imageio
 import io
 from scene3d import suncg_utils
+from scene3d import geom2d
 from scene3d import pbrs_utils
 from scene3d import io_utils
+from scene3d.dataset import v2
 import numpy as np
 from scipy import misc
 
 app = Flask(__name__)
 
 filenames = pbrs_utils.load_pbrs_filenames()
+ds_v2_0 = v2.MultiLayerDepth_0(train=True, subtract_mean=False)
+
+
+@app.route('/image/scene3d/v2_0/<index>')
+def make_image_v2_0(index):
+    example_name, in_rgb, gt_ml_depth, count_image, d0 = ds_v2_0[int(index)]
+
+    images = []
+
+    divider = np.ones((240, 5, 3))
+
+    images.append((in_rgb / 255).transpose(1, 2, 0))
+    images.append(divider)
+    images.append(geom2d.apply_colormap(gt_ml_depth[0]))
+    images.append(divider)
+    images.append(geom2d.apply_colormap(gt_ml_depth[1]))
+    images.append(divider)
+    images.append(geom2d.apply_colormap(gt_ml_depth[2]))
+    images.append(divider)
+    images.append(geom2d.apply_colormap(gt_ml_depth[0] - gt_ml_depth[1] - gt_ml_depth[2]))
+    images.append(divider)
+    images.append(geom2d.apply_colormap(d0))
+    images.append(divider)
+    images.append(geom2d.apply_colormap(count_image))
+
+    out_image = np.concatenate(images, axis=1)
+
+    str_io = io.BytesIO()
+    misc.imsave(str_io, out_image, format='png')
+    str_io.seek(0)
+    return send_file(str_io, mimetype='image/png')
 
 
 @app.route('/image/scene3d/<path:path>')
@@ -66,6 +99,14 @@ def make_image3(house_id, camera_id):
 
 @app.route('/')
 def main():
+    return '''
+    <a href="/0">0</a><br/>
+    <a href="/1">1</a><br/>
+    '''
+
+
+@app.route('/0')
+def main_0():
     width = 300
 
     content = """
@@ -113,6 +154,68 @@ def main():
     <br/>
     """.format(a=pbrs_path, b=pbrs_depth_path, c=scene3d_depth0, d=scene3d_depth1, e=scene3d_diff,
                width=width, house_id=house_id, camera_id=camera_id, i=i, house_mesh=house_mesh_url)
+
+        content += content_i
+
+    return content
+
+
+@app.route('/1')
+def main_1():
+    width = 321
+
+    content = """
+    <style>
+    th {{
+        display: table-cell;
+        vertical-align: inherit;
+        font-weight: normal;
+        text-align: center;
+    }}
+    th span {{
+        display:block;
+        padding-top:5px;
+        font-size:80%;
+    }}
+    .block {{
+        display:block;
+        width:2500px;
+    }}
+    </style>
+    <div class="block">
+    <table style="height:80px">
+    <col width="{width}">
+    <col width="{width}">
+    <col width="{width}">
+    <col width="{width}">
+    <col width="{width}">
+    <col width="{width}">
+    <col width="{width}">
+     <tr>
+       <th>RGB</th>
+       <th><b>gt[0]</b><br/><span>i.e. room envelope</span></th>
+       <th><b>gt[1]</b><br/><span>i.e. empty space in front of the room envelope</span></th>
+       <th><b>gt[2]</b><br/><span>i.e. "filled" space in front of the empty space</span></th>
+       <th><b>gt[0]-gt[1]-gt[2]</b><br/><span>i.e. "reconstructed" depth from GT</span></th>
+       <th>"traditional depth"</th>
+       <th>Total number of ray hits</th>
+     </tr>
+    </table>
+    </div>
+    """.format(width=width)
+
+    indices = np.arange(len(ds_v2_0))
+    random.shuffle(indices)
+
+    for i, example_index in enumerate(indices[:20]):
+        scene3d_image_combined = '/image/scene3d/v2_0/{}'.format(example_index)
+
+        content_i = """
+    example index: {example_index:07d}
+    <br/>
+    <a href="{a}"><img src="{a}" /></a>
+    <br/>
+    """.format(a=scene3d_image_combined, example_index=example_index)
 
         content += content_i
 

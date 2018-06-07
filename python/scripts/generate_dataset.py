@@ -79,6 +79,7 @@ def generate_depth_images(thread_id, house_id):
     camera_ids = camera_ids_by_house_id[house_id]
     output_files_by_camera_id = collections.defaultdict(list)
     for i, output_file in enumerate(output_files):
+        # TODO: some images don't have background.
         m = re.findall(r'/(\d+)(_bg)?.bin$', output_file)[0]
         camera_index = int(m[0])
         suffix = m[1]  # empty if not a background file.

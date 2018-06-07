@@ -9,6 +9,7 @@ import cv2
 import time
 import re
 from scene3d.dataset import v1
+from scene3d.dataset import v2
 from torch.utils import data
 import time
 from torch.backends import cudnn
@@ -34,7 +35,13 @@ parser.add_argument('--model', type=str, default='unet_v0')
 parser.add_argument('--load_checkpoint', type=str, default='')
 args = parser.parse_args()
 
-available_experiments = ['multi-layer', 'single-layer', 'nyu40-segmentation', 'multi-layer-and-segmentation', 'single-layer-and-segmentation']
+available_experiments = ['multi-layer',
+                         'single-layer',
+                         'nyu40-segmentation',
+                         'multi-layer-and-segmentation',
+                         'single-layer-and-segmentation',
+                         'multi-layer-3',
+                         ]
 available_models = ['unet_v0', 'unet_v0_no_bn']
 
 
@@ -78,6 +85,8 @@ def main():
         depth_dataset = v1.MultiLayerDepthNYU40Segmentation(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
     elif args.experiment == 'single-layer-and-segmentation':
         depth_dataset = v1.MultiLayerDepthNYU40Segmentation(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    elif args.experiment == 'multi-layer-3':
+        depth_dataset = v2.MultiLayerDepth_0(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
     else:
         raise NotImplementedError()
 
@@ -107,6 +116,8 @@ def main():
                 model = unet.Unet0(out_channels=42)
             elif args.experiment == 'single-layer-and-segmentation':
                 model = unet.Unet0(out_channels=41)
+            elif args.experiment == 'multi-layer-3':
+                model = unet.Unet0(out_channels=3)
             else:
                 raise NotImplementedError()
         elif args.model == 'unet_v0_no_bn':
@@ -120,6 +131,8 @@ def main():
                 model = unet_no_bn.Unet0(out_channels=42)
             elif args.experiment == 'single-layer-and-segmentation':
                 model = unet_no_bn.Unet0(out_channels=41)
+            elif args.experiment == 'multi-layer-3':
+                model = unet_no_bn.Unet0(out_channels=3)
             else:
                 raise NotImplementedError()
         else:
@@ -142,33 +155,50 @@ def main():
 
     for i_epoch in range(args.max_epochs):
         for i_iter, batch in enumerate(loader):
-            example_name, in_rgb, target = batch
-            in_rgb = in_rgb.cuda()
             optimizer.zero_grad()
 
-            pred = model(in_rgb)
-
             if args.experiment == 'multi-layer':
+                example_name, in_rgb, target = batch
+                in_rgb = in_rgb.cuda()
+                pred = model(in_rgb)
                 target = target.cuda()
                 loss = loss_calc(pred, target)
             elif args.experiment == 'single-layer':
+                example_name, in_rgb, target = batch
+                in_rgb = in_rgb.cuda()
+                pred = model(in_rgb)
                 target = target.cuda()
                 loss = loss_calc_single_depth(pred, target)
             elif args.experiment == 'nyu40-segmentation':
+                example_name, in_rgb, target = batch
+                in_rgb = in_rgb.cuda()
+                pred = model(in_rgb)
                 target = target.cuda()
                 loss = loss_calc_classification(pred, target)
             elif args.experiment == 'multi-layer-and-segmentation':
+                example_name, in_rgb, target = batch
+                in_rgb = in_rgb.cuda()
+                pred = model(in_rgb)
                 target_depth = target[0].cuda()
                 target_category = target[1].cuda()
                 loss_category = loss_calc_classification(pred[:, :40], target_category)
                 loss_depth = loss_calc(pred[:, 40:], target_depth)
                 loss = loss_category * 0.4 + loss_depth
             elif args.experiment == 'single-layer-and-segmentation':
+                example_name, in_rgb, target = batch
+                in_rgb = in_rgb.cuda()
+                pred = model(in_rgb)
                 target_depth = target[0].cuda()
                 target_category = target[1].cuda()
                 loss_category = loss_calc_classification(pred[:, :40], target_category)
                 loss_depth = loss_calc_single_depth(pred[:, 40:], target_depth)
                 loss = loss_category * 0.4 + loss_depth
+            elif args.experiment == 'multi-layer-3':
+                example_name, in_rgb, target, _, _ = batch
+                in_rgb = in_rgb.cuda()
+                pred = model(in_rgb)
+                target = target.cuda()
+                loss = loss_calc(pred, target)
             else:
                 raise NotImplementedError()
 

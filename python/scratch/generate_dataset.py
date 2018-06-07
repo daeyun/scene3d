@@ -12,6 +12,39 @@ import numpy as np
 from scene3d import io_utils
 from scene3d import render_depth
 from scene3d import suncg_utils
+from scene3d import pbrs_utils
+
+# %%
+
+pbrs_filenames = pbrs_utils.load_pbrs_filenames()
+
+# %%
+
+house_ids = sorted(list(set([item.split('/')[-2] for item in pbrs_filenames])))
+
+# %%
+
+out_room_camera_file = '/tmp/scene3d/room_camera.txt'
+with open(out_room_camera_file, 'w') as f:
+    f.write('\n'.join(pbrs_utils.get_camera_params_line(house_ids[0])))
+
+# %%
+
+house_obj_filename = suncg_utils.house_obj_from_json(house_ids[0])
+
+# %%
+
+
+render_depth.run_render(obj_filename=house_obj_filename, camera_filename=out_room_camera_file, out_dir='/tmp/scene3d/rendered', hw=(480 / 2, 640 / 2))
+
+# %%
+
+len(pbrs_filenames)
+
+# %%
+
+# %%
+
 
 # %%
 
@@ -62,8 +95,6 @@ for house_id in house_ids[:first_n]:
 
     # sanity check. two images per camera for now.
     assert len(output_files) == len(camera_ids_by_house_id[house_id]) * 2
-
-
 
     # Code for generating visualization. Disabled for now.
     # TODO(daeyun): refactor
