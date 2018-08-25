@@ -82,14 +82,18 @@ TEST_CASE("multi hit test") {
       width,
       height,
       max_hits,
-      prim_id_to_node_name
+      prim_id_to_node_name,
+      false,
+      0, 0, 0, 0
   );
 
   renderer.ray_tracer()->PrintStats();
 
   SECTION("Floor pixel") {
     vector<float> values;
-    int background_index = renderer.depth_values(100, 200, &values);
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    int background_index = renderer.DepthValues(100, 200, &values, &model_ids, &prim_ids);
 
     LOGGER->info("Num hits at (100, 200): {}", values.size());
     for (int i = 0; i < values.size(); ++i) {
@@ -103,7 +107,9 @@ TEST_CASE("multi hit test") {
 
   SECTION("no hit. outdoor") {
     vector<float> values;
-    int background_index = renderer.depth_values(172, 109, &values);
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    int background_index = renderer.DepthValues(172, 109, &values, &model_ids, &prim_ids);
 
     REQUIRE(0 > background_index);
     REQUIRE(0 == values.size());
@@ -111,7 +117,9 @@ TEST_CASE("multi hit test") {
 
   SECTION("two hits. no background hit") {
     vector<float> values;
-    int background_index = renderer.depth_values(172, 129, &values);
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    int background_index = renderer.DepthValues(172, 129, &values, &model_ids, &prim_ids);
 
     REQUIRE(0 > background_index);
     REQUIRE(2 == values.size());
@@ -119,7 +127,9 @@ TEST_CASE("multi hit test") {
 
   SECTION("one hit. background (door)") {
     vector<float> values;
-    int background_index = renderer.depth_values(156, 109, &values);
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    int background_index = renderer.DepthValues(156, 109, &values, &model_ids, &prim_ids);
 
     REQUIRE(0 == background_index);
     REQUIRE(1 == values.size());
@@ -128,7 +138,9 @@ TEST_CASE("multi hit test") {
 
   SECTION("three hits, two hits through arm of sofa, then background (floor)") {
     vector<float> values;
-    int background_index = renderer.depth_values(83, 215, &values);
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    int background_index = renderer.DepthValues(83, 215, &values, &model_ids, &prim_ids);
 
     REQUIRE(2 == background_index);
     REQUIRE(3 == values.size());
@@ -137,14 +149,16 @@ TEST_CASE("multi hit test") {
 
   SECTION("many hits. two objects, last of which has a coinciding plane on the floor. then background (floor)") {
     vector<float> values;
-    int background_index = renderer.depth_values(214, 170, &values);
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    int background_index = renderer.DepthValues(214, 170, &values, &model_ids, &prim_ids);
 
     LOGGER->info("Num hits at (214, 170): {}", values.size());
     for (int i = 0; i < values.size(); ++i) {
       LOGGER->info("{}", values[i]);
 
-      Vec3 origin = renderer.ray_origin();
-      Vec3 dir = renderer.ray_direction(214, 170);
+      Vec3 origin = renderer.RayOrigin(0, 0);  // x,y doesn't matter because this is perspective.
+      Vec3 dir = renderer.RayDirection(214, 170);
 
       Vec3 p = origin + values[i] * dir;
       LOGGER->info("{}, {}, {}", p[0], p[1], p[2]);
@@ -154,8 +168,8 @@ TEST_CASE("multi hit test") {
     REQUIRE(4 < values.size());
     REQUIRE(Approx(values[values.size() - 2]).margin(0.0025) == values[values.size() - 1]);
 
-    Vec3 origin = renderer.ray_origin();
-    Vec3 dir = renderer.ray_direction(214, 170);
+    Vec3 origin = renderer.RayOrigin(0, 0);
+    Vec3 dir = renderer.RayDirection(214, 170);
 
     double height_1 = (origin + values[values.size() - 1] * dir)[1];
     double height_2 = (origin + values[values.size() - 2] * dir)[1];
@@ -166,3 +180,151 @@ TEST_CASE("multi hit test") {
   }
 }
 
+TEST_CASE("thickness in inner normal direction") {
+  // These paths are relative to the project root directory.
+  std::string camera_filename = "resources/depth_render/house_obj_camera.txt";
+  std::string obj_filename = "resources/depth_render/house.obj";
+
+  std::vector<std::array<unsigned int, 3>> faces;
+  std::vector<std::array<float, 3>> vertices;
+  std::vector<int> prim_id_to_node_id;
+  std::vector<std::string> prim_id_to_node_name;
+
+  LOGGER->info("Reading file {}", camera_filename);
+
+  std::ifstream source;
+  source.open(camera_filename, std::ios_base::in);
+  if (!source) {
+    throw std::runtime_error("Can't open file.");
+  }
+
+  struct CameraParams {
+    Vec3 cam_eye;
+    Vec3 cam_view_dir;
+    Vec3 cam_up;
+    double x_fov;
+    double y_fov;
+    double score;  // scene coverage score. not used at the moment.
+  };
+
+  std::vector<CameraParams> suncg_cameras;
+  for (std::string line; std::getline(source, line);) {
+    if (line.empty()) {
+      continue;
+    }
+
+    std::istringstream in(line);
+    CameraParams cam;
+
+    in >> cam.cam_eye[0] >> cam.cam_eye[1] >> cam.cam_eye[2];
+    in >> cam.cam_view_dir[0] >> cam.cam_view_dir[1] >> cam.cam_view_dir[2];
+    in >> cam.cam_up[0] >> cam.cam_up[1] >> cam.cam_up[2];
+    in >> cam.x_fov >> cam.y_fov >> cam.score;
+
+    LOGGER->info("camera {}, eye {}, {}, {}, fov {}, {}", suncg_cameras.size(), cam.cam_eye[0], cam.cam_eye[1], cam.cam_eye[2], cam.x_fov, cam.y_fov);
+
+    cam.cam_view_dir.normalize();
+
+    suncg_cameras.push_back(cam);
+  }
+
+  LOGGER->info("Reading file {}", obj_filename);
+
+  bool ok = scene3d::ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
+
+  // Sanity check.
+  Ensures(faces.size() == prim_id_to_node_id.size());
+  Ensures(faces.size() == prim_id_to_node_name.size());
+
+  LOGGER->info("{} faces, {} vertices", faces.size(), vertices.size());
+
+  scene3d::RayTracer ray_tracer(faces, vertices);
+
+  unsigned int width = 320;
+  unsigned int height = 240;
+  unsigned int max_hits = 0;  // unlimited. not relevant at the moment.
+
+  int camera_index = 3;
+
+  auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+      &ray_tracer,
+      suncg_cameras[camera_index].cam_eye,
+      suncg_cameras[camera_index].cam_view_dir,
+      suncg_cameras[camera_index].cam_up,
+      suncg_cameras[camera_index].x_fov,
+      suncg_cameras[camera_index].y_fov,
+      width,
+      height,
+      max_hits,
+      prim_id_to_node_name,
+      false,
+      0, 0, 0, 0
+  );
+
+  renderer.ray_tracer()->PrintStats();
+
+  float t = 0;
+  SECTION("Top of coffee table") {
+    t = renderer.ObjectCenteredVolume(150, 200);
+    LOGGER->info("First thickness value at (150, 200): {}", t);
+    REQUIRE(t > 0);
+    REQUIRE(Approx(0.03) == t);
+
+    t = renderer.ObjectCenteredVolume(205, 187);
+    LOGGER->info("First thickness value at (205, 187): {}", t);
+    REQUIRE(t > 0);
+    REQUIRE(Approx(0.03) == t);
+  }
+}
+
+TEST_CASE("orthographic coordinates") {
+  std::vector<std::array<unsigned int, 3>> faces{
+      {0, 1, 2},
+  };
+  std::vector<std::array<float, 3>> vertices{
+      {0, 0, 0},
+      {0, 1, 0},
+      {0, 0, 1},
+  };
+  std::vector<std::string> prim_id_to_node_name;
+  scene3d::RayTracer ray_tracer(faces, vertices);
+
+  struct CameraParams {
+    Vec3 cam_eye;
+    Vec3 cam_view_dir;
+    Vec3 cam_up;
+    double x_fov;
+    double y_fov;
+    double score;  // scene coverage score. not used at the moment.
+  };
+
+  {
+    CameraParams cam;
+    cam.cam_eye = {2, 3, 1};
+    cam.cam_view_dir = {0, 0, -1};
+    cam.cam_up = {0, 1, 0};
+
+    auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+        &ray_tracer,
+        cam.cam_eye,
+        cam.cam_view_dir,
+        cam.cam_up,
+        cam.x_fov,
+        cam.y_fov,
+        16,
+        32,
+        0,
+        prim_id_to_node_name,
+        true,
+        -8, 8, 16, -16
+    );
+
+    Vec3 ray_origin = renderer.RayOrigin(0, 0);
+    const Vec3 expected_ray_dir = Vec3{-7.5 + 2, 15.5 + 3, 1};
+
+    REQUIRE(Approx(expected_ray_dir[0]) == ray_origin[0]);
+    REQUIRE(Approx(expected_ray_dir[1]) == ray_origin[1]);
+    REQUIRE(Approx(expected_ray_dir[2]) == ray_origin[2]);
+  }
+
+}

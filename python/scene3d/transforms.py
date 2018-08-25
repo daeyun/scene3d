@@ -983,3 +983,5 @@ def crop_visible(im, square=True, mask=None, padding=0, minimum_wh=None, white_b
         assert len(ret) == 1
         return ret[0]
     return ret
+
+

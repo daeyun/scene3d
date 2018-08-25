@@ -17,6 +17,7 @@
 #include <array>
 #include <string>
 #include <map>
+#include <set>
 #include <memory>
 
 #include <gsl/gsl_assert>
@@ -51,6 +52,7 @@ using std::move;
 using std::tuple;
 using std::pair;
 using std::map;
+using std::set;
 using std::get;
 
 constexpr double kInfinity = std::numeric_limits<double>::infinity();

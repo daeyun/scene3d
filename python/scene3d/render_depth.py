@@ -10,6 +10,14 @@ from scene3d import io_utils
 from scene3d import exec_utils
 
 renderer_executable = path.abspath(path.join(path.dirname(__file__), '../../cpp/cmake-build-release/apps/render'))
+category_mapping_file = path.abspath(path.join(path.dirname(__file__), '../../resources/ModelCategoryMapping.csv'))
+
+
+def parse_overhead_cam(s):
+    lines = re.findall(r'Overhead camera: (.*)(?:\n|$)', s)
+    if lines is None:
+        log.error('Could not find "Overhead camera" line in stdout.')
+    return lines
 
 
 def run_render(obj_filename, camera_filename, out_dir, hw=(480, 640)):
@@ -27,6 +35,7 @@ def run_render(obj_filename, camera_filename, out_dir, hw=(480, 640)):
         '--obj={}'.format(obj_filename),
         '--cameras={}'.format(camera_filename),
         '--out_dir={}'.format(out_dir),
+        '--categories={}'.format(category_mapping_file),  # TODO(daeyun): make sure this is compatible with the github release.
     ])
 
     # There should be no output if it ran successfully.
@@ -43,4 +52,3 @@ def run_render(obj_filename, camera_filename, out_dir, hw=(480, 640)):
         assert item, item
 
     return output_files
-

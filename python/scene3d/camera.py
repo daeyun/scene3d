@@ -59,6 +59,9 @@ class Camera(object):
     def cam_to_world(self, xyzs):
         return self.sRt_inv().dot(self._hom(xyzs / self.sRt_scale).T).T
 
+    def cam_to_world_normal(self, xyzs):
+        return self.R_inv.dot(xyzs.T).T
+
     def sRt_hash(self):
         """
         :return: SHA1 hash of sRt matrix ignoring very small numerical differences.

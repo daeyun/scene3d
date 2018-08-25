@@ -31,3 +31,6 @@
 [submodule "cpp/third_party/repos/nanort"]
 	path = cpp/third_party/repos/nanort
 	url = https://github.com/daeyun/nanort.git
+[submodule "cpp/third_party/repos/fast-cpp-csv-parser"]
+	path = cpp/third_party/repos/fast-cpp-csv-parser
+	url = https://github.com/ben-strasser/fast-cpp-csv-parser.git

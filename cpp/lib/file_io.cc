@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <numeric>
 #include <set>
+#include <iomanip>
 #include <sys/stat.h>
 
 #include "spdlog/spdlog.h"
@@ -231,6 +232,10 @@ void DecompressBytes(const void *src, std::string *out) {
 }
 
 bool Exists(const std::string &filename) {
+  if (filename.empty()) {
+    return false;
+  }
+
   struct stat buffer;
   return (stat(filename.c_str(), &buffer) == 0);
 }
@@ -278,10 +283,33 @@ void SerializeTensor(const std::string &filename, const void *data, const std::v
   WriteBytes(out_ptr, out_size, &file);
   Ensures(Exists(absolute_path));
 }
+void WritePclTensor(const std::string &filename, const vector<Vec3> &pcl) {
+  vector<float> data;
+  for (const auto &p : pcl) {
+    for (int i = 0; i < 3; ++i) {
+      data.push_back(static_cast<float>(p[i]));
+    }
+  }
+  SerializeTensor<float>(filename, data.data(), {pcl.size(), 3});
+}
 
 template void SerializeTensor<float>(const std::string &filename, const void *data, const std::vector<int> &shape);
 template void SerializeTensor<double>(const std::string &filename, const void *data, const std::vector<int> &shape);
 template void SerializeTensor<char>(const std::string &filename, const void *data, const std::vector<int> &shape);
 template void SerializeTensor<int>(const std::string &filename, const void *data, const std::vector<int> &shape);
 template void SerializeTensor<uint8_t>(const std::string &filename, const void *data, const std::vector<int> &shape);
+
+template<typename T>
+void WriteFloatsTxt(const std::string &txt_filename, int precision, const std::vector<T> &data) {
+  std::ofstream ofile;
+  ofile.open(txt_filename, std::ios::out);
+  for (const auto &item : data) {
+    ofile << std::setprecision(precision) << item << " ";
+  }
+  ofile.close();
+}
+
+template void WriteFloatsTxt<float>(const std::string &txt_filename, int precision, const std::vector<float> &data);
+template void WriteFloatsTxt<double>(const std::string &txt_filename, int precision, const std::vector<double> &data);
+
 }

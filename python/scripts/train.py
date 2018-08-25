@@ -41,6 +41,7 @@ available_experiments = ['multi-layer',
                          'multi-layer-and-segmentation',
                          'single-layer-and-segmentation',
                          'multi-layer-3',
+                         'multi-layer-d-3',
                          ]
 available_models = ['unet_v0', 'unet_v0_no_bn']
 
@@ -87,6 +88,8 @@ def main():
         depth_dataset = v1.MultiLayerDepthNYU40Segmentation(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
     elif args.experiment == 'multi-layer-3':
         depth_dataset = v2.MultiLayerDepth_0(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    elif args.experiment == 'multi-layer-d-3':
+        depth_dataset = v2.MultiLayerDepth_1(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
     else:
         raise NotImplementedError()
 
@@ -118,6 +121,8 @@ def main():
                 model = unet.Unet0(out_channels=41)
             elif args.experiment == 'multi-layer-3':
                 model = unet.Unet0(out_channels=3)
+            elif args.experiment == 'multi-layer-d-3':
+                model = unet.Unet0(out_channels=3)
             else:
                 raise NotImplementedError()
         elif args.model == 'unet_v0_no_bn':
@@ -132,6 +137,8 @@ def main():
             elif args.experiment == 'single-layer-and-segmentation':
                 model = unet_no_bn.Unet0(out_channels=41)
             elif args.experiment == 'multi-layer-3':
+                model = unet_no_bn.Unet0(out_channels=3)
+            elif args.experiment == 'multi-layer-d-3':
                 model = unet_no_bn.Unet0(out_channels=3)
             else:
                 raise NotImplementedError()
@@ -194,6 +201,12 @@ def main():
                 loss_depth = loss_calc_single_depth(pred[:, 40:], target_depth)
                 loss = loss_category * 0.4 + loss_depth
             elif args.experiment == 'multi-layer-3':
+                example_name, in_rgb, target, _, _ = batch
+                in_rgb = in_rgb.cuda()
+                pred = model(in_rgb)
+                target = target.cuda()
+                loss = loss_calc(pred, target)
+            elif args.experiment == 'multi-layer-d-3':
                 example_name, in_rgb, target, _, _ = batch
                 in_rgb = in_rgb.cuda()
                 pred = model(in_rgb)

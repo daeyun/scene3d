@@ -18,6 +18,12 @@ target_include_directories(cpp_gsl BEFORE INTERFACE
         ${CMAKE_SOURCE_DIR}/third_party/repos/GSL/include
         )
 
+add_library(csv_parser INTERFACE)
+target_include_directories(csv_parser BEFORE INTERFACE
+        ${CMAKE_SOURCE_DIR}/third_party/repos/fast-cpp-csv-parser
+        )
+target_compile_definitions(csv_parser INTERFACE CSV_IO_NO_THREAD)  # For some reason, multi-threading causes a segfault.
+
 add_library(spdlog INTERFACE)
 target_include_directories(spdlog BEFORE INTERFACE
         ${CMAKE_SOURCE_DIR}/third_party/repos/spdlog/include

@@ -20,7 +20,7 @@ from scene3d import suncg_utils
 from scene3d import pbrs_utils
 
 num_threads = 12
-out_root = '/data2/scene3d/v2'
+out_root = '/data2/scene3d/v7'
 # Can be any directory. Temporary output files are written here.
 tmp_out_root = '/tmp/scene3d'
 
@@ -72,21 +72,36 @@ def generate_depth_images(thread_id, house_id):
     tmp_render_out_dir = path.join(tmp_out_root, '{}/renderings'.format(thread_id))
     output_files = render_depth.run_render(obj_filename=obj_filename, camera_filename=out_room_camera_file, out_dir=tmp_render_out_dir, hw=(480 // 2, 640 // 2))
 
-    # sanity check. two images per camera for now.
-    assert len(output_files) == len(camera_ids_by_house_id[house_id]) * 2
+    output_bin_files = [item for item in output_files if item.endswith('.bin')]
+    output_txt_files = [item for item in output_files if item.endswith('.txt')]
+
+    # sanity check. two images per camera for now. +2 more because of segmentation. +1 because of oc thickness images.
+    # TODO(daeyun): some images have no background.
+    assert len(output_bin_files) == len(camera_ids_by_house_id[house_id]) * (5 + 3), (len(output_bin_files), len(camera_ids_by_house_id[house_id]))
 
     # copy the renderings to final output directory.
     camera_ids = camera_ids_by_house_id[house_id]
     output_files_by_camera_id = collections.defaultdict(list)
-    for i, output_file in enumerate(output_files):
+    for i, output_file in enumerate(output_bin_files):
         # TODO: some images don't have background.
-        m = re.findall(r'/(\d+)(_bg)?.bin$', output_file)[0]
+        m = re.findall(r'/(\d+)(_[a-zA-Z_]*)?.bin$', output_file)[0]
         camera_index = int(m[0])
         suffix = m[1]  # empty if not a background file.
         camera_id = camera_ids[camera_index]
         new_bin_filename = path.join(out_dir, '{:06d}{}.bin'.format(camera_id, suffix))
         shutil.copyfile(output_file, new_bin_filename)
         output_files_by_camera_id[camera_id].append(new_bin_filename)
+
+    for i, output_file in enumerate(output_txt_files):
+        m = re.findall(r'/(\d+)(_[a-zA-Z_]*)?.txt$', output_file)[0]
+        camera_index = int(m[0])
+        suffix = m[1]  # empty if not a background file.
+        camera_id = camera_ids[camera_index]
+        new_bin_filename = path.join(out_dir, '{:06d}{}.txt'.format(camera_id, suffix))
+        shutil.copyfile(output_file, new_bin_filename)
+
+
+
 
     # Code for generating visualization. Disabled for now.
     # TODO(daeyun): refactor
@@ -145,8 +160,7 @@ def thread_worker(thread_id):
             record_completed_house_id(house_id)
         except Exception as ex:
             # TODO(daeyun): This happens for some of the house ids. Need to check later.
-            log.warn('There was an error (house id: {}). Skipped for now.'.format(house_id))
-            print(ex)
+            log.warn('There was an error (house id: {}). Skipped for now. Error was:\n {}'.format(house_id, ex))
 
 
 def main():
