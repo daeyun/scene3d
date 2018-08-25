@@ -6,6 +6,16 @@
 #include "lib/multi_layer_depth_renderer.h"
 #include "lib/file_io.h"
 
+struct CameraParams {
+  Vec3 cam_eye;
+  Vec3 cam_view_dir;
+  Vec3 cam_up;
+  double x_fov;
+  double y_fov;
+  double score;  // scene coverage score. not used at the moment.
+};
+
+
 TEST_CASE("multi hit test") {
   // These paths are relative to the project root directory.
   std::string camera_filename = "resources/depth_render/house_obj_camera.txt";
@@ -23,15 +33,6 @@ TEST_CASE("multi hit test") {
   if (!source) {
     throw std::runtime_error("Can't open file.");
   }
-
-  struct CameraParams {
-    Vec3 cam_eye;
-    Vec3 cam_view_dir;
-    Vec3 cam_up;
-    double x_fov;
-    double y_fov;
-    double score;  // scene coverage score. not used at the moment.
-  };
 
   std::vector<CameraParams> suncg_cameras;
   for (std::string line; std::getline(source, line);) {
@@ -102,7 +103,7 @@ TEST_CASE("multi hit test") {
 
     REQUIRE(0 == background_index);
     REQUIRE(1 == values.size());
-    REQUIRE(Approx(3.14823) == values[0]);
+    REQUIRE(Approx(2.93651) == values[0]);
   }
 
   SECTION("no hit. outdoor") {
@@ -133,7 +134,7 @@ TEST_CASE("multi hit test") {
 
     REQUIRE(0 == background_index);
     REQUIRE(1 == values.size());
-    REQUIRE(Approx(4.9115796) == values[0]);
+    REQUIRE(Approx(4.9071) == values[0]);
   }
 
   SECTION("three hits, two hits through arm of sofa, then background (floor)") {
@@ -144,7 +145,7 @@ TEST_CASE("multi hit test") {
 
     REQUIRE(2 == background_index);
     REQUIRE(3 == values.size());
-    REQUIRE(Approx(2.9170308) == values[2]);
+    REQUIRE(Approx(2.63747) == values[2]);
   }
 
   SECTION("many hits. two objects, last of which has a coinciding plane on the floor. then background (floor)") {
@@ -176,7 +177,7 @@ TEST_CASE("multi hit test") {
     double height_3 = (origin + values[values.size() - 3] * dir)[1];
 
     REQUIRE(Approx(height_1).margin(0.001) == height_2);
-    REQUIRE(Approx(0.01788).margin(1e-5) == height_3 - height_2);  // Height of the object on the floor.
+    REQUIRE(Approx(0.0171942492).margin(1e-5) == height_3 - height_2);  // Height of the object on the floor.
   }
 }
 
@@ -197,15 +198,6 @@ TEST_CASE("thickness in inner normal direction") {
   if (!source) {
     throw std::runtime_error("Can't open file.");
   }
-
-  struct CameraParams {
-    Vec3 cam_eye;
-    Vec3 cam_view_dir;
-    Vec3 cam_up;
-    double x_fov;
-    double y_fov;
-    double score;  // scene coverage score. not used at the moment.
-  };
 
   std::vector<CameraParams> suncg_cameras;
   for (std::string line; std::getline(source, line);) {
@@ -289,15 +281,6 @@ TEST_CASE("orthographic coordinates") {
   std::vector<std::string> prim_id_to_node_name;
   scene3d::RayTracer ray_tracer(faces, vertices);
 
-  struct CameraParams {
-    Vec3 cam_eye;
-    Vec3 cam_view_dir;
-    Vec3 cam_up;
-    double x_fov;
-    double y_fov;
-    double score;  // scene coverage score. not used at the moment.
-  };
-
   {
     CameraParams cam;
     cam.cam_eye = {2, 3, 1};
@@ -327,4 +310,101 @@ TEST_CASE("orthographic coordinates") {
     REQUIRE(Approx(expected_ray_dir[2]) == ray_origin[2]);
   }
 
+}
+
+TEST_CASE("simple scene depth test") {
+  // These paths are relative to the project root directory.
+  std::string obj_filename = "resources/depth_render/dummy.obj";
+
+  std::vector<std::array<unsigned int, 3>> faces;
+  std::vector<std::array<float, 3>> vertices;
+  std::vector<int> prim_id_to_node_id;
+  std::vector<std::string> prim_id_to_node_name;
+
+  CameraParams cam_params;
+  cam_params.cam_eye = {0, 5, 0};
+  cam_params.cam_up = {0, 0, -1};
+  cam_params.cam_view_dir = {0, -1, 0};
+  cam_params.x_fov = 60 / 180.0 * M_PI;
+  cam_params.y_fov = 60 / 180.0 * M_PI;
+
+  LOGGER->info("Reading file {}", obj_filename);
+
+  bool ok = scene3d::ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
+
+  // Sanity check.
+  Ensures(faces.size() == prim_id_to_node_id.size());
+  Ensures(faces.size() == prim_id_to_node_name.size());
+
+  LOGGER->info("{} faces, {} vertices", faces.size(), vertices.size());
+
+  scene3d::RayTracer ray_tracer(faces, vertices);
+
+  unsigned int width = 200;
+  unsigned int height = 200;
+  unsigned int max_hits = 0;  // unlimited. not relevant at the moment.
+
+  auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+      &ray_tracer,
+      cam_params.cam_eye,
+      cam_params.cam_view_dir,
+      cam_params.cam_up,
+      cam_params.x_fov,
+      cam_params.y_fov,
+      width,
+      height,
+      max_hits,
+      prim_id_to_node_name,
+      false,
+      0, 0, 0, 0
+  );
+
+  renderer.ray_tracer()->PrintStats();
+
+  {
+    vector<float> values;
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    renderer.DepthValues(100, 100, &values, &model_ids, &prim_ids);
+    REQUIRE(3 == values.size());
+    REQUIRE(Approx(4.0) == values[0]);
+    REQUIRE(Approx(6.0) == values[1]);
+  }
+
+  {
+    vector<float> values;
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    renderer.DepthValues(95, 107, &values, &model_ids, &prim_ids);
+    REQUIRE(3 == values.size());
+    REQUIRE(Approx(4.0) == values[0]);
+    REQUIRE(Approx(6.0) == values[1]);
+  }
+
+  {
+    vector<float> values;
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    renderer.DepthValues(70, 72, &values, &model_ids, &prim_ids);
+    REQUIRE(1 == values.size());
+    REQUIRE(Approx(6.0) == values[0]);
+  }
+
+  {
+    vector<float> values;
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    renderer.DepthValues(80, 82, &values, &model_ids, &prim_ids);
+    REQUIRE(1 == values.size());
+    REQUIRE(Approx(6.0) == values[0]);
+  }
+
+  {
+    vector<float> values;
+    vector<string> model_ids;
+    vector<unsigned int> prim_ids;
+    renderer.DepthValues(121, 79, &values, &model_ids, &prim_ids);
+    REQUIRE(1 == values.size());
+    REQUIRE(Approx(6.0) == values[0]);
+  }
 }

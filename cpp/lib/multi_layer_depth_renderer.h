@@ -127,19 +127,17 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
       : MultiLayerDepthRenderer(ray_tracer, cam_eye, cam_view_dir, cam_up, xf, yf, width, height, max_hits, is_orthographic, left, right, top, bottom), prim_id_to_node_name_(prim_id_to_node_name) {}
 
   Vec3 RayDirection(int x, int y) const {
+    Vec3 ray_direction;
     if (is_orthographic_) {
       Vec3 cam_ray_direction{0, 0, -1};
-      Vec3 ray_direction;
       camera_->CamToWorldNormal(cam_ray_direction, &ray_direction);
-      return ray_direction;
     } else {
       Vec3 image_plane_coord{static_cast<double>(x) + 0.5, height_ - (static_cast<double>(y) + 0.5), -image_focal_length()};
       Vec3 cam_ray_direction = (image_plane_coord - image_optical_center_).normalized();
-      Vec3 ray_direction;
       camera_->CamToWorldNormal(cam_ray_direction, &ray_direction);
-      ray_direction.normalize();
-      return ray_direction;
     }
+    ray_direction.normalize();
+    return ray_direction;
   }
 
   // x: x pixel coordinates [0, width).
@@ -187,6 +185,12 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
       }
       return true;
     });
+
+    // Convert ray displacement to depth.
+    const double z = camera_->viewing_direction().dot(ray_direction);
+    for (auto &t : *out_values) {
+      t *= z;
+    }
 
     return background_value_index;
   }
