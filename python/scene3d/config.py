@@ -1,8 +1,8 @@
 from os import path
 import socket
 
-cur_hostname = socket.gethostname()
-if (cur_hostname=='ren-ubuntu')
+hostname = socket.gethostname()
+if hostname == 'ren-ubuntu':
     suncg_root = '/media/ren/devRen4T/research/datasets/suncg'
 
     # Directory containing PBRS data.
