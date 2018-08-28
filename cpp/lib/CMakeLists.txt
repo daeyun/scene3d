@@ -17,3 +17,19 @@ target_link_libraries(ray_mesh_intersection PUBLIC common nanort)
 
 add_library(multi_layer_depth_renderer multi_layer_depth_renderer.cc multi_layer_depth_renderer.h)
 target_link_libraries(multi_layer_depth_renderer PUBLIC common nanort ray_mesh_intersection file_io camera)
+
+add_library(depth_render_utils depth_render_utils.h)
+target_link_libraries(depth_render_utils PUBLIC common multi_layer_depth_renderer)
+
+add_library(depth depth.h)
+target_link_libraries(depth PUBLIC common camera)
+
+add_library(pcl pcl.h)
+target_link_libraries(pcl PUBLIC common camera depth)
+
+add_library(benchmark benchmark.h benchmark.cc)
+target_link_libraries(benchmark PUBLIC common)
+
+add_library(meshdist meshdist.h meshdist.cc)
+target_link_libraries(meshdist PUBLIC common camera depth benchmark)
+

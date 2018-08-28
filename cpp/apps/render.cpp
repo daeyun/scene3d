@@ -60,7 +60,6 @@ int main(int argc, const char **argv) {
   }
 
 
-
   ///
   std::string categories_filename = flags["categories"].as<std::string>();
   bool render_segmentation = scene3d::Exists(categories_filename);

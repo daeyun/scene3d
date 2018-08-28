@@ -37,6 +37,7 @@ using Mat34 = Eigen::Matrix<double, 3, 4>;
 using Mat33 = Eigen::Matrix<double, 3, 3>;
 using MatrixX = Eigen::MatrixXd;
 
+using Points4d = Eigen::Matrix<double, 4, Eigen::Dynamic>;
 using Points3d = Eigen::Matrix<double, 3, Eigen::Dynamic>;
 using Points2d = Eigen::Matrix<double, 2, Eigen::Dynamic>;
 using Points2i = Eigen::Matrix<int, 2, Eigen::Dynamic>;

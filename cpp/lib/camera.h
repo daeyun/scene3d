@@ -16,6 +16,21 @@ struct FrustumParams {
   double far = 50;
 };
 
+// `hw_ratio` is height/width. e.g. 0.75
+// `x_fov` must be half-angle, in radians.
+FrustumParams MakePerspectiveFrustumParams(double hw_ratio, double x_fov, double near, double far) {
+  FrustumParams ret;
+  ret.right = std::abs(std::tan(x_fov) * near);
+  ret.top = ret.right * hw_ratio;
+
+  ret.left = -ret.right;
+  ret.bottom = -ret.top;
+
+  ret.near = near;
+  ret.far = far;
+  return ret;
+}
+
 class Camera {
  public:
   Camera(const Vec3 &camera_position,
@@ -64,10 +79,24 @@ class Camera {
     *out = view_mat_.topRows<3>() * hom;
   }
 
+  void WorldToCam(const Points3d &xyz, Points3d *out) const {
+    Points4d hom(4, xyz.cols());
+    hom.topRows<3>().array() = xyz;
+    hom.row(3).array() = 1.0;
+    *out = view_mat_.topRows<3>() * hom;
+  }
+
   void CamToWorld(const Vec3 &xyz, Vec3 *out) const {
     Vec4 hom;
     hom.head<3>().array() = xyz;
     hom(3) = 1.0;
+    *out = view_mat_inv_.topRows<3>() * hom;
+  }
+
+  void CamToWorld(const Points3d &xyz, Points3d *out) const {
+    Points4d hom(4, xyz.cols());
+    hom.topRows<3>().array() = xyz;
+    hom.row(3).array() = 1.0;
     *out = view_mat_inv_.topRows<3>() * hom;
   }
 
@@ -97,6 +126,14 @@ class Camera {
     *out = p.head<3>().array() / p(3);
   }
 
+  void CamToFrustum(const Points3d &xyz, Points3d *out) const {
+    Points4d hom(4, xyz.cols());
+    hom.topRows<3>().array() = xyz;
+    hom.row(3).array() = 1.0;
+    Points4d p = projection_mat() * hom;
+    *out = p.topRows<3>().array().rowwise() / p.row(3).array();
+  }
+
   const Mat44 &view_mat() const {
     return view_mat_;
   }
@@ -121,8 +158,16 @@ class Camera {
     return viewing_direction_;
   }
 
+  const Vec3 &up() const {
+    return up_;
+  }
+
   virtual const Mat44 &projection_mat() const = 0;
   virtual const Mat44 &projection_mat_inv() const = 0;
+  virtual bool is_perspective() const = 0;
+
+  // Returns false if this is orthographic. `x_fov` and `y_fov` are half-angles, in radians.
+  virtual bool fov(double *x_fov, double *y_fov) const = 0;
 
  private:
   Vec3 position_;
@@ -163,6 +208,14 @@ class OrthographicCamera : public Camera {
     return projection_mat_inv_;
   }
 
+  bool is_perspective() const override {
+    return false;
+  }
+
+  bool fov(double *x_fov, double *y_fov) const override {
+    return false;
+  }
+
  private:
   Mat44 projection_mat_;
   Mat44 projection_mat_inv_;
@@ -175,6 +228,10 @@ class PerspectiveCamera : public Camera {
                     const Vec3 &up,
                     const FrustumParams &frustum_params)
       : Camera(camera_position, lookat_position, up, frustum_params) {
+    // Expects symmetric frustum.
+    Expects((frustum().bottom + frustum().top) < 1e-7);
+    Expects((frustum().left + frustum().right) < 1e-7);
+
     auto rl = frustum().right - frustum().left;
     auto tb = frustum().top - frustum().bottom;
     auto fn = frustum().far - frustum().near;
@@ -195,6 +252,17 @@ class PerspectiveCamera : public Camera {
 
   const Mat44 &projection_mat_inv() const override {
     return projection_mat_inv_;
+  }
+
+  bool is_perspective() const override {
+    return true;
+  }
+
+  bool fov(double *x_fov, double *y_fov) const override {
+    // Frustum is expected to be symmetric.
+    *x_fov = std::abs(std::atan2(frustum().right, frustum().near));
+    *y_fov = std::abs(std::atan2(frustum().top, frustum().near));
+    return true;
   }
 
  private:

@@ -33,6 +33,9 @@ def load_pbrs_filenames():
 
 
 def get_camera_params_line(house_id: str, camera_id: typing.Union[str, int] = None):
+    """
+    `camera_id` is not always sequential. It should match the RGB filenames.
+    """
     camera_filename = path.join(config.pbrs_root, 'camera_v2', house_id, 'room_camera.txt')
     lines = io_utils.read_lines_and_strip(camera_filename)
     if camera_id is None:
