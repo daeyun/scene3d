@@ -472,3 +472,91 @@ TEST_CASE("image to cam, perspective") {
 
 }
 
+TEST_CASE("image to cam, orthographic") {
+  std::string obj_filename = "resources/depth_render/plane_grid.obj";
+  unsigned int width = 2000;
+  unsigned int height = 1500;
+  double near = 0.01;
+  double far = 20;
+  Vec3 eye = {0, 4, 0};
+  Vec3 up = {0, 0, -1};
+  Vec3 lookat = {0, 0, 0};
+
+  // not symmetric.
+  FrustumParams frustum;
+  double fsize = 2;
+  frustum.left = -fsize;
+  frustum.right = fsize * 1.1;
+  frustum.bottom = -fsize * 0.75;
+  frustum.top = fsize * 0.9;
+  frustum.near = near;
+  frustum.far = far;
+
+  auto camera = OrthographicCamera(eye, lookat, up, frustum);
+  REQUIRE(!camera.fov(nullptr, nullptr));
+  REQUIRE(!camera.is_perspective());
+
+  auto ml_depth = MultiLayerImage<float>(height, width);
+  RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
+  Image<float> depth(height, width);
+  ml_depth.ExtractLayer(0, &depth);
+
+  std::vector<std::array<unsigned int, 3>> faces;
+  std::vector<std::array<float, 3>> vertices;
+  std::vector<int> prim_id_to_node_id;
+  std::vector<std::string> prim_id_to_node_name;
+  bool ok = ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
+  Ensures(ok);
+
+  Points3d points;
+  ToEigen(vertices, &points);
+
+  Points2i xy;
+  Points1d d;
+
+  camera.WorldToImage(points, height, width, &xy, &d);
+
+  for (int i = 0; i < xy.cols(); ++i) {
+    double image_depth = depth.at(xy.col(i)[1], xy.col(i)[0]);
+    double proj_depth = d[i];
+    if (std::isfinite(image_depth)) {
+      REQUIRE(Approx(image_depth).margin(1e-2) == proj_depth);
+    }
+
+    // If the point is projected to a background, there must be a non-background within 1 pixel.
+    double min_diff = kInfinity;
+    for (int j = -1; j < 2; ++j) {
+      for (int k = -1; k < 2; ++k) {
+        if (i == j) {
+          continue;
+        }
+        double neighbor_depth = depth.at(xy.col(i)[1] + j, xy.col(i)[0] + k);
+        if (std::isfinite(neighbor_depth)) {
+          double diff = std::abs(neighbor_depth - proj_depth);
+          if (diff < min_diff) {
+            min_diff = diff;
+          }
+        }
+      }
+    }
+    REQUIRE(min_diff < 1e-2);
+  }
+
+  Points3d restored_world;
+  camera.ImageToWorld(xy, d, height, width, &restored_world);
+
+  // The y dimension (z in camera coordinates) should be precise because it was never discretized.
+  REQUIRE(points.row(1).isApprox(restored_world.row(1)));
+
+  REQUIRE(points.row(0).isApprox(restored_world.row(0), 1e-2));
+  REQUIRE(points.row(2).isApprox(restored_world.row(2), 1e-2));
+
+  Points2i xy2;
+  Points1d d2;
+  camera.WorldToImage(restored_world, height, width, &xy2, &d2);
+  Points3d restored_world2;
+  camera.ImageToWorld(xy, d, height, width, &restored_world2);
+  // Now project the restored point cloud to image coordinates and then back to world coordinates. There should be no discretization error this time.
+  REQUIRE(restored_world.isApprox(restored_world2));
+
+}
