@@ -36,3 +36,6 @@ target_compile_options(meshdist BEFORE PUBLIC "-lCGAL")
 
 add_library(vectorization_utils vectorization_utils.h)
 target_link_libraries(vectorization_utils PUBLIC common)
+
+add_library(suncg_utils suncg_utils.h)
+target_link_libraries(suncg_utils PUBLIC common file_io)

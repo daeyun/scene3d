@@ -8,21 +8,9 @@
 #include "csv.h"
 
 #include "lib/file_io.h"
+#include "lib/suncg_utils.h"
 
-struct CameraParams {
-  Vec3 cam_eye;
-  Vec3 cam_view_dir;
-  Vec3 cam_up;
-  double x_fov;
-  double y_fov;
-  double score;  // scene coverage score. not used at the moment.
-
-  bool is_orthographic = false;
-  double left = 0;
-  double right = 0;
-  double top = 0;
-  double bottom = 0;
-};
+using namespace scene3d;
 
 int main(int argc, const char **argv) {
   cxxopts::Options options("render", "Render multi-layer depth images");
@@ -98,9 +86,7 @@ int main(int argc, const char **argv) {
   }
 
 
-
   ///
-
 
   std::vector<std::array<unsigned int, 3>> faces;
   std::vector<std::array<float, 3>> vertices;
@@ -115,26 +101,8 @@ int main(int argc, const char **argv) {
     throw std::runtime_error("Can't open file.");
   }
 
-  std::vector<CameraParams> suncg_cameras;
-  for (std::string line; std::getline(source, line);) {
-    if (line.empty()) {
-      continue;
-    }
-
-    std::istringstream in(line);
-    CameraParams cam;
-
-    in >> cam.cam_eye[0] >> cam.cam_eye[1] >> cam.cam_eye[2];
-    in >> cam.cam_view_dir[0] >> cam.cam_view_dir[1] >> cam.cam_view_dir[2];
-    in >> cam.cam_up[0] >> cam.cam_up[1] >> cam.cam_up[2];
-    in >> cam.x_fov >> cam.y_fov >> cam.score;
-
-    LOGGER->info("camera {}, eye {}, {}, {}, fov {}, {}", suncg_cameras.size(), cam.cam_eye[0], cam.cam_eye[1], cam.cam_eye[2], cam.x_fov, cam.y_fov);
-
-    cam.cam_view_dir.normalize();
-
-    suncg_cameras.push_back(cam);
-  }
+  std::vector<PerspectiveCamera> cameras;
+  suncg::ReadCameraFile(camera_filename, &cameras);
 
   LOGGER->info("Reading file {}", obj_filename);
 
@@ -153,22 +121,17 @@ int main(int argc, const char **argv) {
   const size_t height = static_cast<size_t>(flags["height"].as<int>());
   const size_t max_hits = static_cast<size_t>(flags["max_hits"].as<int>());
 
-  for (int camera_i = 0; camera_i < suncg_cameras.size(); ++camera_i) {
-    CameraParams suncg_cam = suncg_cameras[camera_i];
+  for (int camera_i = 0; camera_i < cameras.size(); ++camera_i) {
+    PerspectiveCamera camera = cameras[camera_i];
     LOGGER->info("Rendering camera {}", camera_i);
 
     auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
         &ray_tracer,
-        suncg_cam.cam_eye,
-        suncg_cam.cam_view_dir,
-        suncg_cam.cam_up,
-        suncg_cam.x_fov,
-        suncg_cam.y_fov,
+        &camera,
         width,
         height,
         max_hits,
-        prim_id_to_node_name,
-        false, 0, 0, 0, 0
+        prim_id_to_node_name
     );
 
     vector<vector<unique_ptr<vector<float>>>> grid_depth_values(height);
@@ -288,7 +251,7 @@ int main(int argc, const char **argv) {
         if (!std::isnan(t)) {
           {
             Vec3 dir = renderer.RayDirection(x, y);
-            Vec3 p = suncg_cam.cam_eye + dir * t;
+            Vec3 p = camera.position() + dir * t;
             centroid += p;
             pcl_bg.push_back(p);
           }
@@ -323,7 +286,7 @@ int main(int argc, const char **argv) {
 
             if (add_to_boundary_computation) {
               Vec3 dir = renderer.RayDirection(x, y);
-              Vec3 p = suncg_cam.cam_eye + dir * t2;
+              Vec3 p = camera.position() + dir * t2;
               pcl.push_back(p);
             }
           }
@@ -342,27 +305,24 @@ int main(int argc, const char **argv) {
       }
     }
 
-    Vec3 center_of_rotation = (centroid + suncg_cam.cam_eye) * 0.5;
+    Vec3 center_of_rotation = (centroid + camera.position()) * 0.5;
 
-    CameraParams topdown_cam;
-    topdown_cam.cam_eye = center_of_rotation + ((suncg_cam.cam_eye - center_of_rotation).norm() * Vec3{0, 1, 0}) * 0.5;
-    topdown_cam.cam_view_dir = {0, -1, 0};
-    Vec3 topdown_right = (topdown_cam.cam_view_dir.cross(suncg_cam.cam_up)).normalized();
-    topdown_cam.cam_up = topdown_right.cross(topdown_cam.cam_view_dir);
-    topdown_cam.cam_up.normalize();
-    topdown_cam.x_fov = suncg_cam.x_fov;
-    topdown_cam.y_fov = suncg_cam.y_fov;
+    Vec3 overhead_cam_eye = center_of_rotation + ((camera.position() - center_of_rotation).norm() * Vec3{0, 1, 0}) * 0.5;
+    Vec3 overhead_view_dir = {0, -1, 0};
+    Vec3 topdown_right = (overhead_view_dir.cross(camera.up())).normalized();
+    Vec3 overhead_up = topdown_right.cross(overhead_view_dir);
+    overhead_up.normalize();
 
     scene3d::FrustumParams frustum;
-    frustum.far = 10000;
+    frustum.far = 100;
     frustum.near = 0.01;
-    auto cam = std::make_unique<scene3d::PerspectiveCamera>(topdown_cam.cam_eye, topdown_cam.cam_eye + topdown_cam.cam_view_dir, topdown_cam.cam_up, frustum);
+    auto overhead_cam = OrthographicCamera(overhead_cam_eye, overhead_cam_eye + overhead_view_dir, overhead_up, frustum);
 
     Vec3 bbox_min{kInfinity, kInfinity, kInfinity};
     Vec3 bbox_max{-kInfinity, -kInfinity, -kInfinity};
     for (const auto &p: pcl) {
       Vec3 p_cam;
-      cam->WorldToCam(p, &p_cam);
+      overhead_cam.WorldToCam(p, &p_cam);
       for (int j = 0; j < 3; ++j) {
         if (p_cam[j] < bbox_min[j]) {
           bbox_min[j] = p_cam[j];
@@ -375,19 +335,19 @@ int main(int argc, const char **argv) {
     LOGGER->info("bbox_min {}, {}, {}", bbox_min[0], bbox_min[1], bbox_min[2]);
     LOGGER->info("bbox_max {}, {}, {}", bbox_max[0], bbox_max[1], bbox_max[2]);
     Vec3 bbox_max_world;
-    cam->CamToWorld(bbox_max, &bbox_max_world);
+    overhead_cam.CamToWorld(bbox_max, &bbox_max_world);
     LOGGER->info("bbox_max_world {}, {}, {}", bbox_max_world[0], bbox_max_world[1], bbox_max_world[2]);
     Vec3 bbox_center = (bbox_max + bbox_min) * 0.5;
     Vec3 bbox_center_world;
-    cam->CamToWorld(bbox_center, &bbox_center_world);
-    topdown_cam.cam_eye[0] = bbox_center_world[0];
-    topdown_cam.cam_eye[2] = bbox_center_world[2];
+    overhead_cam.CamToWorld(bbox_center, &bbox_center_world);
+    overhead_cam_eye[0] = bbox_center_world[0];
+    overhead_cam_eye[2] = bbox_center_world[2];
 
     bbox_min = {kInfinity, kInfinity, kInfinity};
     bbox_max = {-kInfinity, -kInfinity, -kInfinity};
     for (const auto &p: pcl) {
       Vec3 p_cam;
-      cam->WorldToCam(p, &p_cam);
+      overhead_cam.WorldToCam(p, &p_cam);
       for (int j = 0; j < 3; ++j) {
         if (p_cam[j] < bbox_min[j]) {
           bbox_min[j] = p_cam[j];
@@ -431,24 +391,23 @@ int main(int argc, const char **argv) {
     left *= edge_padding_ratio;
     right *= edge_padding_ratio;
 
+    frustum.left = left;
+    frustum.bottom = bottom;
+    frustum.top = top;
+    frustum.right = right;
+
+    // Overwritten.
+    overhead_cam = OrthographicCamera(overhead_cam_eye, overhead_cam_eye + overhead_view_dir, overhead_up, frustum);
+
     LOGGER->info("center of rotation {}, {}, {}", center_of_rotation[0], center_of_rotation[1], center_of_rotation[2]);
 
     auto top_down_renderer = scene3d::SunCgMultiLayerDepthRenderer(
         &ray_tracer,
-        topdown_cam.cam_eye,
-        topdown_cam.cam_view_dir,
-        topdown_cam.cam_up,
-        topdown_cam.x_fov,
-        topdown_cam.y_fov,
+        &overhead_cam,
         width,
         height,
         max_hits,
-        prim_id_to_node_name,
-        true,
-        left,
-        right,
-        top,
-        bottom // TODO
+        prim_id_to_node_name
     );
     top_down_renderer.set_do_not_render_background_except_floor(true);
     vector<float> top_down_foreground_values;
@@ -463,7 +422,7 @@ int main(int argc, const char **argv) {
 
         if (found_background) {
           float depth_value = depth_values->at(0);
-          top_down_foreground_values.push_back((topdown_cam.cam_eye[1] - floor_y) - depth_value);
+          top_down_foreground_values.push_back((overhead_cam.position()[1] - floor_y) - depth_value);
           top_down_foreground_prim_ids.push_back(static_cast<float>(prim_ids[0]));
         } else {
           top_down_foreground_values.push_back(NAN);
@@ -561,34 +520,13 @@ int main(int argc, const char **argv) {
 #if 1
     {
       string out_filename_overhead_cam = std::string(buff) + "_td_cam.txt";
-      scene3d::WriteFloatsTxt<double>(out_filename_overhead_cam, 11, vector<double>{
-          topdown_cam.cam_eye[0],
-          topdown_cam.cam_eye[1],
-          topdown_cam.cam_eye[2],
-          topdown_cam.cam_view_dir[0],
-          topdown_cam.cam_view_dir[1],
-          topdown_cam.cam_view_dir[2],
-          topdown_cam.cam_up[0],
-          topdown_cam.cam_up[1],
-          topdown_cam.cam_up[2],
-          left, right, top, bottom});
+      SaveCamera(out_filename_overhead_cam, overhead_cam);
       std::cout << "Output file: " << out_filename_overhead_cam << std::endl;
     }
 
     {
       string out_filename_overhead_cam = std::string(buff) + "_cam.txt";
-      scene3d::WriteFloatsTxt<double>(out_filename_overhead_cam, 11, vector<double>{
-          suncg_cam.cam_eye[0],
-          suncg_cam.cam_eye[1],
-          suncg_cam.cam_eye[2],
-          suncg_cam.cam_view_dir[0],
-          suncg_cam.cam_view_dir[1],
-          suncg_cam.cam_view_dir[2],
-          suncg_cam.cam_up[0],
-          suncg_cam.cam_up[1],
-          suncg_cam.cam_up[2],
-          suncg_cam.x_fov,
-          suncg_cam.y_fov});
+      suncg::WriteCameraFile(out_filename_overhead_cam, {camera});
       std::cout << "Output file: " << out_filename_overhead_cam << std::endl;
     }
 

@@ -26,41 +26,14 @@ static void RenderMultiLayerDepthImage(const std::string &obj_filename, const Ca
 
   RayTracer ray_tracer(faces, vertices);
 
-  auto renderer = unique_ptr<SunCgMultiLayerDepthRenderer>();
-
-  double x_fov, y_fov;
-  bool is_perspective = camera.fov(&x_fov, &y_fov);
-
-  if (is_perspective) {
-    renderer = make_unique<SunCgMultiLayerDepthRenderer>(
-        &ray_tracer,
-        camera.position(),
-        camera.viewing_direction(),
-        camera.up(),
-        x_fov,
-        y_fov,
-        width,
-        height,
-        0,
-        prim_id_to_node_name,
-        false,
-        0, 0, 0, 0  // TODO
-    );
-  } else {
-    renderer = make_unique<SunCgMultiLayerDepthRenderer>(
-        &ray_tracer,
-        camera.position(),
-        camera.viewing_direction(),
-        camera.up(),
-        1, 1,  // TODO
-        width,
-        height,
-        0,
-        prim_id_to_node_name,
-        true,
-        camera.frustum().left, camera.frustum().right, camera.frustum().top, camera.frustum().bottom
-    );
-  }
+  auto renderer = make_unique<SunCgMultiLayerDepthRenderer>(
+      &ray_tracer,
+      &camera,
+      width,
+      height,
+      0,
+      prim_id_to_node_name
+  );
 
   renderer->ray_tracer()->PrintStats();
 

@@ -10,51 +10,33 @@ class MultiLayerDepthRenderer {
 
   // `ray_tracer` is managed externally.
   MultiLayerDepthRenderer(const scene3d::RayTracer *ray_tracer,
-                          const Vec3 &cam_eye,
-                          const Vec3 &cam_view_dir,
-                          const Vec3 &cam_up,
-                          double xf,
-                          double yf,
+                          const Camera *camera,
                           size_t width,
                           size_t height,
-                          size_t max_hits,
-                          bool is_orthographic,
-                          double left,
-                          double right,
-                          double top,
-                          double bottom)
-      : ray_tracer_(ray_tracer), xf_(xf), yf_(yf), width_(width), height_(height), max_hits_(max_hits),
-        is_orthographic_(is_orthographic), left_(left), right_(right), top_(top), bottom_(bottom) {
-    // TODO(daeyun): right now this camera object isn't really used orthographically. Need to refactor.
-    scene3d::FrustumParams frustum;
-    frustum.far = 10000;
-    frustum.near = 0.01;
-    camera_ = std::make_unique<scene3d::PerspectiveCamera>(cam_eye, cam_eye + cam_view_dir, cam_up, frustum);
-
-    if (is_orthographic_) {
-
-    } else {
+                          size_t max_hits)
+      : ray_tracer_(ray_tracer), camera_(camera), width_(width), height_(height), max_hits_(max_hits) {
+    if (camera_->is_perspective()) {
+      double xf, yf;
+      // This whole block of code is from an older version. It makes sure aspect stretching does not happen.
+      camera->fov(&xf, &yf);
       // Distance to the image plane according to the x fov.
-      double xl = 0.5 * width_ / std::tan(xf_);
+      double xl = 0.5 * width_ / std::tan(xf);
       // Distance to the image plane according to the y fov.
-      double yl = 0.5 * height_ / std::tan(yf_);
+      double yl = 0.5 * height_ / std::tan(yf);
 
       // For now, we assume the aspect ratio is always 1.0. So the distance to image plane should end up being the same according to both x and y.
       // Otherwise the image size or focal length is wrong. This can also happen because of precision error.
       // 0.01 is an arbitrary threshold.
       if (std::abs(xl - yl) > 0.01) {
-        LOGGER->warn("xf: {}, yf: {}, width: {}, height: {}, xl: {}, yl: {}", xf_, yf_, width_, height_, xl, yl);
+        LOGGER->warn("xf: {}, yf: {}, width: {}, height: {}, xl: {}, yl: {}", xf, yf, width_, height_, xl, yl);
         throw std::runtime_error("Inconsistent distance to image plane.");
       }
-
       // Compute the average of the two distances. There are probably other, better ways to do this.
       image_focal_length_ = (xl + yl) * 0.5;
     }
 
     image_optical_center_ = Vec3{width_ * 0.5, height_ * 0.5, 0};
 
-    const Vec3 cam_ray_origin{0, 0, 0};
-    camera_->CamToWorld(cam_ray_origin, &camera_center_);
   }
 
   const scene3d::RayTracer *ray_tracer() const {
@@ -62,29 +44,31 @@ class MultiLayerDepthRenderer {
   }
 
   Vec3 RayOrigin(int x, int y) const {
-    if (is_orthographic_) {
+    if (camera_->is_perspective()) {
+      return camera_->position();
+    } else {
       double im_x = static_cast<double>(x) + 0.5;
       double im_y = height_ - (static_cast<double>(y) + 0.5);
-
-      double cam_x = im_x / width_ * (right_ - left_) + left_;
-      double cam_y = im_y / height_ * (top_ - bottom_) + bottom_;
-
-      Vec3 cam_ray_origin{cam_x, cam_y, 0};
+      const auto &frustum = camera_->frustum();
+      double cam_x = im_x / width_ * (frustum.right - frustum.left) + frustum.left;
+      double cam_y = im_y / height_ * (frustum.top - frustum.bottom) + frustum.bottom;
       Vec3 ret;
-      camera_->CamToWorld(cam_ray_origin, &ret);
-
+      camera_->CamToWorld(Vec3{cam_x, cam_y, 0}, &ret);
       return ret;
-    } else {
-      return camera_center_;
     }
   }
 
-  double image_focal_length() const {
-    if (is_orthographic_) {
-      LOGGER->error("image focal length should not be used in orthographic projection.");
-      throw std::runtime_error("image focal length should not be used in orthographic projection.");
+  Vec3 RayDirection(int x, int y) const {
+    Vec3 ray_direction;
+    if (camera_->is_perspective()) {
+      Vec3 image_plane_coord{static_cast<double>(x) + 0.5, height_ - (static_cast<double>(y) + 0.5), -image_focal_length()};
+      Vec3 cam_ray_direction = (image_plane_coord - image_optical_center()).normalized();
+      camera_->CamToWorldNormal(cam_ray_direction, &ray_direction);
+    } else {
+      ray_direction = camera_->viewing_direction();
     }
-    return image_focal_length_;
+    ray_direction.normalize();
+    return ray_direction;
   }
 
   // Implementation specific.
@@ -92,53 +76,41 @@ class MultiLayerDepthRenderer {
 
  protected:
   const scene3d::RayTracer *ray_tracer_;
-  std::unique_ptr<scene3d::Camera> camera_;
-  double xf_;  // TODO(daeyun): refactor so that the fov is part of PerspectiveCamera.
-  double yf_;
+  const scene3d::Camera *camera_;  // Managed externally
   size_t width_;
   size_t height_;
   size_t max_hits_;
-  Vec3 image_optical_center_;  // TODO(daeyun): make private.
-  bool is_orthographic_;
-  double left_, right_, top_, bottom_;
 
  private:
-  Vec3 camera_center_;
+  double image_focal_length() const {
+    if (camera_->is_perspective()) {
+      return image_focal_length_;
+    } else {
+      throw std::runtime_error("image focal length should not be used in orthographic projection.");
+    }
+  }
+
+  const Vec3 &image_optical_center() const {
+    if (camera_->is_perspective()) {
+      return image_optical_center_;
+    } else {
+      throw std::runtime_error("image optical center should not be used in orthographic projection.");
+    }
+  }
+
   double image_focal_length_;
+  Vec3 image_optical_center_;
 };
 
 class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
  public:
   SunCgMultiLayerDepthRenderer(const scene3d::RayTracer *ray_tracer,
-                               const Vec3 &cam_eye,
-                               const Vec3 &cam_view_dir,
-                               const Vec3 &cam_up,
-                               double xf,
-                               double yf,
+                               const Camera *camera,
                                size_t width,
                                size_t height,
                                size_t max_hits,
-                               const std::vector<std::string> &prim_id_to_node_name,
-                               bool is_orthographic,
-                               double left,
-                               double right,
-                               double top,
-                               double bottom)
-      : MultiLayerDepthRenderer(ray_tracer, cam_eye, cam_view_dir, cam_up, xf, yf, width, height, max_hits, is_orthographic, left, right, top, bottom), prim_id_to_node_name_(prim_id_to_node_name) {}
-
-  Vec3 RayDirection(int x, int y) const {
-    Vec3 ray_direction;
-    if (is_orthographic_) {
-      Vec3 cam_ray_direction{0, 0, -1};
-      camera_->CamToWorldNormal(cam_ray_direction, &ray_direction);
-    } else {
-      Vec3 image_plane_coord{static_cast<double>(x) + 0.5, height_ - (static_cast<double>(y) + 0.5), -image_focal_length()};
-      Vec3 cam_ray_direction = (image_plane_coord - image_optical_center_).normalized();
-      camera_->CamToWorldNormal(cam_ray_direction, &ray_direction);
-    }
-    ray_direction.normalize();
-    return ray_direction;
-  }
+                               const std::vector<std::string> &prim_id_to_node_name)
+      : MultiLayerDepthRenderer(ray_tracer, camera, width, height, max_hits), prim_id_to_node_name_(prim_id_to_node_name) {}
 
   // x: x pixel coordinates [0, width).
   // y: y pixel coordinates [0, height).

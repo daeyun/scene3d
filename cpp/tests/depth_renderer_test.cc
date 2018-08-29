@@ -5,16 +5,9 @@
 #include "lib/common.h"
 #include "lib/multi_layer_depth_renderer.h"
 #include "lib/file_io.h"
+#include "lib/suncg_utils.h"
 
-struct CameraParams {
-  Vec3 cam_eye;
-  Vec3 cam_view_dir;
-  Vec3 cam_up;
-  double x_fov;
-  double y_fov;
-  double score;  // scene coverage score. not used at the moment.
-};
-
+using namespace scene3d;
 
 TEST_CASE("multi hit test") {
   // These paths are relative to the project root directory.
@@ -26,37 +19,10 @@ TEST_CASE("multi hit test") {
   std::vector<int> prim_id_to_node_id;
   std::vector<std::string> prim_id_to_node_name;
 
-  LOGGER->info("Reading file {}", camera_filename);
-
-  std::ifstream source;
-  source.open(camera_filename, std::ios_base::in);
-  if (!source) {
-    throw std::runtime_error("Can't open file.");
-  }
-
-  std::vector<CameraParams> suncg_cameras;
-  for (std::string line; std::getline(source, line);) {
-    if (line.empty()) {
-      continue;
-    }
-
-    std::istringstream in(line);
-    CameraParams cam;
-
-    in >> cam.cam_eye[0] >> cam.cam_eye[1] >> cam.cam_eye[2];
-    in >> cam.cam_view_dir[0] >> cam.cam_view_dir[1] >> cam.cam_view_dir[2];
-    in >> cam.cam_up[0] >> cam.cam_up[1] >> cam.cam_up[2];
-    in >> cam.x_fov >> cam.y_fov >> cam.score;
-
-    LOGGER->info("camera {}, eye {}, {}, {}, fov {}, {}", suncg_cameras.size(), cam.cam_eye[0], cam.cam_eye[1], cam.cam_eye[2], cam.x_fov, cam.y_fov);
-
-    cam.cam_view_dir.normalize();
-
-    suncg_cameras.push_back(cam);
-  }
+  std::vector<suncg::CameraParams> suncg_cameras;
+  suncg::ReadCameraFile(camera_filename, &suncg_cameras);
 
   LOGGER->info("Reading file {}", obj_filename);
-
   bool ok = scene3d::ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
 
   // Sanity check.
@@ -73,19 +39,17 @@ TEST_CASE("multi hit test") {
 
   int camera_index = 3;
 
+  double near = 0.01;
+  double far = 100;
+  PerspectiveCamera camera = MakeCamera(suncg_cameras[camera_index], near, far);
+
   auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
       &ray_tracer,
-      suncg_cameras[camera_index].cam_eye,
-      suncg_cameras[camera_index].cam_view_dir,
-      suncg_cameras[camera_index].cam_up,
-      suncg_cameras[camera_index].x_fov,
-      suncg_cameras[camera_index].y_fov,
+      &camera,
       width,
       height,
       max_hits,
-      prim_id_to_node_name,
-      false,
-      0, 0, 0, 0
+      prim_id_to_node_name
   );
 
   renderer.ray_tracer()->PrintStats();
@@ -191,37 +155,10 @@ TEST_CASE("thickness in inner normal direction") {
   std::vector<int> prim_id_to_node_id;
   std::vector<std::string> prim_id_to_node_name;
 
-  LOGGER->info("Reading file {}", camera_filename);
-
-  std::ifstream source;
-  source.open(camera_filename, std::ios_base::in);
-  if (!source) {
-    throw std::runtime_error("Can't open file.");
-  }
-
-  std::vector<CameraParams> suncg_cameras;
-  for (std::string line; std::getline(source, line);) {
-    if (line.empty()) {
-      continue;
-    }
-
-    std::istringstream in(line);
-    CameraParams cam;
-
-    in >> cam.cam_eye[0] >> cam.cam_eye[1] >> cam.cam_eye[2];
-    in >> cam.cam_view_dir[0] >> cam.cam_view_dir[1] >> cam.cam_view_dir[2];
-    in >> cam.cam_up[0] >> cam.cam_up[1] >> cam.cam_up[2];
-    in >> cam.x_fov >> cam.y_fov >> cam.score;
-
-    LOGGER->info("camera {}, eye {}, {}, {}, fov {}, {}", suncg_cameras.size(), cam.cam_eye[0], cam.cam_eye[1], cam.cam_eye[2], cam.x_fov, cam.y_fov);
-
-    cam.cam_view_dir.normalize();
-
-    suncg_cameras.push_back(cam);
-  }
+  std::vector<suncg::CameraParams> suncg_cameras;
+  suncg::ReadCameraFile(camera_filename, &suncg_cameras);
 
   LOGGER->info("Reading file {}", obj_filename);
-
   bool ok = scene3d::ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
 
   // Sanity check.
@@ -234,23 +171,21 @@ TEST_CASE("thickness in inner normal direction") {
 
   unsigned int width = 320;
   unsigned int height = 240;
-  unsigned int max_hits = 0;  // unlimited. not relevant at the moment.
+  unsigned int max_hits = 0;  // unlimited
 
   int camera_index = 3;
 
+  double near = 0.01;
+  double far = 100;
+  PerspectiveCamera camera = MakeCamera(suncg_cameras[camera_index], near, far);
+
   auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
       &ray_tracer,
-      suncg_cameras[camera_index].cam_eye,
-      suncg_cameras[camera_index].cam_view_dir,
-      suncg_cameras[camera_index].cam_up,
-      suncg_cameras[camera_index].x_fov,
-      suncg_cameras[camera_index].y_fov,
+      &camera,
       width,
       height,
       max_hits,
-      prim_id_to_node_name,
-      false,
-      0, 0, 0, 0
+      prim_id_to_node_name
   );
 
   renderer.ray_tracer()->PrintStats();
@@ -282,24 +217,27 @@ TEST_CASE("orthographic coordinates") {
   scene3d::RayTracer ray_tracer(faces, vertices);
 
   {
-    CameraParams cam;
-    cam.cam_eye = {2, 3, 1};
-    cam.cam_view_dir = {0, 0, -1};
-    cam.cam_up = {0, 1, 0};
+    FrustumParams frustum;
+    frustum.left = -8;
+    frustum.right = 8;
+    frustum.top = 16;
+    frustum.bottom = -16;
+    frustum.near = 0.01;
+    frustum.far = 100;
+
+    Vec3 eye = {2, 3, 1};
+    Vec3 view_dir = {0, 0, -1};
+    Vec3 up = {0, 1, 0};
+
+    auto camera = OrthographicCamera(eye, eye + view_dir, up, frustum);
 
     auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
         &ray_tracer,
-        cam.cam_eye,
-        cam.cam_view_dir,
-        cam.cam_up,
-        cam.x_fov,
-        cam.y_fov,
+        &camera,
         16,
         32,
         0,
-        prim_id_to_node_name,
-        true,
-        -8, 8, 16, -16
+        prim_id_to_node_name
     );
 
     Vec3 ray_origin = renderer.RayOrigin(0, 0);
@@ -321,12 +259,13 @@ TEST_CASE("simple scene depth test") {
   std::vector<int> prim_id_to_node_id;
   std::vector<std::string> prim_id_to_node_name;
 
-  CameraParams cam_params;
-  cam_params.cam_eye = {0, 5, 0};
-  cam_params.cam_up = {0, 0, -1};
-  cam_params.cam_view_dir = {0, -1, 0};
-  cam_params.x_fov = 60 / 180.0 * M_PI;
-  cam_params.y_fov = 60 / 180.0 * M_PI;
+  Vec3 eye = {0, 5, 0};
+  Vec3 up = {0, 0, -1};
+  Vec3 view_dir = {0, -1, 0};
+  double x_fov = 60 / 180.0 * M_PI;  // 120
+
+  auto frustum = MakePerspectiveFrustumParams(1, x_fov, 0.01, 100);
+  auto camera = PerspectiveCamera(eye, eye + view_dir, up, frustum);
 
   LOGGER->info("Reading file {}", obj_filename);
 
@@ -346,17 +285,11 @@ TEST_CASE("simple scene depth test") {
 
   auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
       &ray_tracer,
-      cam_params.cam_eye,
-      cam_params.cam_view_dir,
-      cam_params.cam_up,
-      cam_params.x_fov,
-      cam_params.y_fov,
+      &camera,
       width,
       height,
       max_hits,
-      prim_id_to_node_name,
-      false,
-      0, 0, 0, 0
+      prim_id_to_node_name
   );
 
   renderer.ray_tracer()->PrintStats();
