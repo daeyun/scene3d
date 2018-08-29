@@ -2,6 +2,7 @@
 
 #include "lib/common.h"
 #include "lib/camera.h"
+#include "lib/file_io.h"
 
 namespace scene3d {
 
@@ -10,6 +11,10 @@ class Image {
  public:
   Image(unsigned int height, unsigned int width) : height_(height), width_(width) {
     data_.resize(height_ * width_);
+  }
+
+  void Save(const string& filename) const {
+    SerializeTensor<T>(filename, this->data(), {height_, width_});
   }
 
   inline T &at(unsigned int index) {

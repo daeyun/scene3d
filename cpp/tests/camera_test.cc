@@ -25,7 +25,7 @@ TEST_CASE("vectorization, perspective") {
     double x_fov = 30.0 / 180.0 * M_PI;  // 60 degrees left-to-right.
     auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
 
-    auto camera = PerspectiveCamera(eye, up, lookat, frustum);
+    auto camera = PerspectiveCamera(eye, lookat, up, frustum);
     double xf = 0, yf = 0;
     REQUIRE(camera.fov(&xf, &yf));
     REQUIRE(Approx(xf) == x_fov);
@@ -170,7 +170,7 @@ TEST_CASE("vectorization, orthographic") {
     frustum.near = near;
     frustum.far = far;
 
-    auto camera = OrthographicCamera(eye, up, lookat, frustum);
+    auto camera = OrthographicCamera(eye, lookat, up, frustum);
     REQUIRE(!camera.fov(nullptr, nullptr));
     REQUIRE(!camera.is_perspective());
 
@@ -304,7 +304,7 @@ TEST_CASE("transitivity, perspective") {
     double x_fov = 30.0 / 180.0 * M_PI;  // 60 degrees left-to-right.
     auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
 
-    auto camera = PerspectiveCamera(eye, up, lookat, frustum);
+    auto camera = PerspectiveCamera(eye, lookat, up, frustum);
     double xf = 0, yf = 0;
     REQUIRE(camera.fov(&xf, &yf));
     REQUIRE(Approx(xf) == x_fov);
@@ -361,7 +361,7 @@ TEST_CASE("transitivity, orthographic") {
     frustum.near = near;
     frustum.far = far;
 
-    auto camera = OrthographicCamera(eye, up, lookat, frustum);
+    auto camera = OrthographicCamera(eye, lookat, up, frustum);
     REQUIRE(!camera.fov(nullptr, nullptr));
     REQUIRE(!camera.is_perspective());
 
@@ -402,11 +402,11 @@ TEST_CASE("image to cam, perspective") {
   double x_fov = 30.0 / 180.0 * M_PI;  // 60 degrees left-to-right.
   double near = 0.01;
   double far = 20;
-  Vec3 cam_eye = {0, 4, 0};  // This is the distance where the plane takes up 80% of the image width.
-  Vec3 cam_up = {0, 0, -1};
-  Vec3 cam_lookat = {0, 0, 0};
+  Vec3 eye = {0, 4, 0};  // This is the distance where the plane takes up 80% of the image width.
+  Vec3 up = {0, 0, -1};
+  Vec3 lookat = {0, 0, 0};
   auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
-  auto camera = PerspectiveCamera(cam_eye, cam_lookat, cam_up, frustum);
+  auto camera = PerspectiveCamera(eye, lookat, up, frustum);
   auto ml_depth = MultiLayerImage<float>(height, width);
   RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
   Image<float> depth(height, width);
@@ -471,3 +471,4 @@ TEST_CASE("image to cam, perspective") {
   REQUIRE(restored_world.isApprox(restored_world2));
 
 }
+
