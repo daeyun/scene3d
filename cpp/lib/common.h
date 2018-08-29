@@ -30,6 +30,7 @@ using Eigen::Dynamic;
 
 using Vec = Eigen::VectorXd;
 using Vec2 = Eigen::Vector2d;
+using Vec2i = Eigen::Matrix<int, 2, 1>;
 using Vec3 = Eigen::Vector3d;
 using Vec4 = Eigen::Vector4d;
 using Mat44 = Eigen::Matrix<double, 4, 4>;
@@ -41,6 +42,7 @@ using Points4d = Eigen::Matrix<double, 4, Eigen::Dynamic>;
 using Points3d = Eigen::Matrix<double, 3, Eigen::Dynamic>;
 using Points2d = Eigen::Matrix<double, 2, Eigen::Dynamic>;
 using Points2i = Eigen::Matrix<int, 2, Eigen::Dynamic>;
+using Points1d = Eigen::Matrix<double, 1, Eigen::Dynamic>;
 
 using std::vector;
 using std::array;

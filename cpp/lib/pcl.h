@@ -47,34 +47,31 @@ class PointCloud {
 };
 
 static void PclFromDepth(const DepthImage &depth, const Camera &camera, PointCloud *out) {
-  vector<Vec3> xyz;
+  vector<Vec2i> xy;
+  vector<double> d;
   for (unsigned int y = 0; y < depth.height(); ++y) {
     for (unsigned int x = 0; x < depth.width(); ++x) {
       float value = depth.at(y, x);
       if (std::isfinite(value)) {
-        xyz.emplace_back(x, y, value);
+        xy.emplace_back(x, y);
+        d.push_back(value);
       }
     }
   }
 
-  Points3d cam_pts(3, xyz.size());
-  for (int i = 0; i < xyz.size(); ++i) {
-    cam_pts.col(i) = xyz[i];
+  Points2i cam_pts(2, xy.size());
+  Points1d cam_d(2, xy.size());
+  for (int i = 0; i < xy.size(); ++i) {
+    cam_pts.col(i) = xy[i];
+    cam_d[i] = d[i];
   }
 
   // Calculate coordinates in camera space.
-  if (camera.is_perspective()) {
-    cam_pts.row(0) = ((cam_pts.row(0).array() + 0.5) * (camera.frustum().right - camera.frustum().left) / depth.width() + camera.frustum().left) / camera.frustum().near * cam_pts.row(2).array();
-    cam_pts.row(1) = ((cam_pts.row(1).array() + 0.5) * -(camera.frustum().top - camera.frustum().bottom) / depth.height() + camera.frustum().top) / camera.frustum().near * cam_pts.row(2).array();
-    cam_pts.row(2) *= -1;
-  } else {
-    cam_pts.row(0) = (cam_pts.row(0).array() + 0.5) * (camera.frustum().right - camera.frustum().left) / depth.width() + camera.frustum().left;
-    cam_pts.row(1) = (cam_pts.row(1).array() + 0.5) * -(camera.frustum().top - camera.frustum().bottom) / depth.height() + camera.frustum().top;
-    cam_pts.row(2) *= -1;
-  };
+  Points3d cam_out;
+  camera.ImageToCam(cam_pts, cam_d, depth.height(), depth.width(), &cam_out);
 
   Points3d ret;
-  camera.CamToWorld(cam_pts, &ret);
+  camera.CamToWorld(cam_out, &ret);
   *out = PointCloud(ret);
 }
 

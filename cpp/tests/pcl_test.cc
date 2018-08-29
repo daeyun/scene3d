@@ -10,6 +10,7 @@
 #include "lib/depth_render_utils.h"
 #include "lib/pcl.h"
 #include "lib/meshdist.h"
+#include "lib/benchmark.h"
 
 using namespace scene3d;
 

@@ -32,4 +32,7 @@ target_link_libraries(benchmark PUBLIC common)
 
 add_library(meshdist meshdist.h meshdist.cc)
 target_link_libraries(meshdist PUBLIC common camera depth benchmark)
+target_compile_options(meshdist BEFORE PUBLIC "-lCGAL")
 
+add_library(vectorization_utils vectorization_utils.h)
+target_link_libraries(vectorization_utils PUBLIC common)

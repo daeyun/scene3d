@@ -10,4 +10,7 @@ add_executable(depth_render_utils_test depth_render_utils_test.cc test_main.cc)
 target_link_libraries(depth_render_utils_test common catch2 Boost::filesystem multi_layer_depth_renderer file_io depth_render_utils)
 
 add_executable(pcl_test pcl_test.cc test_main.cc)
-target_link_libraries(pcl_test common catch2 Boost::filesystem multi_layer_depth_renderer file_io depth_render_utils pcl meshdist)
+target_link_libraries(pcl_test common catch2 Boost::filesystem multi_layer_depth_renderer file_io depth_render_utils pcl meshdist benchmark)
+
+add_executable(camera_test camera_test.cc test_main.cc)
+target_link_libraries(camera_test common catch2 Boost::filesystem multi_layer_depth_renderer file_io depth_render_utils pcl vectorization_utils)

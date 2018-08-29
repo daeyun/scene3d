@@ -12,7 +12,7 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)  # Needed to build shared objects for python ctypes.
 
 #set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast -mfpmath=both")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -funroll-loops -mfpmath=both")
 
 find_package(OpenMP)
 if (OPENMP_FOUND)
