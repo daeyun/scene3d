@@ -407,9 +407,9 @@ TEST_CASE("image to cam, perspective") {
   Vec3 cam_lookat = {0, 0, 0};
   auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
   auto camera = PerspectiveCamera(cam_eye, cam_lookat, cam_up, frustum);
-  auto ml_depth = MultiLayerDepthImage(height, width);
+  auto ml_depth = MultiLayerImage<float>(height, width);
   RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
-  DepthImage depth(height, width);
+  Image<float> depth(height, width);
   ml_depth.ExtractLayer(0, &depth);
 
   std::vector<std::array<unsigned int, 3>> faces;

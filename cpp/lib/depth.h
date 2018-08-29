@@ -1,33 +1,34 @@
 #pragma once
 
-#include "common.h"
-#include "camera.h"
+#include "lib/common.h"
+#include "lib/camera.h"
 
 namespace scene3d {
 
-class DepthImage {
+template<typename T=float>
+class Image {
  public:
-  DepthImage(unsigned int height, unsigned int width) : height_(height), width_(width) {
+  Image(unsigned int height, unsigned int width) : height_(height), width_(width) {
     data_.resize(height_ * width_);
   }
 
-  inline float &at(unsigned int index) {
+  inline T &at(unsigned int index) {
     return data_[index];
   }
 
-  inline float &at(unsigned int y, unsigned int x) {
+  inline T &at(unsigned int y, unsigned int x) {
     return data_[width_ * y + x];
   }
 
-  inline float at(unsigned int index) const {
+  inline T at(unsigned int index) const {
     return data_[index];
   }
 
-  inline float at(unsigned int y, unsigned int x) const {
+  inline T at(unsigned int y, unsigned int x) const {
     return data_[width_ * y + x];
   }
 
-  const float *data() const {
+  const T *data() const {
     return data_.data();
   }
 
@@ -44,28 +45,29 @@ class DepthImage {
   }
 
  private:
-  vector<float> data_;
+  vector<T> data_;
   unsigned int height_, width_;
 };
 
-class MultiLayerDepthImage {
+template<typename T=float>
+class MultiLayerImage {
  public:
-  MultiLayerDepthImage(unsigned int height, unsigned int width) : height_(height), width_(width) {
+  MultiLayerImage(unsigned int height, unsigned int width) : height_(height), width_(width) {
     data_.resize(height_ * width_);
     for (int i = 0; i < data_.size(); ++i) {
-      data_[i] = std::make_unique<vector<float>>();
+      data_[i] = std::make_unique<vector<T>>();
     }
   }
 
-  inline vector<float> *values(unsigned int index) const {
+  inline vector<T> *values(unsigned int index) const {
     return data_[index].get();
   }
 
-  inline vector<float> *values(unsigned int y, unsigned int x) const {
+  inline vector<T> *values(unsigned int y, unsigned int x) const {
     return data_[width_ * y + x].get();
   }
 
-  inline float at(unsigned int y, unsigned int x, unsigned int l) const {
+  inline T at(unsigned int y, unsigned int x, unsigned int l) const {
     const auto *v = values(y, x);
     if (l < v->size()) {
       return v->at(l);
@@ -73,7 +75,7 @@ class MultiLayerDepthImage {
     return NAN;
   }
 
-  inline float at(unsigned int index, unsigned int l) const {
+  inline T at(unsigned int index, unsigned int l) const {
     const auto *v = values(index);
     if (l < v->size()) {
       return v->at(l);
@@ -81,8 +83,8 @@ class MultiLayerDepthImage {
     return NAN;
   }
 
-  void ExtractLayer(unsigned int l, DepthImage *out) {
-    *out = DepthImage(height_, width_);
+  void ExtractLayer(unsigned int l, Image<T> *out) {
+    *out = Image<T>(height_, width_);
     for (unsigned int i = 0; i < data_.size(); ++i) {
       out->at(i) = this->at(i, l);
     }
@@ -99,7 +101,7 @@ class MultiLayerDepthImage {
   }
 
  private:
-  vector<unique_ptr<vector<float>>> data_;
+  vector<unique_ptr<vector<T>>> data_;
   unsigned int height_, width_;
 };
 

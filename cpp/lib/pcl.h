@@ -46,7 +46,7 @@ class PointCloud {
   vector<uint8_t> label_;
 };
 
-static void PclFromDepth(const DepthImage &depth, const Camera &camera, PointCloud *out) {
+static void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out) {
   vector<Vec2i> xy;
   vector<double> d;
   for (unsigned int y = 0; y < depth.height(); ++y) {

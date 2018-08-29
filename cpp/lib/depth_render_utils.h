@@ -8,7 +8,7 @@
 
 namespace scene3d {
 
-static void RenderMultiLayerDepthImage(const std::string &obj_filename, const Camera &camera, unsigned int height, unsigned int width, MultiLayerDepthImage *ml_depth) {
+static void RenderMultiLayerDepthImage(const std::string &obj_filename, const Camera &camera, unsigned int height, unsigned int width, MultiLayerImage<float> *ml_depth) {
   std::vector<std::array<unsigned int, 3>> faces;
   std::vector<std::array<float, 3>> vertices;
   std::vector<int> prim_id_to_node_id;

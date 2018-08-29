@@ -33,14 +33,14 @@ TEST_CASE("pcl from depth") {
     auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
     auto camera = PerspectiveCamera(cam_eye, cam_lookat, cam_up, frustum);
 
-    auto ml_depth = MultiLayerDepthImage(height, width);
+    auto ml_depth = MultiLayerImage<float>(height, width);
     RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
 
     REQUIRE(3 == ml_depth.values(120, 160)->size());
     REQUIRE(Approx(cam_eye[1] - 1) == ml_depth.at(120, 160, 0));
     REQUIRE(Approx(cam_eye[1] + 1) == ml_depth.at(120, 160, 1));
 
-    DepthImage depth(height, width);
+    Image<float> depth(height, width);
     ml_depth.ExtractLayer(0, &depth);
 
     PclFromDepth(depth, camera, &pcl);
@@ -68,14 +68,14 @@ TEST_CASE("pcl from depth") {
 
     auto camera = OrthographicCamera(cam_eye, cam_lookat, cam_up, frustum);
 
-    auto ml_depth = MultiLayerDepthImage(height, width);
+    auto ml_depth = MultiLayerImage<float>(height, width);
     RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
 
     REQUIRE(3 == ml_depth.values(120, 160)->size());
     REQUIRE(Approx(cam_eye[1] - 1) == ml_depth.at(120, 160, 0));
     REQUIRE(Approx(cam_eye[1] + 1) == ml_depth.at(120, 160, 1));
 
-    DepthImage depth(height, width);
+    Image<float> depth(height, width);
     ml_depth.ExtractLayer(0, &depth);
 
     PclFromDepth(depth, camera, &pcl);
