@@ -37,5 +37,8 @@ target_compile_options(meshdist BEFORE PUBLIC "-lCGAL")
 add_library(vectorization_utils vectorization_utils.h)
 target_link_libraries(vectorization_utils PUBLIC common)
 
-add_library(suncg_utils suncg_utils.h)
-target_link_libraries(suncg_utils PUBLIC common file_io)
+add_library(string_utils string_utils.h)
+target_link_libraries(string_utils PUBLIC common)
+
+add_library(suncg_utils suncg_utils.h suncg_utils.cc)
+target_link_libraries(suncg_utils PUBLIC common file_io camera nlohmann_json string_utils assimp Boost::filesystem csv_parser)

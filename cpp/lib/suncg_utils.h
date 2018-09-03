@@ -20,80 +20,126 @@ struct CameraParams {
   double y_fov = 0;
   double score = 0;  // scene coverage score. not used at the moment.
 };
-}  // end of namespace suncg
 
-PerspectiveCamera MakeCamera(const suncg::CameraParams &params, double near, double far) {
-  double hw_ratio = std::tan(params.y_fov) / std::tan(params.x_fov);
-  FrustumParams frustum = MakePerspectiveFrustumParams(hw_ratio, params.x_fov, near, far);
-  return {params.cam_eye, params.cam_eye + params.cam_view_dir, params.cam_up, frustum};
-}
+enum class InstanceType {
+  WallInside, WallOutside, Object, Box, Ground, Floor, Ceiling
+};
 
-namespace suncg {
-void ReadCameraFile(const string &filename, vector<suncg::CameraParams> *suncg_params) {
-  LOGGER->info("Reading file {}", filename);
+struct Instance {
+  string id;  // Same as instance id.
+  string model_id;  // Used to determine object category. "Box" for box type. Can be empty for floor, wall, etc.
+  string room_id;  // Can be empty. Room envelope will not have room ids, for now.
+  InstanceType type;
+};
 
-  std::ifstream source;
-  source.open(filename, std::ios_base::in);
-  if (!source) {
-    throw std::runtime_error("Can't open file.");
+struct CategoryMappingEntry {
+  uint16_t index;
+  string fine_grained_class;
+  string coarse_grained_class;
+  string empty_struct_obj;
+  string nyuv2_40class;
+  string wnsynsetid;
+  string wnsynsetkey;
+};
+
+// Run `Build()` before use.
+class Scene {
+ public:
+  Scene(const string &house_json_filename, const string &house_obj_filename, const string &category_mapping_csv_filename);
+
+  void Build();
+
+  inline const Instance &PrimIdToInstance(unsigned int prim_id) const {
+    return instance_id_to_node.at(face_instance_ids[prim_id]);
   }
 
-  for (std::string line; std::getline(source, line);) {
-    if (line.empty()) {
-      continue;
+  const CategoryMappingEntry &PrimIdToCategory(unsigned int prim_id) const {
+    const Instance &instance = PrimIdToInstance(prim_id);
+
+    switch (instance.type) {
+      case InstanceType::WallInside:
+      case InstanceType::WallOutside: return model_id_to_category.at("Wall");
+      case InstanceType::Floor:
+      case InstanceType::Ground: return model_id_to_category.at("Floor");
+      case InstanceType::Ceiling: return model_id_to_category.at("Ceiling");
+      case InstanceType::Box: return model_id_to_category.at("Box");
+      default: break;
     }
 
-    std::istringstream in(line);
-    CameraParams cam;
-
-    in >> cam.cam_eye[0] >> cam.cam_eye[1] >> cam.cam_eye[2];
-    in >> cam.cam_view_dir[0] >> cam.cam_view_dir[1] >> cam.cam_view_dir[2];
-    in >> cam.cam_up[0] >> cam.cam_up[1] >> cam.cam_up[2];
-    in >> cam.x_fov >> cam.y_fov >> cam.score;
-
-    LOGGER->info("camera {}, eye {}, {}, {}, fov {}, {}", suncg_params->size(), cam.cam_eye[0], cam.cam_eye[1], cam.cam_eye[2], cam.x_fov, cam.y_fov);
-
-    cam.cam_view_dir.normalize();
-
-    suncg_params->push_back(cam);
+    // Object
+    const auto &it = model_id_to_category.find(instance.model_id);
+    if (it == model_id_to_category.end()) {
+      LOGGER->error("prim_id {} has uncategoried model_id {}", prim_id, instance.model_id);
+    }
+    return it->second;
   }
-}
+
+  const array<float, 3> &PrimNormal(unsigned int prim_id) {
+    if (!has_normal[prim_id]) {
+      const auto &face = this->faces[prim_id];
+      const auto &a = this->vertices[face[0]];
+      const auto &b = this->vertices[face[1]];
+      const auto &c = this->vertices[face[2]];
+      const Vec3 va = {a[0], a[1], a[2]};
+      const Vec3 vb = {b[0], b[1], b[2]};
+      const Vec3 vc = {c[0], c[1], c[2]};
+      const Vec3 normal = (vb - va).cross(vc - va).normalized();
+      face_normals[prim_id][0] = (float) normal[0];
+      face_normals[prim_id][1] = (float) normal[1];
+      face_normals[prim_id][2] = (float) normal[2];
+      has_normal[prim_id] = true;
+    }
+    return face_normals[prim_id];
+  }
+
+  const bool IsPrimBackground(unsigned int prim_id) const {
+    const auto &catetory = PrimIdToCategory(prim_id);
+    const auto &nyu40_category = catetory.nyuv2_40class;
+    // Should we include picture and whiteboard?
+    return nyu40_category == "wall" ||
+        nyu40_category == "floor" ||
+        nyu40_category == "ceiling" ||
+        nyu40_category == "door" ||
+        nyu40_category == "floor_mat" ||
+        nyu40_category == "window" ||
+        nyu40_category == "curtain" ||
+        nyu40_category == "blinds";
+  }
+
+  vector<array<unsigned int, 3>> faces;
+  vector<array<float, 3>> vertices;
+  vector<array<float, 3>> face_normals;
+  vector<bool> has_normal;
+
+  vector<string> face_instance_ids;
+  map<string, Instance> instance_id_to_node;
+  map<string, CategoryMappingEntry> model_id_to_category;
+
+  string source_json_filename;
+  string source_obj_filename;
+  string source_category_mapping_csv_filename;
+};
+
+}  // end of namespace suncg
+
+PerspectiveCamera MakeCamera(const suncg::CameraParams &params, double near, double far);
+
+namespace suncg {
+void ReadCameraFile(const string &filename, vector<suncg::CameraParams> *suncg_params);
 
 // Write in the same format as SunCG.
-void WriteCameraFile(const string &filename, const vector<PerspectiveCamera>& cameras) {
-  int precision = 13;
-  std::ofstream ofile;
-  ofile.open(filename, std::ios::out);
+void WriteCameraFile(const string &filename, const vector<PerspectiveCamera> &cameras);
 
-  for (const auto &camera : cameras) {
-    double fx, fy;
-    camera.fov(&fx, &fy);
-    ofile << std::setprecision(precision) <<
-          camera.position()[0] << " " <<
-          camera.position()[1] << " " <<
-          camera.position()[2] << " " <<
-          camera.viewing_direction()[0] << " " <<
-          camera.viewing_direction()[1] << " " <<
-          camera.viewing_direction()[2] << " " <<
-          camera.up()[0] << " " <<
-          camera.up()[1] << " " <<
-          camera.up()[2] << " " <<
-          fx << " " <<
-          fy << " " <<
-          0 << std::endl;
-  }
+void ReadCameraFile(const string &filename, vector<PerspectiveCamera> *cameras);
 
-  ofile.close();
-}
+void ParseObjectRoomHierarchy(const string &house_json_filename, map<string, Instance> *node_id_to_node);
 
-void ReadCameraFile(const string &filename, vector<PerspectiveCamera> *cameras) {
-  vector<suncg::CameraParams> params;
-  ReadCameraFile(filename, &params);
+bool ReadFacesAndVertices(const std::string &filename,
+                          std::vector<std::array<unsigned int, 3>> *faces,
+                          std::vector<std::array<float, 3>> *vertices,
+                          std::vector<string> *face_group_names);
 
-  for (const auto &param : params) {
-    cameras->push_back(MakeCamera(param, 0.01, 100));  // near, far
+void ParseCategoryMapping(const string &csv_filename, map<string, CategoryMappingEntry> *model_id_to_category);
 
-  }
-}
 }  // end of namespace suncg
 }

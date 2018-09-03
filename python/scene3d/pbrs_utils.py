@@ -14,6 +14,12 @@ excluded_house_ids = {
     'd69819a0392af9ecb62a5889eb8a53d3',  # scn2scn segfaults
 }
 
+"""
+Special house ids
+
+19e13fe07c37efba7a739d31cd7b130a     # Apartment with no furniture. Renderings only contain doors.
+"""
+
 
 def load_pbrs_filenames():
     # List of png filenames in pbrs.

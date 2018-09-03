@@ -5,10 +5,11 @@
 #include "depth.h"
 #include "multi_layer_depth_renderer.h"
 #include "file_io.h"
+#include "pcl.h"
 
 namespace scene3d {
 
-static void RenderMultiLayerDepthImage(const std::string &obj_filename, const Camera &camera, unsigned int height, unsigned int width, MultiLayerImage<float> *ml_depth) {
+void RenderMultiLayerDepthImage(const std::string &obj_filename, const Camera &camera, unsigned int height, unsigned int width, MultiLayerImage<float> *ml_depth) {
   std::vector<std::array<unsigned int, 3>> faces;
   std::vector<std::array<float, 3>> vertices;
   std::vector<int> prim_id_to_node_id;
@@ -45,6 +46,19 @@ static void RenderMultiLayerDepthImage(const std::string &obj_filename, const Ca
       int depth_value_index = renderer->DepthValues(x, y, depth_values, &model_ids, &prim_ids);
     }
   }
+}
+
+BoundingBox DepthCamBoundingBox(const Image<float> &depth_image, const Camera &camera) {
+  Points2i xy;
+  Points1d d;
+  ValidPixelCoordinates(depth_image, &xy, &d);
+  Points3d cam_out;
+  camera.ImageToCam(xy, d, depth_image.height(), depth_image.width(), &cam_out);
+  Vec3 bmax = cam_out.rowwise().maxCoeff();
+  Vec3 bmin = cam_out.rowwise().minCoeff();
+
+  BoundingBox ret(bmin, bmax);
+  return ret;
 }
 
 }

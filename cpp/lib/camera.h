@@ -21,18 +21,7 @@ struct FrustumParams {
 
 // `hw_ratio` is height/width. e.g. 0.75
 // `x_fov` must be half-angle, in radians.
-FrustumParams MakePerspectiveFrustumParams(double hw_ratio, double x_fov, double near, double far) {
-  FrustumParams ret;
-  ret.right = std::abs(std::tan(x_fov) * near);
-  ret.top = ret.right * hw_ratio;
-
-  ret.left = -ret.right;
-  ret.bottom = -ret.top;
-
-  ret.near = near;
-  ret.far = far;
-  return ret;
-}
+FrustumParams MakePerspectiveFrustumParams(double hw_ratio, double x_fov, double near, double far);
 
 class Camera {
  public:
@@ -366,32 +355,6 @@ class PerspectiveCamera : public Camera {
   Mat44 projection_mat_inv_;
 };
 
-void SaveCamera(const string &txt_filename, const Camera &camera) {
-  int precision = 12;
-  std::ofstream ofile;
-  ofile.open(txt_filename, std::ios::out);
-
-  string prefix = (camera.is_perspective() ? "P" : "O");
-
-  ofile <<
-        prefix << " " << std::setprecision(precision) <<
-        camera.position()[0] << " " <<
-        camera.position()[1] << " " <<
-        camera.position()[2] << " " <<
-        camera.viewing_direction()[0] << " " <<
-        camera.viewing_direction()[1] << " " <<
-        camera.viewing_direction()[2] << " " <<
-        camera.up()[0] << " " <<
-        camera.up()[1] << " " <<
-        camera.up()[2] << " " <<
-        camera.frustum().left << " " <<
-        camera.frustum().right << " " <<
-        camera.frustum().bottom << " " <<
-        camera.frustum().top << " " <<
-        camera.frustum().near << " " <<
-        camera.frustum().far;
-
-  ofile.close();
-}
+void SaveCamera(const string &txt_filename, const Camera &camera);
 
 }

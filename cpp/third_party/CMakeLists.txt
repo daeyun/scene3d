@@ -91,3 +91,8 @@ target_include_directories(mve INTERFACE
         ${TIFF_INCLUDE_DIR}
         )
 target_compile_options(mve INTERFACE ${OpenMP_CXX_FLAGS})
+
+add_library(nlohmann_json INTERFACE)
+target_include_directories(nlohmann_json INTERFACE
+        ${CMAKE_SOURCE_DIR}/third_party/repos/nlohmann_json/single_include
+        )

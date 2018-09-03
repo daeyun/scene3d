@@ -2,6 +2,7 @@ import os
 from os import path
 
 import json
+import time
 
 from scene3d import log
 from scene3d import config
@@ -27,7 +28,55 @@ def __preprocess_house_json(house_json):
                         model_id = house_json['levels'][i]['nodes'][j]['modelId']
                         if model_id in __suncg_plant_and_person_ids:
                             house_json['levels'][i]['nodes'][j]['valid'] = 0
+                    if 'materials' in house_json['levels'][i]['nodes'][j]:
+                        del house_json['levels'][i]['nodes'][j]['materials']
     return house_json
+
+
+def __postprocess_obj(house_obj_filename):
+    stime = time.time()
+    assert house_obj_filename.endswith('.obj')
+    assert path.isfile(house_obj_filename)
+
+    with open(house_obj_filename, 'r') as f:
+        lines = f.read()
+    lines = lines.split('\n')
+    if lines[0].startswith('mtllib'):
+        lines = lines[1:]
+    new_lines = []
+    for line in lines:
+        if line[:6] == 'usemtl':
+            continue
+        elif line[:2] == 'g ':
+            if new_lines:  # If not first line.
+                if line == new_lines[-1]:
+                    # If the group name appears twice in a row, ignore.
+                    continue
+                if line == 'g Ground':
+                    # Line is exactly "g Ground" without node id, ignore. There must be a preceding line with the node id.
+                    assert new_lines[-1].startswith('g Ground#')
+                    continue
+                if line.startswith('g Model'):
+                    # There must be a preceding object group. We ignore model lines because they can be inferred from the json file.
+                    assert new_lines[-1].startswith('g Object#')
+                    continue
+        new_lines.append(line)
+
+    with open(house_obj_filename, 'w') as f:
+        f.write('\n'.join(new_lines))
+    print(time.time() - stime)
+
+    group_names = []
+    for line in new_lines:
+        if line.startswith('g '):
+            group = line.split(' ')[1].split('#')[0]
+            if len(group) == 32:
+                continue
+            group_names.append(group)
+
+    print(set(group_names))
+    print(len(lines), len(group_names))
+
 
 
 def house_obj_from_json(house_id, out_file='/tmp/scene3d/house_obj_default/house.obj'):
@@ -61,5 +110,7 @@ def house_obj_from_json(house_id, out_file='/tmp/scene3d/house_obj_default/house
     assert stderr == '', stderr
 
     io_utils.assert_file_exists(out_file)
+
+    __postprocess_obj(out_file)
 
     return out_file

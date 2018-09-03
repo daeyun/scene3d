@@ -63,6 +63,19 @@ class MultiLayerDepthAndSegmentation(data.Dataset):
         top_down_foreground_prim = io_utils.read_array_compressed(bin_filenames[5], dtype=np.float32)
         foreground_prim = io_utils.read_array_compressed(bin_filenames[6], dtype=np.float32)
 
+
+
+        back_of_same_category = np.full_like(categories[0], fill_value=np.nan)
+        for xx in range(categories.shape[1]):
+            for yy in range(categories.shape[2]):
+                last_of_category = (categories[0, xx, yy] != categories[:, xx, yy]).nonzero()[0][0] - 1
+                back_of_same_category[xx, yy] = last_of_category
+        back_of_same_category_depth = dataset_utils.grid_indexing_2d(depths, back_of_same_category)
+
+
+
+
+
         count_image = (~np.isnan(depths)).sum(axis=0)
         cmax = np.maximum(count_image - 2, 0)
         d1 = dataset_utils.grid_indexing_2d(depths, cmax)
@@ -112,4 +125,4 @@ class MultiLayerDepthAndSegmentation(data.Dataset):
             overhead_cam_params = [float(item) for item in f.read().strip().split()]
 
         # NOTE: target_depth contains nan values. They need to be replaced or excluded when computing the loss function.
-        return example_name, in_rgb, gt_ml_depth, count_image, d0, gt_ml_category, foreground_prim, top_down_foreground, top_down_foreground_prim, cam_params, overhead_cam_params
+        return example_name, in_rgb, gt_ml_depth, count_image, d0, gt_ml_category, foreground_prim, top_down_foreground, top_down_foreground_prim, cam_params, overhead_cam_params, back_of_same_category_depth

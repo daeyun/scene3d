@@ -26,11 +26,11 @@ cd $PROJ_DIR
 if [ $MODE = "debug" ]; then
     mkdir -p cmake-build-debug
     cmake -H. -Bcmake-build-debug -DCMAKE_BUILD_TYPE=Debug
-    make -Ccmake-build-debug -j 12
+    make -Ccmake-build-debug -j 10
 elif [ $MODE = "release" ]; then
     mkdir -p cmake-build-release
     cmake -H. -Bcmake-build-release -Dtest=OFF -DDEBUG=OFF -DCMAKE_BUILD_TYPE=Release
-    make -Ccmake-build-release -j 12
+    make -Ccmake-build-release -j 10
 fi
 
 echo "OK"

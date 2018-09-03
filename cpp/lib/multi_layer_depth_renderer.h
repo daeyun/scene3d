@@ -5,6 +5,14 @@
 #include "camera.h"
 
 namespace scene3d {
+
+struct Pixel {
+  float depth;
+  array<float, 3> normal;
+  uint16_t model_index;
+  uint16_t instance_index;
+};
+
 class MultiLayerDepthRenderer {
  public:
 

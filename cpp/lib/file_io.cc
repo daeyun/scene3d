@@ -312,4 +312,30 @@ void WriteFloatsTxt(const std::string &txt_filename, int precision, const std::v
 template void WriteFloatsTxt<float>(const std::string &txt_filename, int precision, const std::vector<float> &data);
 template void WriteFloatsTxt<double>(const std::string &txt_filename, int precision, const std::vector<double> &data);
 
+vector<string> DirectoriesInDirectory(const string &dir) {
+  fs::path path(dir);
+  vector<string> paths;
+  if (fs::exists(path) && fs::is_directory(path)) {
+    fs::directory_iterator end_iter;
+    for (fs::directory_iterator dir_iter(path); dir_iter != end_iter; ++dir_iter) {
+      if (fs::is_directory(dir_iter->status())) {
+        paths.push_back(dir_iter->path().string());
+      }
+    }
+  }
+  std::sort(std::begin(paths), std::end(paths));
+
+  return paths;
+}
+
+void ReadLines(const string &filename, vector<string> *lines) {
+  Ensures(Exists(filename));
+  std::ifstream f(filename);
+
+  std::string line;
+  while (std::getline(f, line)) {  // does not include linebreak.
+    lines->push_back(line);
+  }
+}
+
 }

@@ -431,7 +431,7 @@ int main(int argc, const char **argv) {
       }
     }
 
-
+#if 0
     // Thickness
     vector<float> thickness_values;
     for (int y = 0; y < height; y++) {
@@ -444,7 +444,7 @@ int main(int argc, const char **argv) {
         }
       }
     }
-
+#endif
 
     // Save buffer. Contains (N, H, W) tensor data.
     vector<float> all_depth_values;
@@ -511,7 +511,7 @@ int main(int argc, const char **argv) {
       }
     }
 
-#if 1
+#if 0
     string out_filename_thickness = std::string(buff) + "_ot.bin";
     scene3d::SerializeTensor<float>(out_filename_thickness, thickness_values.data(), {height, width});
     std::cout << "Output file: " << out_filename_thickness << std::endl;

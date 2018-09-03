@@ -9,6 +9,25 @@
 
 namespace scene3d {
 
+class BoundingBox {
+ public:
+  BoundingBox(const Vec3 &corner0, const Vec3 &corner1) {
+    bmin = {
+        std::min(corner0[0], corner1[0]),
+        std::min(corner0[1], corner1[1]),
+        std::min(corner0[2], corner1[2]),
+    };
+    bmax = {
+        std::max(corner0[0], corner1[0]),
+        std::max(corner0[1], corner1[1]),
+        std::max(corner0[2], corner1[2]),
+    };
+  }
+
+  Vec3 bmin;
+  Vec3 bmax;
+};
+
 class PointCloud {
  public:
   PointCloud() = default;
@@ -46,7 +65,7 @@ class PointCloud {
   vector<uint8_t> label_;
 };
 
-static void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out) {
+void ValidPixelCoordinates(const Image<float> &depth, Points2i *out_xy, Points1d *out_values) {
   vector<Vec2i> xy;
   vector<double> d;
   for (unsigned int y = 0; y < depth.height(); ++y) {
@@ -59,12 +78,19 @@ static void PclFromDepth(const Image<float> &depth, const Camera &camera, PointC
     }
   }
 
-  Points2i cam_pts(2, xy.size());
-  Points1d cam_d(2, xy.size());
+  out_xy->resize(2, xy.size());
+  out_values->resize(1, xy.size());
   for (int i = 0; i < xy.size(); ++i) {
-    cam_pts.col(i) = xy[i];
-    cam_d[i] = d[i];
+    out_xy->col(i) = xy[i];
+    (*out_values)[i] = d[i];
   }
+}
+
+static void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out) {
+  Points2i cam_pts;
+  Points1d cam_d;
+
+  ValidPixelCoordinates(depth, &cam_pts, &cam_d);
 
   // Calculate coordinates in camera space.
   Points3d cam_out;

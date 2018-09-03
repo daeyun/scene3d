@@ -32,5 +32,9 @@ bool Exists(const std::string &filename);
 
 template<typename T=float>
 void WriteFloatsTxt(const std::string &txt_filename, int precision, const std::vector<T>& data);
+
+vector<string> DirectoriesInDirectory(const string &dir);
+
+void ReadLines(const string& filename, vector<string>* lines);
 }
 
