@@ -3,6 +3,7 @@
 #include "common.h"
 #include "ray_mesh_intersection.h"
 #include "camera.h"
+#include "suncg_utils.h"
 
 namespace scene3d {
 
@@ -20,9 +21,8 @@ class MultiLayerDepthRenderer {
   MultiLayerDepthRenderer(const scene3d::RayTracer *ray_tracer,
                           const Camera *camera,
                           size_t width,
-                          size_t height,
-                          size_t max_hits)
-      : ray_tracer_(ray_tracer), camera_(camera), width_(width), height_(height), max_hits_(max_hits) {
+                          size_t height)
+      : ray_tracer_(ray_tracer), camera_(camera), width_(width), height_(height) {
     if (camera_->is_perspective()) {
       double xf, yf;
       // This whole block of code is from an older version. It makes sure aspect stretching does not happen.
@@ -80,14 +80,20 @@ class MultiLayerDepthRenderer {
   }
 
   // Implementation specific.
-  virtual int DepthValues(int x, int y, vector<float> *out, vector<string> *model_ids, vector<unsigned int> *prim_ids) const = 0;
+  virtual int DepthValues(int x, int y, vector<float> *out, vector<uint32_t> *prim_ids) const = 0;
+
+  size_t width() const {
+    return width_;
+  }
+  size_t height() const {
+    return height_;
+  }
 
  protected:
   const scene3d::RayTracer *ray_tracer_;
   const scene3d::Camera *camera_;  // Managed externally
   size_t width_;
   size_t height_;
-  size_t max_hits_;
 
  private:
   double image_focal_length() const {
@@ -110,40 +116,68 @@ class MultiLayerDepthRenderer {
   Vec3 image_optical_center_;
 };
 
+class SimpleMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
+ public:
+  SimpleMultiLayerDepthRenderer(const scene3d::RayTracer *ray_tracer,
+                                const Camera *camera,
+                                size_t width,
+                                size_t height)
+      : MultiLayerDepthRenderer(ray_tracer, camera, width, height) {}
+
+  virtual int DepthValues(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
+    Vec3 ray_direction = this->RayDirection(x, y);
+
+    int count = 0;
+
+    // Depth values are collected in the callback function, in the order traversed.
+    ray_tracer_->Traverse(this->RayOrigin(x, y), ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
+      out_values->push_back(t);
+      prim_ids->push_back(prim_id);
+      ++count;
+    });
+
+    // Convert ray displacement to depth.
+    const double z = camera_->viewing_direction().dot(ray_direction);
+    for (auto &t : *out_values) {
+      t *= z;
+    }
+
+    return count;
+  }
+};
+
 class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
  public:
   SunCgMultiLayerDepthRenderer(const scene3d::RayTracer *ray_tracer,
                                const Camera *camera,
                                size_t width,
                                size_t height,
-                               size_t max_hits,
-                               const std::vector<std::string> &prim_id_to_node_name)
-      : MultiLayerDepthRenderer(ray_tracer, camera, width, height, max_hits), prim_id_to_node_name_(prim_id_to_node_name) {}
+                               suncg::Scene *scene)
+      : MultiLayerDepthRenderer(ray_tracer, camera, width, height), scene_(scene) {}
 
   // x: x pixel coordinates [0, width).
   // y: y pixel coordinates [0, height).
   // out_values: Stack of depth values. e.g.  [FG, O1, O2, ... ,BG]. Can be empty if the ray hits nothing.
   // Returns the index of the first background found. Less than 0 if no background found.
-  virtual int DepthValues(int x, int y, vector<float> *out_values, vector<string> *model_ids, vector<unsigned int> *prim_ids) const override {
+  virtual int DepthValues(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
     Vec3 ray_direction = this->RayDirection(x, y);
 
     int background_value_index = -1;
 
     // Depth values are collected in the callback function, in the order traversed.
     ray_tracer_->Traverse(this->RayOrigin(x, y), ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
-      bool is_background = IsBackground(prim_id);
+      const auto &instance = scene_->PrimIdToInstance(prim_id);
+      bool is_background = scene_->IsPrimBackground(prim_id);
+      bool is_floor = instance.type == suncg::InstanceType::Floor || instance.type == suncg::InstanceType::Ground;
 
       if (do_not_render_background_except_floor_) {
-        if (is_background && !IsFloor(prim_id)) {
+        if (is_background && !is_floor) {
           return true;
         }
       }
 
-      string model_id = GetModelId(prim_id);
-
       if (background_value_index < 0) {  // No background value previously found.
         out_values->push_back(t);
-        model_ids->push_back(model_id);
         prim_ids->push_back(prim_id);
         // Only the first background hit counts. There could be double walls, etc.
         if (is_background) {
@@ -156,7 +190,6 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
         if (is_coincided) {
           if (!is_background) {
             out_values->push_back(t);
-            model_ids->push_back(model_id);
             prim_ids->push_back(prim_id);
           }
         } else {
@@ -184,7 +217,7 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
 
     // Depth values are collected in the callback function, in the order traversed.
     ray_tracer_->TraverseInwardNormalDirection(this->RayOrigin(x, y), ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
-      bool is_background = IsBackground(prim_id);
+      bool is_background = scene_->IsPrimBackground(prim_id);
 
       if (is_background) {
         return false;  // Stop traversal.
@@ -200,101 +233,12 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
     return ret;
   }
 
-  bool IsBackground(int prim_id) const {
-    Expects(prim_id < prim_id_to_node_name_.size());
-    auto node_name = prim_id_to_node_name_[prim_id];
-    bool ret = false;
-    for (const string &substr: kBackgroundNameSubstrings) {
-      if (node_name.find(substr) != std::string::npos) {
-        ret = true;
-        break;
-      }
-    }
-    if (!ret and node_name.find("Model#") != std::string::npos) {
-      string model_id = node_name.substr(node_name.find('#') + 1);
-      if (kSunCgDoorsAndWindows.find(model_id) != kSunCgDoorsAndWindows.end()) {
-        // If the model id matches a window or a door, it is the background.
-        ret = true;
-      }
-    }
-    return ret;
-  }
-
-  bool IsFloor(int prim_id) const {
-    Expects(prim_id < prim_id_to_node_name_.size());
-    auto node_name = prim_id_to_node_name_[prim_id];
-    bool ret = false;
-    for (const string &substr: kFloorNameSubstrings) {
-      if (node_name.find(substr) != std::string::npos) {
-        ret = true;
-        break;
-      }
-    }
-    return ret;
-  }
-
-  std::string GetModelId(int prim_id) const {
-    Expects(prim_id < prim_id_to_node_name_.size());
-    auto node_name = prim_id_to_node_name_[prim_id];
-    if (node_name.find("Floor") != std::string::npos || node_name.find("floor") != std::string::npos) {
-      return "Floor";
-    }
-    if (node_name.find("Wall") != std::string::npos) {
-      return "Wall";
-    }
-    if (node_name.find("Ceiling") != std::string::npos) {
-      return "Ceiling";
-    }
-    if (node_name.find("Box") != std::string::npos) {
-      // Not sure if this ever happens.
-      return "Box";
-    }
-    if (node_name.find("Empty") != std::string::npos) {
-      // Not sure if this ever happens.
-      return "Empty";
-    }
-    if (node_name.find("Ground") != std::string::npos) {
-      // Ground category is not present in ModelCategoryMapping.csv, but it does happen.
-      // TODO(daeyun): Decide what exactly needs to be done with Ground.
-      return "Empty";
-    }
-    if (node_name.find("Model#") != std::string::npos) {
-      string model_id = node_name.substr(node_name.find('#') + 1);
-      return model_id;
-    }
-
-    LOGGER->error("model_id detection failed. node name was {}", node_name);
-    throw std::runtime_error("model_id detection failed");
-  }
-
   void set_do_not_render_background_except_floor(bool value) {
     do_not_render_background_except_floor_ = value;
   }
 
  private:
-  const std::vector<string> kBackgroundNameSubstrings{"Floor", "Wall", "Ceiling", "Room", "Level", "floor", "background"};
-  const std::vector<string> kFloorNameSubstrings{"Floor", "Level", "floor"};
-
-  // TODO(daeyun): These are used for detecting doors and windows. There are probably better ways to do this.
-//  const std::set<std::string> kSunCgDoorsAndWindows
-//      {"122", "126", "133", "209", "210", "211", "212", "213", "214", "246", "247", "326", "327", "331", "361", "73", "752", "753", "754", "755", "756", "757", "758", "759", "760", "761",
-//       "762", "763", "764", "765", "766", "767", "768", "769", "770", "771", "s__1276", "s__1762", "s__1763", "s__1764", "s__1765", "s__1766", "s__1767", "s__1768", "s__1769", "s__1770", "s__1771",
-//       "s__1772", "s__1773", "s__2010", "s__2011", "s__2012", "s__2013", "s__2014", "s__2015", "s__2016", "s__2017", "s__2019"};
-
-  // Now it includes stairs, columns, and rugs. otherwise same as above.
-  // TODO(daeyun): rename. or refactor to use nyu category name.
-  const std::set<std::string> kSunCgDoorsAndWindows
-      {"122", "126", "133", "209", "210", "211", "212", "213", "214", "246", "247", "326", "327", "331", "361", "73", "752", "753", "754", "755", "756", "757", "758", "759", "760", "761",
-       "762", "763", "764", "765", "766", "767", "768", "769", "770", "771", "s__1276", "s__1762", "s__1763", "s__1764", "s__1765", "s__1766", "s__1767", "s__1768", "s__1769", "s__1770", "s__1771",
-       "s__1772", "s__1773", "s__2010", "s__2011", "s__2012", "s__2013", "s__2014", "s__2015", "s__2016", "s__2017", "s__2019",
-
-       "151", "152", "253", "254", "782", "783", "784", "785", "s__499",  // "stairs"
-
-       "365", "366", "367", // "column"
-
-       "153", "235", "238", "s__1090", "s__1647", // "rug"
-      };
-  const std::vector<std::string> prim_id_to_node_name_;
+  suncg::Scene *scene_;
 
   // TODO(daeyun): For now, this is only used in the "DepthValues" function. Not thickness image.
   bool do_not_render_background_except_floor_ = false;

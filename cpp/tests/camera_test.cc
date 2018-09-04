@@ -407,10 +407,6 @@ TEST_CASE("image to cam, perspective") {
   Vec3 lookat = {0, 0, 0};
   auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
   auto camera = PerspectiveCamera(eye, lookat, up, frustum);
-  auto ml_depth = MultiLayerImage<float>(height, width);
-  RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
-  Image<float> depth(height, width);
-  ml_depth.ExtractLayer(0, &depth);
 
   std::vector<std::array<unsigned int, 3>> faces;
   std::vector<std::array<float, 3>> vertices;
@@ -418,6 +414,23 @@ TEST_CASE("image to cam, perspective") {
   std::vector<std::string> prim_id_to_node_name;
   bool ok = ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
   Ensures(ok);
+
+  scene3d::RayTracer ray_tracer(faces, vertices);
+  ray_tracer.PrintStats();
+
+  auto renderer = scene3d::SimpleMultiLayerDepthRenderer(
+      &ray_tracer,
+      &camera,
+      width,
+      height
+  );
+
+  auto ml_depth = MultiLayerImage<float>(height, width);
+  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+  RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
+
+  Image<float> depth(height, width);
+  ml_depth.ExtractLayer(0, &depth);
 
   Points3d points;
   ToEigen(vertices, &points);
@@ -496,17 +509,29 @@ TEST_CASE("image to cam, orthographic") {
   REQUIRE(!camera.fov(nullptr, nullptr));
   REQUIRE(!camera.is_perspective());
 
-  auto ml_depth = MultiLayerImage<float>(height, width);
-  RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
-  Image<float> depth(height, width);
-  ml_depth.ExtractLayer(0, &depth);
-
   std::vector<std::array<unsigned int, 3>> faces;
   std::vector<std::array<float, 3>> vertices;
   std::vector<int> prim_id_to_node_id;
   std::vector<std::string> prim_id_to_node_name;
   bool ok = ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
   Ensures(ok);
+
+  scene3d::RayTracer ray_tracer(faces, vertices);
+  ray_tracer.PrintStats();
+
+  auto renderer = scene3d::SimpleMultiLayerDepthRenderer(
+      &ray_tracer,
+      &camera,
+      width,
+      height
+  );
+
+  auto ml_depth = MultiLayerImage<float>(height, width);
+  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+  RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
+
+  Image<float> depth(height, width);
+  ml_depth.ExtractLayer(0, &depth);
 
   Points3d points;
   ToEigen(vertices, &points);

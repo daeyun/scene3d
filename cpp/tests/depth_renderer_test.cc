@@ -12,30 +12,22 @@ using namespace scene3d;
 TEST_CASE("multi hit test") {
   // These paths are relative to the project root directory.
   std::string camera_filename = "resources/depth_render/house_obj_camera.txt";
-  std::string obj_filename = "resources/depth_render/house.obj";
+  std::string obj_filename = "resources/house/0004d52d1aeeb8ae6de39d6bd993e992/house.obj";
+  std::string json_filename = "resources/house/0004d52d1aeeb8ae6de39d6bd993e992/house_p.json";
+  std::string category_filename = "resources/ModelCategoryMapping.csv";
 
-  std::vector<std::array<unsigned int, 3>> faces;
-  std::vector<std::array<float, 3>> vertices;
-  std::vector<int> prim_id_to_node_id;
-  std::vector<std::string> prim_id_to_node_name;
+  // Read the obj, json, and category mappings.
+  auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
+  scene->Build();
 
   std::vector<suncg::CameraParams> suncg_cameras;
   suncg::ReadCameraFile(camera_filename, &suncg_cameras);
 
-  LOGGER->info("Reading file {}", obj_filename);
-  bool ok = scene3d::ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
-
-  // Sanity check.
-  Ensures(faces.size() == prim_id_to_node_id.size());
-  Ensures(faces.size() == prim_id_to_node_name.size());
-
-  LOGGER->info("{} faces, {} vertices", faces.size(), vertices.size());
-
-  scene3d::RayTracer ray_tracer(faces, vertices);
+  scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
+  ray_tracer.PrintStats();
 
   unsigned int width = 320;
   unsigned int height = 240;
-  unsigned int max_hits = 0;  // unlimited
 
   int camera_index = 3;
 
@@ -48,17 +40,15 @@ TEST_CASE("multi hit test") {
       &camera,
       width,
       height,
-      max_hits,
-      prim_id_to_node_name
+      scene.get()
   );
 
   renderer.ray_tracer()->PrintStats();
 
   SECTION("Floor pixel") {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    int background_index = renderer.DepthValues(100, 200, &values, &model_ids, &prim_ids);
+    int background_index = renderer.DepthValues(100, 200, &values, &prim_ids);
 
     LOGGER->info("Num hits at (100, 200): {}", values.size());
     for (int i = 0; i < values.size(); ++i) {
@@ -72,9 +62,8 @@ TEST_CASE("multi hit test") {
 
   SECTION("no hit. outdoor") {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    int background_index = renderer.DepthValues(172, 109, &values, &model_ids, &prim_ids);
+    int background_index = renderer.DepthValues(172, 109, &values, &prim_ids);
 
     REQUIRE(0 > background_index);
     REQUIRE(0 == values.size());
@@ -82,9 +71,8 @@ TEST_CASE("multi hit test") {
 
   SECTION("two hits. no background hit") {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    int background_index = renderer.DepthValues(172, 129, &values, &model_ids, &prim_ids);
+    int background_index = renderer.DepthValues(172, 129, &values, &prim_ids);
 
     REQUIRE(0 > background_index);
     REQUIRE(2 == values.size());
@@ -92,9 +80,8 @@ TEST_CASE("multi hit test") {
 
   SECTION("one hit. background (door)") {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    int background_index = renderer.DepthValues(156, 109, &values, &model_ids, &prim_ids);
+    int background_index = renderer.DepthValues(156, 109, &values, &prim_ids);
 
     REQUIRE(0 == background_index);
     REQUIRE(1 == values.size());
@@ -103,9 +90,8 @@ TEST_CASE("multi hit test") {
 
   SECTION("three hits, two hits through arm of sofa, then background (floor)") {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    int background_index = renderer.DepthValues(83, 215, &values, &model_ids, &prim_ids);
+    int background_index = renderer.DepthValues(83, 215, &values, &prim_ids);
 
     REQUIRE(2 == background_index);
     REQUIRE(3 == values.size());
@@ -114,9 +100,8 @@ TEST_CASE("multi hit test") {
 
   SECTION("many hits. two objects, last of which has a coinciding plane on the floor. then background (floor)") {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    int background_index = renderer.DepthValues(214, 170, &values, &model_ids, &prim_ids);
+    int background_index = renderer.DepthValues(214, 170, &values, &prim_ids);
 
     LOGGER->info("Num hits at (214, 170): {}", values.size());
     for (int i = 0; i < values.size(); ++i) {
@@ -148,30 +133,22 @@ TEST_CASE("multi hit test") {
 TEST_CASE("thickness in inner normal direction") {
   // These paths are relative to the project root directory.
   std::string camera_filename = "resources/depth_render/house_obj_camera.txt";
-  std::string obj_filename = "resources/depth_render/house.obj";
+  std::string obj_filename = "resources/house/0004d52d1aeeb8ae6de39d6bd993e992/house.obj";
+  std::string json_filename = "resources/house/0004d52d1aeeb8ae6de39d6bd993e992/house_p.json";
+  std::string category_filename = "resources/ModelCategoryMapping.csv";
 
-  std::vector<std::array<unsigned int, 3>> faces;
-  std::vector<std::array<float, 3>> vertices;
-  std::vector<int> prim_id_to_node_id;
-  std::vector<std::string> prim_id_to_node_name;
+  // Read the obj, json, and category mappings.
+  auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
+  scene->Build();
 
   std::vector<suncg::CameraParams> suncg_cameras;
   suncg::ReadCameraFile(camera_filename, &suncg_cameras);
 
-  LOGGER->info("Reading file {}", obj_filename);
-  bool ok = scene3d::ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
-
-  // Sanity check.
-  Ensures(faces.size() == prim_id_to_node_id.size());
-  Ensures(faces.size() == prim_id_to_node_name.size());
-
-  LOGGER->info("{} faces, {} vertices", faces.size(), vertices.size());
-
-  scene3d::RayTracer ray_tracer(faces, vertices);
+  scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
+  ray_tracer.PrintStats();
 
   unsigned int width = 320;
   unsigned int height = 240;
-  unsigned int max_hits = 0;  // unlimited
 
   int camera_index = 3;
 
@@ -184,8 +161,7 @@ TEST_CASE("thickness in inner normal direction") {
       &camera,
       width,
       height,
-      max_hits,
-      prim_id_to_node_name
+      scene.get()
   );
 
   renderer.ray_tracer()->PrintStats();
@@ -231,13 +207,11 @@ TEST_CASE("orthographic coordinates") {
 
     auto camera = OrthographicCamera(eye, eye + view_dir, up, frustum);
 
-    auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+    auto renderer = scene3d::SimpleMultiLayerDepthRenderer(
         &ray_tracer,
         &camera,
         16,
-        32,
-        0,
-        prim_id_to_node_name
+        32
     );
 
     Vec3 ray_origin = renderer.RayOrigin(0, 0);
@@ -253,11 +227,15 @@ TEST_CASE("orthographic coordinates") {
 TEST_CASE("simple scene depth test") {
   // These paths are relative to the project root directory.
   std::string obj_filename = "resources/depth_render/dummy.obj";
+  std::string json_filename = "resources/depth_render/dummy.json";
+  std::string category_filename = "resources/depth_render/dummy_ModelCategoryMapping.csv";
 
-  std::vector<std::array<unsigned int, 3>> faces;
-  std::vector<std::array<float, 3>> vertices;
-  std::vector<int> prim_id_to_node_id;
-  std::vector<std::string> prim_id_to_node_name;
+  // Read the obj, json, and category mappings.
+  auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
+  scene->Build();
+
+  scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
+  ray_tracer.PrintStats();
 
   Vec3 eye = {0, 5, 0};
   Vec3 up = {0, 0, -1};
@@ -269,36 +247,23 @@ TEST_CASE("simple scene depth test") {
 
   LOGGER->info("Reading file {}", obj_filename);
 
-  bool ok = scene3d::ReadFacesAndVertices(obj_filename, &faces, &vertices, &prim_id_to_node_id, &prim_id_to_node_name);
-
-  // Sanity check.
-  Ensures(faces.size() == prim_id_to_node_id.size());
-  Ensures(faces.size() == prim_id_to_node_name.size());
-
-  LOGGER->info("{} faces, {} vertices", faces.size(), vertices.size());
-
-  scene3d::RayTracer ray_tracer(faces, vertices);
-
   unsigned int width = 200;
   unsigned int height = 200;
-  unsigned int max_hits = 0;  // unlimited. not relevant at the moment.
 
   auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
       &ray_tracer,
       &camera,
       width,
       height,
-      max_hits,
-      prim_id_to_node_name
+      scene.get()
   );
 
   renderer.ray_tracer()->PrintStats();
 
   {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    renderer.DepthValues(100, 100, &values, &model_ids, &prim_ids);
+    renderer.DepthValues(100, 100, &values, &prim_ids);
     REQUIRE(3 == values.size());
     REQUIRE(Approx(4.0) == values[0]);
     REQUIRE(Approx(6.0) == values[1]);
@@ -306,9 +271,8 @@ TEST_CASE("simple scene depth test") {
 
   {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    renderer.DepthValues(95, 107, &values, &model_ids, &prim_ids);
+    renderer.DepthValues(95, 107, &values, &prim_ids);
     REQUIRE(3 == values.size());
     REQUIRE(Approx(4.0) == values[0]);
     REQUIRE(Approx(6.0) == values[1]);
@@ -316,27 +280,24 @@ TEST_CASE("simple scene depth test") {
 
   {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    renderer.DepthValues(70, 72, &values, &model_ids, &prim_ids);
+    renderer.DepthValues(70, 72, &values, &prim_ids);
     REQUIRE(1 == values.size());
     REQUIRE(Approx(6.0) == values[0]);
   }
 
   {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    renderer.DepthValues(80, 82, &values, &model_ids, &prim_ids);
+    renderer.DepthValues(80, 82, &values, &prim_ids);
     REQUIRE(1 == values.size());
     REQUIRE(Approx(6.0) == values[0]);
   }
 
   {
     vector<float> values;
-    vector<string> model_ids;
     vector<unsigned int> prim_ids;
-    renderer.DepthValues(121, 79, &values, &model_ids, &prim_ids);
+    renderer.DepthValues(121, 79, &values, &prim_ids);
     REQUIRE(1 == values.size());
     REQUIRE(Approx(6.0) == values[0]);
   }

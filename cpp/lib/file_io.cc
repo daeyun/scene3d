@@ -248,9 +248,11 @@ bool PrepareDir(const string &filename) {
   auto path = fs::absolute(filename);
   if (!fs::is_directory(path)) {
     Expects(!fs::is_regular_file(path));
-    fs::create_directories(path);
-    LOGGER->debug("mkdir -p {}", path.string());
-    return true;
+    bool ok = fs::create_directories(path);
+    if (ok) {
+      LOGGER->debug("mkdir -p {}", path.string());
+      return true;
+    }
   }
   return false;
 }

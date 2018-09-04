@@ -1,0 +1,6 @@
+index,model_id,fine_grained_class,coarse_grained_class,empty_struct_obj,nyuv2_40class,wnsynsetid,wnsynsetkey
+0,Empty,,,0,void,,
+1,Floor,,,1,floor,,
+2,Suzanne,,,1,otherprop,,
+3,Icosphere,,,1,otherprop,,
+4,Cube,,,1,otherprop,,

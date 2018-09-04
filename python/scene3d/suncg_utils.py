@@ -78,7 +78,6 @@ def __postprocess_obj(house_obj_filename):
     print(len(lines), len(group_names))
 
 
-
 def house_obj_from_json(house_id, out_file='/tmp/scene3d/house_obj_default/house.obj'):
     assert out_file.endswith('.obj'), out_file
     io_utils.ensure_dir_exists(path.dirname(out_file))

@@ -11,11 +11,21 @@
 #include "lib/pcl.h"
 #include "lib/meshdist.h"
 #include "lib/benchmark.h"
+#include "lib/suncg_utils.h"
 
 using namespace scene3d;
 
 TEST_CASE("pcl from depth") {
   std::string obj_filename = "resources/depth_render/dummy.obj";
+  std::string json_filename = "resources/depth_render/dummy.json";
+  std::string category_filename = "resources/depth_render/dummy_ModelCategoryMapping.csv";
+
+  // Read the obj, json, and category mappings.
+  auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
+  scene->Build();
+
+  scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
+  ray_tracer.PrintStats();
 
   PointCloud pcl;
 
@@ -33,8 +43,16 @@ TEST_CASE("pcl from depth") {
     auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
     auto camera = PerspectiveCamera(cam_eye, cam_lookat, cam_up, frustum);
 
+    auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+        &ray_tracer,
+        &camera,
+        width,
+        height,
+        scene.get()
+    );
     auto ml_depth = MultiLayerImage<float>(height, width);
-    RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
+    auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+    RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
 
     REQUIRE(3 == ml_depth.values(120, 160)->size());
     REQUIRE(Approx(cam_eye[1] - 1) == ml_depth.at(120, 160, 0));
@@ -68,8 +86,16 @@ TEST_CASE("pcl from depth") {
 
     auto camera = OrthographicCamera(cam_eye, cam_lookat, cam_up, frustum);
 
+    auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+        &ray_tracer,
+        &camera,
+        width,
+        height,
+        scene.get()
+    );
     auto ml_depth = MultiLayerImage<float>(height, width);
-    RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
+    auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+    RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
 
     REQUIRE(3 == ml_depth.values(120, 160)->size());
     REQUIRE(Approx(cam_eye[1] - 1) == ml_depth.at(120, 160, 0));

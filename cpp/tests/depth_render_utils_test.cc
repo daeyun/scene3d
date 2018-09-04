@@ -9,11 +9,22 @@
 #include "lib/depth_render_utils.h"
 #include "lib/camera.h"
 #include "lib/file_io.h"
+#include "lib/suncg_utils.h"
 
 using namespace scene3d;
 
 TEST_CASE("perspective") {
   std::string obj_filename = "resources/depth_render/dummy.obj";
+  std::string json_filename = "resources/depth_render/dummy.json";
+  std::string category_filename = "resources/depth_render/dummy_ModelCategoryMapping.csv";
+
+  // Read the obj, json, and category mappings.
+  auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
+  scene->Build();
+
+  scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
+  ray_tracer.PrintStats();
+
   unsigned int height = 240;
   unsigned int width = 320;
   double x_fov = 30.0 / 180.0 * M_PI;  // 60 degrees left-to-right.
@@ -26,8 +37,17 @@ TEST_CASE("perspective") {
   auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
   auto camera = PerspectiveCamera(cam_eye, cam_lookat, cam_up, frustum);
 
+  auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+      &ray_tracer,
+      &camera,
+      width,
+      height,
+      scene.get()
+  );
+
   auto ml_depth = MultiLayerImage<float>(height, width);
-  RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
+  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+  RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
 
   REQUIRE(3 == ml_depth.values(120, 160)->size());
   REQUIRE(Approx(cam_eye[1] - 1) == ml_depth.at(120, 160, 0));
@@ -67,6 +87,16 @@ TEST_CASE("perspective") {
 
 TEST_CASE("orthographic") {
   std::string obj_filename = "resources/depth_render/dummy.obj";
+  std::string json_filename = "resources/depth_render/dummy.json";
+  std::string category_filename = "resources/depth_render/dummy_ModelCategoryMapping.csv";
+
+  // Read the obj, json, and category mappings.
+  auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
+  scene->Build();
+
+  scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
+  ray_tracer.PrintStats();
+
   unsigned int height = 240;
   unsigned int width = 320;
   double near = 0.01;
@@ -86,8 +116,17 @@ TEST_CASE("orthographic") {
 
   auto camera = OrthographicCamera(cam_eye, cam_lookat, cam_up, frustum);
 
+  auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+      &ray_tracer,
+      &camera,
+      width,
+      height,
+      scene.get()
+  );
+
   auto ml_depth = MultiLayerImage<float>(height, width);
-  RenderMultiLayerDepthImage(obj_filename, camera, height, width, &ml_depth);
+  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+  RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
 
   REQUIRE(3 == ml_depth.values(120, 160)->size());
   REQUIRE(Approx(cam_eye[1] - 1) == ml_depth.at(120, 160, 0));

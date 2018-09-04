@@ -39,7 +39,7 @@ class RayTracer {
 
     std::set<unsigned int> ignored_prim_ids;
     nanort::BVHTraceOptions trace_options;
-    trace_options.ignored_prim_ids = &ignored_prim_ids;
+    trace_options.ignored_prim_ids = &ignored_prim_ids;  // Managed externally
 
     while (true) {
       nanort::TriangleIntersection<> isect{};
@@ -74,7 +74,7 @@ class RayTracer {
 
     std::set<unsigned int> ignored_prim_ids;
     nanort::BVHTraceOptions trace_options;
-    trace_options.ignored_prim_ids = &ignored_prim_ids;
+    trace_options.ignored_prim_ids = &ignored_prim_ids;  // Managed externally
 
     int count = 0;
     while (true) {
