@@ -7,6 +7,7 @@
 #include "csv.h"
 
 #include "lib/file_io.h"
+#include "lib/benchmark.h"
 #include "lib/suncg_utils.h"
 #include "lib/multi_layer_depth_renderer.h"
 #include "lib/depth.h"
@@ -36,6 +37,12 @@ int main(int argc, const char **argv) {
   // Initialize logging.
   spdlog::stdout_color_mt("console");
 
+  auto timer0 = SimpleTimer("reading and parsing");
+  auto timer4 = SimpleTimer("ray tracer initialization");
+  auto timer1 = SimpleTimer("ray tracing");
+  auto timer2 = SimpleTimer("LDI labeling");
+  auto timer3 = SimpleTimer("saving");
+
   // Check required flags.
   vector<string> required_flags = {"obj", "json", "cameras", "category", "out_dir"};
   for (const string &name: required_flags) {
@@ -55,10 +62,13 @@ int main(int argc, const char **argv) {
   Ensures(width < 1e5);
   Ensures(height < 1e5);
 
+  timer0.Tic();
   // Read the obj, json, and category mappings.
   auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
   scene->Build();
+  timer0.Toc();
 
+  timer4.Tic();
   // Read the camera file.
   std::vector<PerspectiveCamera> cameras;
   suncg::ReadCameraFile(camera_filename, &cameras);
@@ -66,6 +76,7 @@ int main(int argc, const char **argv) {
 
   scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
   ray_tracer.PrintStats();
+  timer4.Toc();
 
   for (int camera_i = 0; camera_i < cameras.size(); ++camera_i) {
     PerspectiveCamera camera = cameras[camera_i];
@@ -79,14 +90,41 @@ int main(int argc, const char **argv) {
         scene.get()
     );
 
-    auto ml_depth = MultiLayerImage<float>(height, width);
-    auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+    timer1.Tic();
+    MultiLayerImage<float> ml_depth;
+    MultiLayerImage<uint32_t> ml_prim_ids;
     RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
+    timer1.Toc();
 
+    timer2.Tic();
+    MultiLayerImage<float> out_ml_depth;
+    MultiLayerImage<uint16_t> out_ml_model_indices;
+    GenerateMultiDepthExample(scene.get(), ml_depth, ml_prim_ids, &out_ml_depth, &out_ml_model_indices);
+    timer2.Toc();
+
+    timer3.Tic();
+    auto generate_filename = [&](int index, const string &suffix, const string &extension) -> string {
+      Ensures(suffix.size() < 128);
+      Ensures(extension.size() < 128);
+      Ensures(extension[0] != '.');
+      char buff[2048];
+      snprintf(buff, sizeof(buff), "%06d_%s.%s", index, suffix.c_str(), extension.c_str());
+      return JoinPath(out_dir, string(buff));
+    };
+
+    const unsigned int kNumLayers = 4;
+    out_ml_depth.Save(generate_filename(camera_i, "ldi", "bin"), kNumLayers);
+    out_ml_model_indices.Save(generate_filename(camera_i, "model", "bin"), kNumLayers);
+    timer3.Toc();
   }
 
   PrepareDir(out_dir);
 
+  LOGGER->info("Elapsed time ({}) : {:.1f}", timer0.name(), timer0.Duration<std::milli>());
+  LOGGER->info("Elapsed time ({}) : {:.1f}", timer4.name(), timer4.Duration<std::milli>());
+  LOGGER->info("Elapsed time ({}) : {:.1f}", timer1.name(), timer1.Duration<std::milli>());
+  LOGGER->info("Elapsed time ({}) : {:.1f}", timer2.name(), timer2.Duration<std::milli>());
+  LOGGER->info("Elapsed time ({}) : {:.1f}", timer3.name(), timer3.Duration<std::milli>());
   LOGGER->info("OK");
   return 0;
 }

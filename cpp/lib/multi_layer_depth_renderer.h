@@ -160,9 +160,11 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
   // out_values: Stack of depth values. e.g.  [FG, O1, O2, ... ,BG]. Can be empty if the ray hits nothing.
   // Returns the index of the first background found. Less than 0 if no background found.
   virtual int DepthValues(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
-    Vec3 ray_direction = this->RayDirection(x, y);
+    const Vec3 &ray_direction = this->RayDirection(x, y);
 
-    int background_value_index = -1;
+    const double kMargin = 0.001;  // This margin can be pretty big, for some reason; based on inspection of nested floors.
+
+    int background_value_index = -1;  // -1 means no background is found in this pixel.
 
     // Depth values are collected in the callback function, in the order traversed.
     ray_tracer_->Traverse(this->RayOrigin(x, y), ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
@@ -185,7 +187,6 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
         }
       } else { // Background is already found.
         // But if this hit coincides with a previously found background and is not a background itself, add.
-        const double kMargin = 0.001;  // This margin can be pretty big, for some reason; based on inspection of nested floors.
         bool is_coincided = std::abs(t - out_values->at(static_cast<size_t>(background_value_index))) < kMargin;
         if (is_coincided) {
           if (!is_background) {
@@ -204,6 +205,15 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
     for (auto &t : *out_values) {
       t *= z;
     }
+
+    Ensures(prim_ids->size() == out_values->size());
+
+    if (!prim_ids->empty() && background_value_index >= 0 && background_value_index < prim_ids->size() - 1) {
+      std::swap(prim_ids->at(prim_ids->size() - 1), prim_ids->at(background_value_index));
+      background_value_index = static_cast<int>(prim_ids->size() - 1);
+    }
+
+    // TODO(daeyun): `prim_ids` can probably be incorrectly ordered if there are coinciding surfaces.
 
     return background_value_index;
   }

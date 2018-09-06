@@ -15,7 +15,7 @@ long MicroSecondsSinceEpoch() {
       (std::chrono::high_resolution_clock::now().time_since_epoch()).count();
 }
 
-void Timer::Toc() {
+void RunningAverageTimer::Toc() {
   auto now = MicroSecondsSinceEpoch();
   auto elapsed = now - last_seen_;
   last_seen_ = now;
@@ -27,13 +27,29 @@ void Timer::Toc() {
   }
 }
 
-void Timer::Tic() {
+void RunningAverageTimer::Tic() {
   last_seen_ = MicroSecondsSinceEpoch();
 }
 
-Timer::Timer(const std::string &name) : name_(name) {
+RunningAverageTimer::RunningAverageTimer(const std::string &name) : name_(name) {
   running_average_microseconds_ = -1;
   last_seen_ = MicroSecondsSinceEpoch();
+}
+
+void SimpleTimer::Toc() {
+  auto now = MicroSecondsSinceEpoch();
+  auto elapsed = now - last_seen_;
+  last_seen_ = now;
+  sum_microseconds_ += elapsed;
+  ++toc_count_;
+}
+
+void SimpleTimer::Tic() {
+  last_seen_ = MicroSecondsSinceEpoch();
+}
+
+SimpleTimer::SimpleTimer(const std::string &name) : name_(name) {
+  Tic();
 }
 }  // namespace mvshape
 

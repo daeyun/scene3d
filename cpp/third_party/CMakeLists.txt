@@ -35,6 +35,7 @@ target_link_libraries(assimp INTERFACE
         ${CMAKE_SOURCE_DIR}/third_party/install/assimp/lib/libassimp.a
         ${CMAKE_SOURCE_DIR}/third_party/install/assimp/lib/libIrrXML.a
         z
+        pthread
         )
 target_include_directories(assimp BEFORE INTERFACE
         ${CMAKE_SOURCE_DIR}/third_party/install/assimp/include
@@ -96,3 +97,9 @@ add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE
         ${CMAKE_SOURCE_DIR}/third_party/repos/nlohmann_json/single_include
         )
+
+add_library(lrucache INTERFACE)
+target_include_directories(lrucache INTERFACE
+        ${CMAKE_SOURCE_DIR}/third_party/repos/lrucache11
+        )
+target_compile_options(lrucache INTERFACE "-lpthread")

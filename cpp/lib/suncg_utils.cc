@@ -5,6 +5,7 @@
 
 #include "string_utils.h"
 #include "file_io.h"
+#include "benchmark.h"
 
 #include "nlohmann/json.hpp"
 #include "assimp/Importer.hpp"
@@ -272,7 +273,7 @@ bool ReadFacesAndVertices(const std::string &filename,
 
   // List of post-processing flags can be found here:
   // http://sir-kimmi.de/assimp/lib_html/postprocess_8h.html#a64795260b95f5a4b3f3dc1be4f52e410
-  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
+  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_SortByPType);
 
   if (!scene) {
     LOGGER->error("ERROR in {}: {}", filename, importer.GetErrorString());
@@ -332,9 +333,6 @@ bool ReadFacesAndVertices(const std::string &filename,
       face_offset += mesh->mNumVertices;
       Ensures(face_offset == vertices->size());
     }
-  }
-
-  for (int i = 0; i < scene->mNumMeshes; ++i) {
   }
 
   if (triangle_count <= 0) {

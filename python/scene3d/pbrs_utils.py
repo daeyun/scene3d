@@ -106,6 +106,6 @@ def save_filtered_pbrs_camera_file(out_filename: str, house_id: str):
     assert out_filename.endswith('.txt')
     lines = get_camera_params_line(house_id)
     c_ids = camera_ids(house_id)
-    new_camera_file_content = ''.join([lines[int(cid)] for cid in c_ids]).strip()
+    new_camera_file_content = '\n'.join([lines[int(cid)] for cid in c_ids]).strip()
     with open(out_filename, 'w') as f:
         f.write(new_camera_file_content)

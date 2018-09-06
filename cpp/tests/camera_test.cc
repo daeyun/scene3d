@@ -425,11 +425,11 @@ TEST_CASE("image to cam, perspective") {
       height
   );
 
-  auto ml_depth = MultiLayerImage<float>(height, width);
-  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+  auto ml_depth = MultiLayerImage<float>(height, width, NAN);
+  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width, std::numeric_limits<uint32_t>::max());
   RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
 
-  Image<float> depth(height, width);
+  Image<float> depth(height, width, NAN);
   ml_depth.ExtractLayer(0, &depth);
 
   Points3d points;
@@ -526,11 +526,11 @@ TEST_CASE("image to cam, orthographic") {
       height
   );
 
-  auto ml_depth = MultiLayerImage<float>(height, width);
-  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width);
+  auto ml_depth = MultiLayerImage<float>(height, width, NAN);
+  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width, std::numeric_limits<uint32_t>::max());
   RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
 
-  Image<float> depth(height, width);
+  Image<float> depth(height, width, NAN);
   ml_depth.ExtractLayer(0, &depth);
 
   Points3d points;

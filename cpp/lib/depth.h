@@ -9,11 +9,11 @@ namespace scene3d {
 template<typename T=float>
 class Image {
  public:
-  Image(unsigned int height, unsigned int width) : height_(height), width_(width) {
+  Image(unsigned int height, unsigned int width, T null_value) : height_(height), width_(width), null_value_(null_value) {
     data_.resize(height_ * width_);
   }
 
-  void Save(const string& filename) const {
+  void Save(const string &filename) const {
     SerializeTensor<T>(filename, this->data(), {height_, width_});
   }
 
@@ -52,12 +52,16 @@ class Image {
  private:
   vector<T> data_;
   unsigned int height_, width_;
+  T null_value_;
 };
 
 template<typename T=float>
 class MultiLayerImage {
  public:
-  MultiLayerImage(unsigned int height, unsigned int width) : height_(height), width_(width) {
+  MultiLayerImage() : height_(0), width_(0) {}
+
+  // `null_value` is usually NAN if T is float.
+  MultiLayerImage(unsigned int height, unsigned int width, T null_value) : height_(height), width_(width), null_value_(null_value) {
     data_.resize(height_ * width_);
     for (int i = 0; i < data_.size(); ++i) {
       data_[i] = std::make_unique<vector<T>>();
@@ -77,7 +81,7 @@ class MultiLayerImage {
     if (l < v->size()) {
       return v->at(l);
     }
-    return NAN;
+    return null_value_;
   }
 
   inline T at(unsigned int index, unsigned int l) const {
@@ -85,13 +89,27 @@ class MultiLayerImage {
     if (l < v->size()) {
       return v->at(l);
     }
-    return NAN;
+    return null_value_;
   }
 
-  void ExtractLayer(unsigned int l, Image<T> *out) {
-    *out = Image<T>(height_, width_);
+  void ExtractLayer(unsigned int l, Image<T> *out) const {
+    *out = Image<T>(height_, width_, null_value_);
     for (unsigned int i = 0; i < data_.size(); ++i) {
       out->at(i) = this->at(i, l);
+    }
+  }
+
+  // Appends to `out` without initializing.
+  void ExtractLayer(unsigned int l, vector<T> *out) const {
+    for (unsigned int i = 0; i < data_.size(); ++i) {
+      out->push_back(this->at(i, l));
+    }
+  }
+
+  // Get the values of first N layers.
+  void ExtractContiguousLayers(unsigned int num_layers, vector<T> *out) const {
+    for (int i = 0; i < num_layers; ++i) {
+      ExtractLayer(i, out);
     }
   }
 
@@ -105,9 +123,27 @@ class MultiLayerImage {
     return ret;
   }
 
+  void Save(const string &filename, unsigned int num_layers) const {
+    // After compression, (N, H, W) ends up being smaller than (H, W, N).
+    // 344 Kb vs. 468 Kb on House 0004d5 LDI.
+
+    vector<T> flat;
+    ExtractContiguousLayers(num_layers, &flat);
+    Ensures(flat.size() == height_ * width_ * num_layers);
+    SerializeTensor<T>(filename, flat.data(), {num_layers, height_, width_});
+  }
+
+  unsigned int height() const {
+    return height_;
+  }
+  unsigned int width() const {
+    return width_;
+  }
+
  private:
   vector<unique_ptr<vector<T>>> data_;
   unsigned int height_, width_;
+  T null_value_;
 };
 
 }

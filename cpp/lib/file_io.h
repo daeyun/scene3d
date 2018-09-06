@@ -37,6 +37,10 @@ vector<string> DirectoriesInDirectory(const string &dir);
 
 void ReadLines(const string &filename, vector<string> *lines);
 
-bool PrepareDir(const string &filename);
+bool PrepareDir(const string &dirname);
+
+bool PrepareDirForFile(const string &filename);
+
+string JoinPath(const string &a, const string &b);
 }
 

@@ -9,6 +9,8 @@
 #include "common.h"
 #include "camera.h"
 
+#include "third_party/repos/lrucache11/LRUCache11.hpp"
+
 namespace scene3d {
 namespace suncg {
 
@@ -54,6 +56,11 @@ class Scene {
   }
 
   const CategoryMappingEntry &PrimIdToCategory(unsigned int prim_id) const {
+    const CategoryMappingEntry *cached;
+    if (prim_to_cat_cache_.tryGet(prim_id, cached)) {
+      return *cached;
+    }
+
     const Instance &instance = PrimIdToInstance(prim_id);
 
     switch (instance.type) {
@@ -71,6 +78,8 @@ class Scene {
     if (it == model_id_to_category.end()) {
       LOGGER->error("prim_id {} has uncategoried model_id {}", prim_id, instance.model_id);
     }
+
+    prim_to_cat_cache_.insert(prim_id, &it->second);
     return it->second;
   }
 
@@ -89,14 +98,21 @@ class Scene {
       face_normals[prim_id][2] = (float) normal[2];
       has_normal[prim_id] = true;
     }
+
     return face_normals[prim_id];
   }
 
   const bool IsPrimBackground(unsigned int prim_id) const {
+    bool cached;
+    if (is_prim_background_cache_.tryGet(prim_id, cached)) {
+      return cached;
+    }
+
     const auto &catetory = PrimIdToCategory(prim_id);
     const auto &nyu40_category = catetory.nyuv2_40class;
+
     // Should we include picture and whiteboard?
-    return nyu40_category == "wall" ||
+    bool ret = nyu40_category == "wall" ||
         nyu40_category == "floor" ||
         nyu40_category == "ceiling" ||
         nyu40_category == "door" ||
@@ -104,6 +120,9 @@ class Scene {
         nyu40_category == "window" ||
         nyu40_category == "curtain" ||
         nyu40_category == "blinds";
+
+    is_prim_background_cache_.insert(prim_id, ret);
+    return ret;
   }
 
   vector<array<unsigned int, 3>> faces;
@@ -118,6 +137,10 @@ class Scene {
   string source_json_filename;
   string source_obj_filename;
   string source_category_mapping_csv_filename;
+
+ private:
+  mutable lru11::Cache<unsigned int, const CategoryMappingEntry *> prim_to_cat_cache_{16, 0};
+  mutable lru11::Cache<unsigned int, bool> is_prim_background_cache_{16, 0};
 };
 
 }  // end of namespace suncg

@@ -244,8 +244,8 @@ string SystemTempDir() {
   return fs::temp_directory_path().string();
 }
 
-bool PrepareDir(const string &filename) {
-  auto path = fs::absolute(filename);
+bool PrepareDir(const string &dirname) {
+  auto path = fs::absolute(dirname);
   if (!fs::is_directory(path)) {
     Expects(!fs::is_regular_file(path));
     bool ok = fs::create_directories(path);
@@ -255,6 +255,11 @@ bool PrepareDir(const string &filename) {
     }
   }
   return false;
+}
+
+bool PrepareDirForFile(const string &filename) {
+  auto parent_path = fs::absolute(filename).parent_path();
+  return PrepareDir(parent_path.string());
 }
 
 template<typename T>
@@ -271,7 +276,7 @@ void SerializeTensor(const std::string &filename, const void *data, const std::v
   string encoded = stream.str();
 
   std::string compressed;
-  CompressBytes(encoded.data(), static_cast<int>(encoded.size()), "lz4hc", 9, sizeof(float), &compressed);
+  CompressBytes(encoded.data(), static_cast<int>(encoded.size()), "lz4hc", 9, sizeof(T), &compressed);
   void *out_ptr = &compressed[0];
   auto out_size = compressed.size();
 
@@ -300,6 +305,8 @@ template void SerializeTensor<double>(const std::string &filename, const void *d
 template void SerializeTensor<char>(const std::string &filename, const void *data, const std::vector<int> &shape);
 template void SerializeTensor<int>(const std::string &filename, const void *data, const std::vector<int> &shape);
 template void SerializeTensor<uint8_t>(const std::string &filename, const void *data, const std::vector<int> &shape);
+template void SerializeTensor<uint16_t>(const std::string &filename, const void *data, const std::vector<int> &shape);
+template void SerializeTensor<uint32_t>(const std::string &filename, const void *data, const std::vector<int> &shape);
 
 template<typename T>
 void WriteFloatsTxt(const std::string &txt_filename, int precision, const std::vector<T> &data) {
@@ -340,4 +347,7 @@ void ReadLines(const string &filename, vector<string> *lines) {
   }
 }
 
+string JoinPath(const string &a, const string &b) {
+  return (fs::path(a) / fs::path(b)).string();
+}
 }
