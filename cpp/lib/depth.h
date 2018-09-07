@@ -9,6 +9,8 @@ namespace scene3d {
 template<typename T=float>
 class Image {
  public:
+  Image() : height_(0), width_(0) {}
+
   Image(unsigned int height, unsigned int width, T null_value) : height_(height), width_(width), null_value_(null_value) {
     data_.resize(height_ * width_);
   }
@@ -113,6 +115,14 @@ class MultiLayerImage {
     }
   }
 
+  void Transform(std::function<T(T)> fn) {
+    for (int i = 0; i < data_.size(); ++i) {
+      for (int j = 0; j < data_[i]->size(); ++j) {
+        data_[i]->at(j) = fn(data_[i]->at(j));
+      }
+    }
+  }
+
   unsigned int NumLayers() const {
     unsigned int ret = 0;
     for (const auto &item_ptr : data_) {
@@ -124,12 +134,16 @@ class MultiLayerImage {
   }
 
   void Save(const string &filename, unsigned int num_layers) const {
+    Expects(height_ > 0);
+    Expects(width_ > 0);
+
     // After compression, (N, H, W) ends up being smaller than (H, W, N).
     // 344 Kb vs. 468 Kb on House 0004d5 LDI.
 
     vector<T> flat;
     ExtractContiguousLayers(num_layers, &flat);
     Ensures(flat.size() == height_ * width_ * num_layers);
+    LOGGER->info("{}, {}, {}", height_, width_, num_layers);
     SerializeTensor<T>(filename, flat.data(), {num_layers, height_, width_});
   }
 

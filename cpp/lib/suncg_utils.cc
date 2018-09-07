@@ -41,10 +41,11 @@ void ParseObjectRoomHierarchy(const string &house_json_filename, map<string, Ins
       const auto &node = j["levels"][level]["nodes"][node_i];
 
       bool is_valid = node["valid"].get<uint8_t>();
+      // Some rooms are invalid.
+
       string node_id = node["id"].get<string>();
 
       if (node["type"] == "Room") {
-        Expects(is_valid);  // Assumes there is no invalid room.
 
         if (node.find("nodeIndices") == node.end()) {
           LOGGER->warn("Room {} has no objects.", node_id);

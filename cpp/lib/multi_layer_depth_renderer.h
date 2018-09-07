@@ -172,9 +172,25 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
       bool is_background = scene_->IsPrimBackground(prim_id);
       bool is_floor = instance.type == suncg::InstanceType::Floor || instance.type == suncg::InstanceType::Ground;
 
-      if (do_not_render_background_except_floor_) {
-        if (is_background && !is_floor) {
-          return true;
+      if (overhead_rendering_mode_) {
+        if (is_background) {
+          if (is_floor) {
+            if (t < 0.5) {
+              return true;
+            }
+          } else {
+            return true;  // Skip and continue.
+          }
+        } else {
+          const auto &category = scene_->PrimIdToCategory(prim_id);
+          if (category.nyuv2_40class == "void" ||
+              category.nyuv2_40class == "person" ||
+              category.fine_grained_class == "plant" ||
+              category.fine_grained_class == "chandelier" ||
+              category.fine_grained_class == "decoration" ||
+              category.fine_grained_class == "surveillance_camera") {
+            return true;
+          }
         }
       }
 
@@ -243,15 +259,15 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
     return ret;
   }
 
-  void set_do_not_render_background_except_floor(bool value) {
-    do_not_render_background_except_floor_ = value;
+  void set_overhead_rendering_mode(bool value) {
+    overhead_rendering_mode_ = value;
   }
 
  private:
   suncg::Scene *scene_;
 
   // TODO(daeyun): For now, this is only used in the "DepthValues" function. Not thickness image.
-  bool do_not_render_background_except_floor_ = false;
+  bool overhead_rendering_mode_ = false;
 };
 
 }

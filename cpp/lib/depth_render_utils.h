@@ -24,7 +24,7 @@ void RenderMultiLayerDepthImage(MultiLayerDepthRenderer *renderer, MultiLayerIma
   }
 }
 
-BoundingBox DepthCamBoundingBox(const Image<float> &depth_image, const Camera &camera) {
+AABB DepthCamBoundingBox(const Image<float> &depth_image, const Camera &camera) {
   Points2i xy;
   Points1d d;
   ValidPixelCoordinates(depth_image, &xy, &d);
@@ -33,12 +33,12 @@ BoundingBox DepthCamBoundingBox(const Image<float> &depth_image, const Camera &c
   Vec3 bmax = cam_out.rowwise().maxCoeff();
   Vec3 bmin = cam_out.rowwise().minCoeff();
 
-  BoundingBox ret(bmin, bmax);
+  AABB ret(bmin, bmax);
   return ret;
 }
 
 void GenerateMultiDepthExample(suncg::Scene *scene, const MultiLayerImage<float> &full_ml_depth, const MultiLayerImage<uint32_t> &ml_prim_ids,
-                               MultiLayerImage<float> *out_ml_depth, MultiLayerImage<uint16_t> *out_ml_model_indices) {
+                               MultiLayerImage<float> *out_ml_depth, MultiLayerImage<uint16_t> *out_ml_model_indices, MultiLayerImage<uint32_t> *out_ml_prim_ids) {
   Expects(full_ml_depth.width() == ml_prim_ids.width());
   Expects(full_ml_depth.height() == ml_prim_ids.height());
 
@@ -47,6 +47,7 @@ void GenerateMultiDepthExample(suncg::Scene *scene, const MultiLayerImage<float>
 
   *out_ml_depth = MultiLayerImage<float>(h, w, NAN);
   *out_ml_model_indices = MultiLayerImage<uint16_t>(h, w, std::numeric_limits<uint16_t>::max());
+  *out_ml_prim_ids = MultiLayerImage<uint32_t>(h, w, std::numeric_limits<uint32_t>::max());
 
   for (unsigned int y = 0; y < full_ml_depth.height(); y++) {
     for (unsigned int x = 0; x < full_ml_depth.width(); x++) {
@@ -54,14 +55,18 @@ void GenerateMultiDepthExample(suncg::Scene *scene, const MultiLayerImage<float>
       vector<uint32_t> *prim_ids = ml_prim_ids.values(y, x);
       vector<float> *out_d = out_ml_depth->values(y, x);
       vector<uint16_t> *out_m = out_ml_model_indices->values(y, x);
+      vector<uint32_t> *out_p = out_ml_prim_ids->values(y, x);
 
-      auto insert_layer = [&out_d, &out_m, &d, &prim_ids, &scene](size_t ind) {
+      auto insert_layer = [&out_d, &out_m, &out_p, &d, &prim_ids, &scene](size_t ind) {
         Ensures(ind < d->size());
         out_d->push_back(d->at(ind));
-        out_m->push_back(scene->PrimIdToCategory(prim_ids->at(ind)).index);  // TODO(daeyun): This could be optimized.
+        auto primid = prim_ids->at(ind);
+        out_p->push_back(primid);
+        out_m->push_back(scene->PrimIdToCategory(primid).index);
       };
-      auto insert_nan = [&out_d, &out_m, &d, &prim_ids, &scene]() {
+      auto insert_nan = [&out_d, &out_m, &out_p, &d, &prim_ids, &scene]() {
         out_d->push_back(NAN);
+        out_p->push_back(std::numeric_limits<uint32_t>::max());  // Should be treated as NaN.
         out_m->push_back(0);  // The "Empty" model/category is index 0. According to ModelCategoryMapping.csv
       };
 

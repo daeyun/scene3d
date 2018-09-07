@@ -103,3 +103,12 @@ target_include_directories(lrucache INTERFACE
         ${CMAKE_SOURCE_DIR}/third_party/repos/lrucache11
         )
 target_compile_options(lrucache INTERFACE "-lpthread")
+
+#add_library(visionaray INTERFACE)
+#target_link_libraries(visionaray INTERFACE
+#        /usr/local/lib/libvisionaray.a
+#        )
+#target_include_directories(visionaray INTERFACE
+#        /usr/local/include
+#        )
+#target_compile_options(visionaray INTERFACE "-pthread")

@@ -144,3 +144,18 @@ TEST_CASE("pcl from depth") {
 
 }
 
+TEST_CASE("mean and std") {
+  Points3d points(3, 4);
+  points << Vec3{1.09711332, 0.36340918, -0.00698136},
+      Vec3{1.37213587, 1.59469486, -1.54376569},
+      Vec3{0.34772598, -0.34827703, 1.00674533},
+      Vec3{-0.41433116, 0.69559186, 0.87882667};
+
+  Vec3 mean;
+  Vec3 stddev;
+  MeanAndStd(points, &mean, &stddev);
+
+  // Values from numpy.
+  REQUIRE(mean.isApprox(Vec3{0.600661, 0.57635472, 0.08370624}, 1e-5));
+  REQUIRE(stddev.isApprox(Vec3{0.69566939, 0.69848476, 1.01748548}, 1e-5));
+}

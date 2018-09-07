@@ -27,7 +27,7 @@ class RayTracer {
     ray.dir[1] = static_cast<float>(ray_direction[1]);
     ray.dir[2] = static_cast<float>(ray_direction[2]);
 
-    std::set<unsigned int> ignored_prim_ids;
+    std::map<unsigned int, float> ignored_prim_ids;
     nanort::BVHTraceOptions trace_options;
     trace_options.ignored_prim_ids = &ignored_prim_ids;  // Managed externally
 
@@ -43,7 +43,21 @@ class RayTracer {
         }
 
         ray.min_t = static_cast<float>(isect.t - kEps);
-        ignored_prim_ids.insert(isect.prim_id);
+
+        if (!ignored_prim_ids.empty()) {
+          for (auto it = ignored_prim_ids.cbegin(); it != ignored_prim_ids.cend();) {
+            if (isect.t - it->second > kEps) {
+              ignored_prim_ids.erase(it++);
+            } else {
+              ++it;
+            }
+          }
+        }
+        if (isect.t - trace_options.skip_prim_id_t < kEps) {
+          ignored_prim_ids[trace_options.skip_prim_id] = trace_options.skip_prim_id_t;
+        }
+        trace_options.skip_prim_id = isect.prim_id;
+        trace_options.skip_prim_id_t = isect.t;
 
       } else {
         break;
@@ -62,7 +76,7 @@ class RayTracer {
     ray.dir[1] = static_cast<float>(ray_direction[1]);
     ray.dir[2] = static_cast<float>(ray_direction[2]);
 
-    std::set<unsigned int> ignored_prim_ids;
+    std::map<unsigned int, float> ignored_prim_ids;
     nanort::BVHTraceOptions trace_options;
     trace_options.ignored_prim_ids = &ignored_prim_ids;  // Managed externally
 
@@ -112,7 +126,7 @@ class RayTracer {
         ray.dir[1] = static_cast<float>(new_dir[1]);
         ray.dir[2] = static_cast<float>(new_dir[2]);
 
-        ignored_prim_ids.insert(isect.prim_id);
+        ignored_prim_ids[isect.prim_id] = isect.t;
         count++;
 
       } else {

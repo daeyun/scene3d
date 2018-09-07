@@ -110,8 +110,9 @@ class Scene {
 
     const auto &catetory = PrimIdToCategory(prim_id);
     const auto &nyu40_category = catetory.nyuv2_40class;
+    const auto &coarse_grained = catetory.coarse_grained_class;
 
-    // Should we include picture and whiteboard?
+    // TV?
     bool ret = nyu40_category == "wall" ||
         nyu40_category == "floor" ||
         nyu40_category == "ceiling" ||
@@ -119,7 +120,12 @@ class Scene {
         nyu40_category == "floor_mat" ||
         nyu40_category == "window" ||
         nyu40_category == "curtain" ||
-        nyu40_category == "blinds";
+        nyu40_category == "blinds" ||
+        nyu40_category == "picture" ||
+        nyu40_category == "mirror" ||
+        nyu40_category == "fireplace" ||
+        coarse_grained == "roof" ||
+        nyu40_category == "whiteboard";
 
     is_prim_background_cache_.insert(prim_id, ret);
     return ret;

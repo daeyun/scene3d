@@ -345,8 +345,12 @@ class PerspectiveCamera : public Camera {
 
   bool fov(double *x_fov, double *y_fov) const override {
     // Frustum is expected to be symmetric.
-    *x_fov = std::abs(std::atan2(frustum().right, frustum().near));
-    *y_fov = std::abs(std::atan2(frustum().top, frustum().near));
+    if (x_fov != nullptr) {
+      *x_fov = std::abs(std::atan2(frustum().right, frustum().near));
+    }
+    if (y_fov != nullptr) {
+      *y_fov = std::abs(std::atan2(frustum().top, frustum().near));
+    }
     return true;
   }
 
@@ -356,5 +360,10 @@ class PerspectiveCamera : public Camera {
 };
 
 void SaveCamera(const string &txt_filename, const Camera &camera);
+
+void SaveCameras(const string &txt_filename, const vector<scene3d::Camera *> &cameras);
+
+// `hw_ratio` is height/width.
+FrustumParams ForceFixedAspectRatio(double hw_ratio, const FrustumParams &frustum);
 
 }

@@ -8,7 +8,7 @@ add_executable(depth2mesh_perspective depth2mesh_perspective.cc)
 target_link_libraries(depth2mesh_perspective mve)
 
 add_executable(render_suncg render_suncg.cpp)
-target_link_libraries(render_suncg common cpp_gsl spdlog assimp file_io cxxopts ray_mesh_intersection csv_parser suncg_utils benchmark)
+target_link_libraries(render_suncg common cpp_gsl spdlog assimp file_io cxxopts ray_mesh_intersection csv_parser suncg_utils benchmark pcl)
 
 # Should be uncommented when building release version.
 #set_target_properties(render_suncg PROPERTIES LINK_FLAGS "-static")

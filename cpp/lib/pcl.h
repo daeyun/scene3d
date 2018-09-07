@@ -1,31 +1,72 @@
-#include <utility>
-
 #pragma once
+
+#include <utility>
+#include <limits>
 
 #include "common.h"
 #include "file_io.h"
 #include "camera.h"
 #include "depth.h"
+#include "suncg_utils.h"
 
 namespace scene3d {
 
-class BoundingBox {
+// Axis-aligned bounding box.
+class AABB {
  public:
-  BoundingBox(const Vec3 &corner0, const Vec3 &corner1) {
-    bmin = {
-        std::min(corner0[0], corner1[0]),
-        std::min(corner0[1], corner1[1]),
-        std::min(corner0[2], corner1[2]),
-    };
-    bmax = {
-        std::max(corner0[0], corner1[0]),
-        std::max(corner0[1], corner1[1]),
-        std::max(corner0[2], corner1[2]),
-    };
+  AABB(const Vec3 &corner0, const Vec3 &corner1) {
+    Grow(corner0);
+    Grow(corner1);
+  }
+
+  AABB() = default;
+
+  void Grow(const Vec3 &p) {
+    if (is_initialized_) {
+      for (int i = 0; i < 3; ++i) {
+        if (p[i] < bmin[i]) {
+          bmin[i] = p[i];
+        } else if (p[i] > bmax[i]) {
+          bmax[i] = p[i];
+        }
+      }
+    } else {
+      bmin = p;
+      bmax = p;
+      is_initialized_ = true;
+    }
+  }
+
+  void Expand(double ratio) {
+    if (!is_initialized_) {
+      return;
+    }
+    Vec3 c = Center();
+    Vec3 r = 0.5 * (bmax - bmin);
+    bmin = c - r * ratio;
+    bmax = c + r * ratio;
+  }
+
+  double XZArea() const {
+    if (!is_initialized_) {
+      return 0;
+    }
+    Vec3 diff = bmax - bmin;
+    double ret = diff(0) * diff(2);
+    Ensures(std::isfinite(ret));
+    return ret;
+  }
+
+  Vec3 Center() const {
+    Expects(is_initialized_);
+    return 0.5 * (bmin + bmax);
   }
 
   Vec3 bmin;
   Vec3 bmax;
+
+ private:
+  bool is_initialized_ = false;
 };
 
 class PointCloud {
@@ -65,40 +106,26 @@ class PointCloud {
   vector<uint8_t> label_;
 };
 
-void ValidPixelCoordinates(const Image<float> &depth, Points2i *out_xy, Points1d *out_values) {
-  vector<Vec2i> xy;
-  vector<double> d;
-  for (unsigned int y = 0; y < depth.height(); ++y) {
-    for (unsigned int x = 0; x < depth.width(); ++x) {
-      float value = depth.at(y, x);
-      if (std::isfinite(value)) {
-        xy.emplace_back(x, y);
-        d.push_back(value);
-      }
-    }
-  }
+void ValidPixelCoordinates(const Image<float> &depth, Points2i *out_xy, Points1d *out_values);
 
-  out_xy->resize(2, xy.size());
-  out_values->resize(1, xy.size());
-  for (int i = 0; i < xy.size(); ++i) {
-    out_xy->col(i) = xy[i];
-    (*out_values)[i] = d[i];
-  }
-}
+void PclFromDepthCamCoords(const Image<float> &depth, const Camera &camera, Points3d *out);
 
-static void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out) {
-  Points2i cam_pts;
-  Points1d cam_d;
+void PclFromDepthWorldCoords(const Image<float> &depth, const Camera &camera, Points3d *out);
 
-  ValidPixelCoordinates(depth, &cam_pts, &cam_d);
+void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out);
 
-  // Calculate coordinates in camera space.
-  Points3d cam_out;
-  camera.ImageToCam(cam_pts, cam_d, depth.height(), depth.width(), &cam_out);
+void MeanAndStd(const Points3d &points, Vec3 *mean, Vec3 *stddev);
 
-  Points3d ret;
-  camera.CamToWorld(cam_out, &ret);
-  *out = PointCloud(ret);
-}
+unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float> &ml_depth,
+                                                     const MultiLayerImage<uint16_t> &ml_model_indices,
+                                                     const MultiLayerImage<uint32_t> &ml_prim_ids,
+                                                     const PerspectiveCamera &camera,
+                                                     suncg::Scene *scene,
+                                                     double overhead_hw_ratio,
+                                                     AABB *average_bounding_box,
+                                                     vector<AABB> *candidate_boxes,
+                                                     PerspectiveCamera *aligner);
+
+void SaveAABB(const string &txt_filename, const vector<AABB> &boxes);
 
 }

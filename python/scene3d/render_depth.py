@@ -9,7 +9,7 @@ from scene3d import config
 from scene3d import io_utils
 from scene3d import exec_utils
 
-renderer_executable = path.abspath(path.join(path.dirname(__file__), '../../cpp/cmake-build-release/apps/render'))
+renderer_executable = path.abspath(path.join(path.dirname(__file__), '../../cpp/cmake-build-release/apps/render_suncg'))
 category_mapping_file = path.abspath(path.join(path.dirname(__file__), '../../resources/ModelCategoryMapping.csv'))
 
 
@@ -20,7 +20,7 @@ def parse_overhead_cam(s):
     return lines
 
 
-def run_render(obj_filename, camera_filename, out_dir, hw=(480, 640)):
+def run_render(obj_filename, json_filename, camera_filename, out_dir, hw=(480, 640)):
     assert obj_filename.endswith('.obj'), obj_filename
     assert camera_filename.endswith('.txt'), camera_filename
     io_utils.ensure_dir_exists(out_dir)
@@ -33,9 +33,10 @@ def run_render(obj_filename, camera_filename, out_dir, hw=(480, 640)):
         '--height={}'.format(int(hw[0])),
         '--width={}'.format(int(hw[1])),
         '--obj={}'.format(obj_filename),
+        '--json={}'.format(json_filename),
         '--cameras={}'.format(camera_filename),
         '--out_dir={}'.format(out_dir),
-        '--categories={}'.format(category_mapping_file),  # TODO(daeyun): make sure this is compatible with the github release.
+        '--category={}'.format(category_mapping_file),  # TODO(daeyun): make sure this is compatible with the github release.
     ])
 
     # There should be no output if it ran successfully.

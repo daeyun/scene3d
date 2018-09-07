@@ -7,6 +7,7 @@ import matplotlib.ticker as pt_ticker
 import numpy as np
 from matplotlib.patches import Polygon
 import matplotlib.cm as cm
+from matplotlib.patches import Rectangle
 
 cmap_viridis = cm.get_cmap('viridis')
 cmap_viridis_array = np.array([cmap_viridis(item)[:3] for item in np.arange(0, 1, 1.0 / 256)]).astype(np.float32)
@@ -163,3 +164,26 @@ def apply_colormap(img, cmap_name='viridis'):
     ret = cmap_viridis_array[im]
     ret[nan_mask, :] = 1
     return ret
+
+
+def draw_rectangles(rects: np.ndarray, ax=None, **kargs):
+    """
+    :param rects: Each row contains x1,y1,x2,y2
+    """
+    if ax is None:
+        ax = pt.gca()
+
+    for i in range(rects.shape[0]):
+        x = min(rects[i, 0], rects[i, 2])
+        y = min(rects[i, 1], rects[i, 3])
+        w = abs(rects[i, 0] - rects[i, 2])
+        h = abs(rects[i, 1] - rects[i, 3])
+        if w*h < 0.5:
+            continue  # TODO: temporary
+        r = Rectangle((x, y), w, h, alpha=1, facecolor='none', fill=None, **kargs)
+        ax.add_patch(r)
+    ax.scatter(rects[:, 0], rects[:, 1], s=0)
+    ax.scatter(rects[:, 2], rects[:, 3], s=0)
+    ax.axis('equal')
+
+    return ax

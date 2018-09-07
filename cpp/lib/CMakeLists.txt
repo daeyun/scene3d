@@ -24,8 +24,8 @@ target_link_libraries(depth_render_utils PUBLIC common multi_layer_depth_rendere
 add_library(depth depth.h)
 target_link_libraries(depth PUBLIC common camera)
 
-add_library(pcl pcl.h)
-target_link_libraries(pcl PUBLIC common camera depth)
+add_library(pcl pcl.h pcl.cc)
+target_link_libraries(pcl PUBLIC common camera depth suncg_utils)
 
 add_library(benchmark benchmark.h benchmark.cc)
 target_link_libraries(benchmark PUBLIC common)
@@ -41,4 +41,4 @@ add_library(string_utils string_utils.h)
 target_link_libraries(string_utils PUBLIC common)
 
 add_library(suncg_utils suncg_utils.h suncg_utils.cc)
-target_link_libraries(suncg_utils PUBLIC common file_io camera nlohmann_json string_utils assimp Boost::filesystem csv_parser lrucache pthread benchmark)
+target_link_libraries(suncg_utils PUBLIC common file_io camera nlohmann_json string_utils assimp Boost::filesystem csv_parser lrucache pthread benchmark pcl)

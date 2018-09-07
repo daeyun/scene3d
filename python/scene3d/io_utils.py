@@ -525,6 +525,13 @@ def save_array_compressed(filename, arr: np.ndarray):
         f.write(compressed)
 
 
+def read_txt_array(filename):
+    with open(filename, 'r') as f:
+        lines = f.readlines()
+    lines = [item.strip() for item in lines]
+    return np.array([[float(item.strip()) for item in line.split()] for line in lines], dtype=np.float64)
+
+
 def read_png(filename):
     """
     :param filename:

@@ -25,4 +25,14 @@ cd ${PROJ_DIR}
     --category=resources/ModelCategoryMapping.csv \
     --out_dir=/tmp/scene3d/render_suncg
 
+
+#./cpp/cmake-build-release/apps/render_suncg \
+    #--height=240 \
+    #--width=320 \
+    #--cameras=/mnt/ramdisk/debug/camera.txt \
+    #--obj=/mnt/ramdisk/debug/house.obj \
+    #--json=/mnt/ramdisk/debug/house_p.json \
+    #--category=resources/ModelCategoryMapping.csv \
+    #--out_dir=/tmp/scene3d/render_suncg
+
 echo "OK"

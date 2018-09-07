@@ -34,7 +34,6 @@ def __preprocess_house_json(house_json):
 
 
 def __postprocess_obj(house_obj_filename):
-    stime = time.time()
     assert house_obj_filename.endswith('.obj')
     assert path.isfile(house_obj_filename)
 
@@ -64,7 +63,6 @@ def __postprocess_obj(house_obj_filename):
 
     with open(house_obj_filename, 'w') as f:
         f.write('\n'.join(new_lines))
-    print(time.time() - stime)
 
     group_names = []
     for line in new_lines:
@@ -74,11 +72,8 @@ def __postprocess_obj(house_obj_filename):
                 continue
             group_names.append(group)
 
-    print(set(group_names))
-    print(len(lines), len(group_names))
 
-
-def house_obj_from_json(house_id, out_file='/tmp/scene3d/house_obj_default/house.obj'):
+def house_obj_from_json(house_id, out_file='/tmp/scene3d/house_obj_default/house.obj', return_house_json_filename=False):
     assert out_file.endswith('.obj'), out_file
     io_utils.ensure_dir_exists(path.dirname(out_file))
     io_utils.assert_file_exists(scn2scn_executable)
@@ -112,4 +107,6 @@ def house_obj_from_json(house_id, out_file='/tmp/scene3d/house_obj_default/house
 
     __postprocess_obj(out_file)
 
+    if return_house_json_filename:
+        return out_file, new_house_json_filename
     return out_file
