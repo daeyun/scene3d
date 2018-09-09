@@ -108,9 +108,13 @@ class PointCloud {
 
 void ValidPixelCoordinates(const Image<float> &depth, Points2i *out_xy, Points1d *out_values);
 
-void PclFromDepthCamCoords(const Image<float> &depth, const Camera &camera, Points3d *out);
+void PclFromDepthInCamCoords(const Image<float> &depth, const Camera &camera, Points3d *out);
 
-void PclFromDepthWorldCoords(const Image<float> &depth, const Camera &camera, Points3d *out);
+void PclFromDepthInCamCoords(const Image<float> &depth, const Camera &camera, Points2i *xy, Points3d *out);
+
+void PclFromDepthInWorldCoords(const Image<float> &depth, const Camera &camera, Points3d *out);
+
+void PclFromDepthInWorldCoords(const Image<float> &depth, const Camera &camera, Points2i *xy, Points3d *out);
 
 void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out);
 

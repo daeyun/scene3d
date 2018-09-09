@@ -32,7 +32,6 @@ def epipolar_line(xy, cam_params, td_cam_params, depth_image, back_depth_image, 
 
     x, y = xy
 
-
     d1 = depth_image[y, x]
     d2 = back_depth_image[y, x]
 
@@ -54,16 +53,15 @@ def epipolar_line(xy, cam_params, td_cam_params, depth_image, back_depth_image, 
     xy2, _ = cam2.world_to_image(p[None])
 
     if plot:
-        pt.figure(figsize=(11,10))
+        pt.figure(figsize=(11, 10))
         pt.subplot(1, 2, 1)
         pt.imshow(depth_image)
         pt.scatter([x], [y], c='red')
 
-
     xy1 = xy1.astype(np.int32).ravel()
     xy2 = xy2.astype(np.int32).ravel()
 
-    step = 1/400
+    step = 1 / 400
 
     coords = (xy1[None].T.dot(np.arange(0, 1, step)[None]).T + xy2[None].T.dot(np.arange(1, 0, -step)[None]).T).round().astype(np.int32)
     coords = np.unique(coords, axis=0)
@@ -72,10 +70,9 @@ def epipolar_line(xy, cam_params, td_cam_params, depth_image, back_depth_image, 
 
     if plot:
         pt.subplot(1, 2, 2)
-        pt.scatter(coords[:,0], coords[:,1], c='lime', s=1)
+        pt.scatter(coords[:, 0], coords[:, 1], c='lime', s=1)
         # pt.plot([xy1[0, 0], xy2[0, 0]], [xy1[0, 1], xy2[0, 1]], color='red')
         pt.scatter(xy1[0], xy1[1], c='red', s=60)
         pt.imshow(td_depth_image)
-
 
     return xy1, xy2, coords

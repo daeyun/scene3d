@@ -81,52 +81,68 @@ class RayTracer {
     trace_options.ignored_prim_ids = &ignored_prim_ids;  // Managed externally
 
     int count = 0;
+    float first_hit_t_offset = 0;
+
     while (true) {
       nanort::TriangleIntersection<> isect{};
       bool hit = accel_.Traverse(ray, triangle_intersector_, &isect, trace_options);
 
       if (hit) {
-        float t = isect.t;
-        // After the first intersection, t will be offset by kEps, so subtract it back.
-        if (count > 0) {
-          t -= kEps;
-        }
-        bool keep_going = callback(t, isect.u, isect.v, isect.prim_id);
+        bool keep_going = callback(isect.t + first_hit_t_offset, isect.u, isect.v, isect.prim_id);
 
         if (!keep_going) {
           break;
         }
 
-        Vec3 ray_dir = {ray.dir[0], ray.dir[1], ray.dir[2]};  // Should be normalized.
-        Vec3 ray_org = {ray.org[0], ray.org[1], ray.org[2]};
-        Vec3 new_origin = ray_org + isect.t * ray_dir;
-        Vec3 new_dir = (-this->normal(isect.prim_id)).normalized();  // Should be normalized.
+        if (count == 0) {
+          first_hit_t_offset = isect.t;
+          Vec3 ray_dir{ray.dir[0], ray.dir[1], ray.dir[2]};  // Should be normalized.
+          Vec3 ray_org{ray.org[0], ray.org[1], ray.org[2]};
+          Vec3 new_origin = ray_org + isect.t * ray_dir;
+          Vec3 new_dir = (-this->normal(isect.prim_id)).normalized();  // Should be normalized.
 
-        // TODO: This would only be "inward" for the first surface.
-        if (ray_dir.dot(new_dir) < 0) {
-          new_dir = (-new_dir).eval();
-        }
-
-        // For some reason, negative zeros in the ray direction confuses the ray tracer.
-        // TODO: make sure this doesn't happen in other cases.
-        for (int i = 0; i < 3; ++i) {
-          if (std::abs(new_dir[i]) < 1e-9) {
-            new_dir[i] = 0;
+          // TODO: This would only be "inward" for the first surface.
+          if (ray_dir.dot(new_dir) < 0) {
+            new_dir = (-new_dir).eval();
           }
+
+          // For some reason, negative zeros in the ray direction confuses the ray tracer.
+          // TODO: make sure this doesn't happen in other cases.
+          for (int i = 0; i < 3; ++i) {
+            if (std::abs(new_dir[i]) < 1e-8) {
+              new_dir[i] = 0;
+            }
+          }
+
+          ray.org[0] = static_cast<float>(new_origin[0]);
+          ray.org[1] = static_cast<float>(new_origin[1]);
+          ray.org[2] = static_cast<float>(new_origin[2]);
+
+          ray.dir[0] = static_cast<float>(new_dir[0]);
+          ray.dir[1] = static_cast<float>(new_dir[1]);
+          ray.dir[2] = static_cast<float>(new_dir[2]);
+
+          // Make sure to skip this primitive next time.
+          trace_options.skip_prim_id = isect.prim_id;
+        } else {
+          ray.min_t = static_cast<float>(isect.t - kEps);
+
+          if (!ignored_prim_ids.empty()) {
+            for (auto it = ignored_prim_ids.cbegin(); it != ignored_prim_ids.cend();) {
+              if (isect.t - it->second > kEps) {
+                ignored_prim_ids.erase(it++);
+              } else {
+                ++it;
+              }
+            }
+          }
+          if (isect.t - trace_options.skip_prim_id_t < kEps) {
+            ignored_prim_ids[trace_options.skip_prim_id] = trace_options.skip_prim_id_t;
+          }
+          trace_options.skip_prim_id = isect.prim_id;
+          trace_options.skip_prim_id_t = isect.t;
         }
 
-        // Move slightly backward.
-        new_origin -= new_dir * kEps;
-
-        ray.org[0] = static_cast<float>(new_origin[0]);
-        ray.org[1] = static_cast<float>(new_origin[1]);
-        ray.org[2] = static_cast<float>(new_origin[2]);
-
-        ray.dir[0] = static_cast<float>(new_dir[0]);
-        ray.dir[1] = static_cast<float>(new_dir[1]);
-        ray.dir[2] = static_cast<float>(new_dir[2]);
-
-        ignored_prim_ids[isect.prim_id] = isect.t;
         count++;
 
       } else {

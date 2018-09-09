@@ -23,16 +23,16 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
   ml_depth.ExtractLayer(3, &depth_3);
 
   Points3d depth_0_points;
-  PclFromDepthWorldCoords(depth_0, camera, &depth_0_points);
+  PclFromDepthInWorldCoords(depth_0, camera, &depth_0_points);
 
   Points3d depth_1_points;
-  PclFromDepthWorldCoords(depth_1, camera, &depth_1_points);
+  PclFromDepthInWorldCoords(depth_1, camera, &depth_1_points);
 
   Points3d depth_3_points;
-  PclFromDepthWorldCoords(depth_3, camera, &depth_3_points);
+  PclFromDepthInWorldCoords(depth_3, camera, &depth_3_points);
 
   Points3d depth_3_points_cam;  // TODO: This can be optimized.
-  PclFromDepthCamCoords(depth_3, camera, &depth_3_points_cam);
+  PclFromDepthInCamCoords(depth_3, camera, &depth_3_points_cam);
 
   Vec3 vd = camera.viewing_direction();
   vd[1] = 0;
@@ -224,7 +224,7 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
   Vec box_weights(3);
   box_weights[0] = 1;
   box_weights[1] = 1;
-  box_weights[2] = 1;
+  box_weights[2] = 2;
 
   for (size_t i = 0; i < candidate_boxes->size(); ++i) {
     if (candidate_boxes->at(i).XZArea() < kMinBoxAreaXZ) {
@@ -291,24 +291,37 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
 
 void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out) {
   Points3d pts;
-  PclFromDepthWorldCoords(depth, camera, &pts);
+  PclFromDepthInWorldCoords(depth, camera, &pts);
   *out = PointCloud(pts);
 }
 
-void PclFromDepthWorldCoords(const Image<float> &depth, const Camera &camera, Points3d *out) {
+void PclFromDepthInWorldCoords(const Image<float> &depth, const Camera &camera, Points3d *out) {
   Points3d cam_out;
-  PclFromDepthCamCoords(depth, camera, &cam_out);
+  PclFromDepthInCamCoords(depth, camera, &cam_out);
   camera.CamToWorld(cam_out, out);
 }
 
-void PclFromDepthCamCoords(const Image<float> &depth, const Camera &camera, Points3d *out) {
-  Points2i cam_pts;
-  Points1d cam_d;
+void PclFromDepthInWorldCoords(const Image<float> &depth, const Camera &camera, Points2i *xy, Points3d *out) {
+  Points3d cam_out;
+  PclFromDepthInCamCoords(depth, camera, xy, &cam_out);
+  camera.CamToWorld(cam_out, out);
+}
 
-  ValidPixelCoordinates(depth, &cam_pts, &cam_d);
+void PclFromDepthInCamCoords(const Image<float> &depth, const Camera &camera, Points3d *out) {
+  Points2i xy;
+  Points1d cam_d;
+  ValidPixelCoordinates(depth, &xy, &cam_d);
 
   // Calculate coordinates in camera space.
-  camera.ImageToCam(cam_pts, cam_d, depth.height(), depth.width(), out);
+  camera.ImageToCam(xy, cam_d, depth.height(), depth.width(), out);
+}
+
+void PclFromDepthInCamCoords(const Image<float> &depth, const Camera &camera, Points2i *xy, Points3d *out) {
+  Points1d cam_d;
+  ValidPixelCoordinates(depth, xy, &cam_d);
+
+  // Calculate coordinates in camera space.
+  camera.ImageToCam(*xy, cam_d, depth.height(), depth.width(), out);
 }
 
 void ValidPixelCoordinates(const Image<float> &depth, Points2i *out_xy, Points1d *out_values) {

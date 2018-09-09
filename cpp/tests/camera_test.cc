@@ -585,3 +585,104 @@ TEST_CASE("image to cam, orthographic") {
   REQUIRE(restored_world.isApprox(restored_world2));
 
 }
+
+TEST_CASE("save and read cameras") {
+  double near = 0.01;
+  double far = 20;
+  Vec3 eye = {0, 4, 0};
+  Vec3 up = {0, 0, -1};
+  Vec3 lookat = {0, 0, 0};
+
+  unique_ptr<OrthographicCamera> cam1;
+  unique_ptr<PerspectiveCamera> cam2;
+
+  vector<Camera *> cameras;
+  {
+    // not symmetric.
+    FrustumParams frustum;
+    double fsize = 2;
+    frustum.left = -fsize;
+    frustum.right = fsize * 1.1;
+    frustum.bottom = -fsize * 0.75;
+    frustum.top = fsize * 0.9;
+    frustum.near = near;
+    frustum.far = far;
+
+    cam1 = make_unique<OrthographicCamera>(eye, lookat, up, frustum);
+    REQUIRE(!cam1->fov(nullptr, nullptr));
+    REQUIRE(!cam1->is_perspective());
+    cameras.push_back(cam1.get());
+  }
+
+  {
+    Vec3 eye = Vec3::Random();
+    Vec3 up = Vec3::Random().normalized();
+    Vec3 lookat = Vec3::Random();
+    unsigned int height = 120;
+    unsigned int width = 160;
+    double near = 0.01;
+    double far = 1000;
+    double x_fov = 30.0 / 180.0 * M_PI;  // 60 degrees left-to-right.
+    auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
+    cam2 = make_unique<PerspectiveCamera>(eye, lookat, up, frustum);
+    REQUIRE(cam2->is_perspective());
+    cameras.push_back(cam2.get());
+  }
+
+  const string kSaveFilename = "/tmp/scene3d_test/save_and_read_cameras/cam.txt";
+  RemoveFileIfExists(kSaveFilename);
+
+  SaveCameras(kSaveFilename, cameras);
+
+  vector<unique_ptr<Camera>> read_cameras;
+  ReadCameras(kSaveFilename, &read_cameras);
+
+  REQUIRE(!cameras[0]->is_perspective());
+  REQUIRE(cameras[1]->is_perspective());
+  REQUIRE(cameras[0]->is_perspective() == read_cameras[0]->is_perspective());
+  REQUIRE(cameras[1]->is_perspective() == read_cameras[1]->is_perspective());
+
+  REQUIRE(Approx(cameras[0]->position()[0]) == read_cameras[0]->position()[0]);
+  REQUIRE(Approx(cameras[0]->position()[1]) == read_cameras[0]->position()[1]);
+  REQUIRE(Approx(cameras[0]->position()[2]) == read_cameras[0]->position()[2]);
+  REQUIRE(Approx(cameras[1]->position()[0]) == read_cameras[1]->position()[0]);
+  REQUIRE(Approx(cameras[1]->position()[1]) == read_cameras[1]->position()[1]);
+  REQUIRE(Approx(cameras[1]->position()[2]) == read_cameras[1]->position()[2]);
+
+  REQUIRE(Approx(cameras[0]->viewing_direction()[0]) == read_cameras[0]->viewing_direction()[0]);
+  REQUIRE(Approx(cameras[0]->viewing_direction()[1]) == read_cameras[0]->viewing_direction()[1]);
+  REQUIRE(Approx(cameras[0]->viewing_direction()[2]) == read_cameras[0]->viewing_direction()[2]);
+  REQUIRE(Approx(cameras[1]->viewing_direction()[0]) == read_cameras[1]->viewing_direction()[0]);
+  REQUIRE(Approx(cameras[1]->viewing_direction()[1]) == read_cameras[1]->viewing_direction()[1]);
+  REQUIRE(Approx(cameras[1]->viewing_direction()[2]) == read_cameras[1]->viewing_direction()[2]);
+
+  REQUIRE(Approx(cameras[0]->up()[0]) == read_cameras[0]->up()[0]);
+  REQUIRE(Approx(cameras[0]->up()[1]) == read_cameras[0]->up()[1]);
+  REQUIRE(Approx(cameras[0]->up()[2]) == read_cameras[0]->up()[2]);
+  REQUIRE(Approx(cameras[1]->up()[0]) == read_cameras[1]->up()[0]);
+  REQUIRE(Approx(cameras[1]->up()[1]) == read_cameras[1]->up()[1]);
+  REQUIRE(Approx(cameras[1]->up()[2]) == read_cameras[1]->up()[2]);
+
+  REQUIRE(Approx(cameras[0]->frustum().left) == read_cameras[0]->frustum().left);
+  REQUIRE(Approx(cameras[0]->frustum().right) == read_cameras[0]->frustum().right);
+  REQUIRE(Approx(cameras[0]->frustum().bottom) == read_cameras[0]->frustum().bottom);
+  REQUIRE(Approx(cameras[0]->frustum().top) == read_cameras[0]->frustum().top);
+  REQUIRE(Approx(cameras[0]->frustum().near) == read_cameras[0]->frustum().near);
+  REQUIRE(Approx(cameras[0]->frustum().far) == read_cameras[0]->frustum().far);
+
+  REQUIRE(Approx(cameras[1]->frustum().left) == read_cameras[1]->frustum().left);
+  REQUIRE(Approx(cameras[1]->frustum().right) == read_cameras[1]->frustum().right);
+  REQUIRE(Approx(cameras[1]->frustum().bottom) == read_cameras[1]->frustum().bottom);
+  REQUIRE(Approx(cameras[1]->frustum().top) == read_cameras[1]->frustum().top);
+  REQUIRE(Approx(cameras[1]->frustum().near) == read_cameras[1]->frustum().near);
+  REQUIRE(Approx(cameras[1]->frustum().far) == read_cameras[1]->frustum().far);
+
+  double xf, yf;
+  cameras[1]->fov(&xf, &yf);
+
+  double xf2, yf2;
+  read_cameras[1]->fov(&xf2, &yf2);
+
+  REQUIRE(Approx(xf) == xf2);
+  REQUIRE(Approx(yf) == yf2);
+}

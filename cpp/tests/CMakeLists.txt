@@ -19,3 +19,6 @@ target_link_libraries(camera_test common catch2 Boost::filesystem multi_layer_de
 
 add_executable(suncg_utils_test suncg_utils_test.cc test_main.cc)
 target_link_libraries(suncg_utils_test common catch2 file_io depth_render_utils pcl vectorization_utils camera suncg_utils)
+
+add_executable(epipolar_test epipolar_test.cc test_main.cc)
+target_link_libraries(epipolar_test common catch2 file_io depth_render_utils pcl vectorization_utils camera)

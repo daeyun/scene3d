@@ -24,6 +24,19 @@ void RenderMultiLayerDepthImage(MultiLayerDepthRenderer *renderer, MultiLayerIma
   }
 }
 
+void RenderObjectCenteredMultiLayerDepthImage(MultiLayerDepthRenderer *renderer, MultiLayerImage<float> *ml_depth, MultiLayerImage<uint32_t> *ml_prim_ids) {
+  *ml_depth = MultiLayerImage<float>(static_cast<unsigned int>(renderer->height()), static_cast<unsigned int>(renderer->width()), NAN);
+  *ml_prim_ids = MultiLayerImage<uint32_t>(static_cast<unsigned int>(renderer->height()), static_cast<unsigned int>(renderer->width()), std::numeric_limits<uint32_t>::max());
+
+  for (unsigned int y = 0; y < renderer->height(); y++) {
+    for (unsigned int x = 0; x < renderer->width(); x++) {
+      vector<float> *depth_values = ml_depth->values(y, x);
+      vector<uint32_t> *prim_ids = ml_prim_ids->values(y, x);
+      renderer->ObjectCenteredDepthValues(x, y, depth_values, prim_ids);
+    }
+  }
+}
+
 AABB DepthCamBoundingBox(const Image<float> &depth_image, const Camera &camera) {
   Points2i xy;
   Points1d d;

@@ -81,6 +81,7 @@ class MultiLayerDepthRenderer {
 
   // Implementation specific.
   virtual int DepthValues(int x, int y, vector<float> *out, vector<uint32_t> *prim_ids) const = 0;
+  virtual int ObjectCenteredDepthValues(int x, int y, vector<float> *out, vector<uint32_t> *prim_ids) const = 0;
 
   size_t width() const {
     return width_;
@@ -143,6 +144,12 @@ class SimpleMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
     }
 
     return count;
+  }
+
+  virtual int ObjectCenteredDepthValues(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
+    LOGGER->error("Not implemented");
+    throw std::runtime_error("not implemented");
+    return 0;
   }
 };
 
@@ -234,8 +241,84 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
     return background_value_index;
   }
 
+  virtual int ObjectCenteredDepthValues(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
+    const Vec3 &ray_direction = this->RayDirection(x, y);
+
+    const double kMargin = 0.001;  // This margin can be pretty big, for some reason; based on inspection of nested floors.
+
+    int background_value_index = -1;  // -1 means no background is found in this pixel.
+
+    // Depth values are collected in the callback function, in the order traversed.
+    ray_tracer_->TraverseInwardNormalDirection(this->RayOrigin(x, y), ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
+      const auto &instance = scene_->PrimIdToInstance(prim_id);
+      bool is_background = scene_->IsPrimBackground(prim_id);
+      bool is_floor = instance.type == suncg::InstanceType::Floor || instance.type == suncg::InstanceType::Ground;
+
+      if (overhead_rendering_mode_) {
+        if (is_background) {
+          if (is_floor) {
+            if (t < 0.5) {
+              return true;
+            }
+          } else {
+            return true;  // Skip and continue.
+          }
+        } else {
+          const auto &category = scene_->PrimIdToCategory(prim_id);
+          if (category.nyuv2_40class == "void" ||
+              category.nyuv2_40class == "person" ||
+              category.fine_grained_class == "plant" ||
+              category.fine_grained_class == "chandelier" ||
+              category.fine_grained_class == "decoration" ||
+              category.fine_grained_class == "surveillance_camera") {
+            return true;
+          }
+        }
+      }
+
+      if (background_value_index < 0) {  // No background value previously found.
+        out_values->push_back(t);
+        prim_ids->push_back(prim_id);
+        // Only the first background hit counts. There could be double walls, etc.
+        if (is_background) {
+          background_value_index = static_cast<int>(out_values->size() - 1);
+        }
+      } else { // Background is already found.
+        // But if this hit coincides with a previously found background and is not a background itself, add.
+        bool is_coincided = std::abs(t - out_values->at(static_cast<size_t>(background_value_index))) < kMargin;
+        if (is_coincided) {
+          if (!is_background) {
+            out_values->push_back(t);
+            prim_ids->push_back(prim_id);
+          }
+        } else {
+          return false;  // Stop traversal.
+        }
+      }
+      return true;
+    });
+
+    // Convert ray displacement to depth.
+    const double z = camera_->viewing_direction().dot(ray_direction);
+    for (auto &t : *out_values) {
+      t *= z;
+    }
+
+    Ensures(prim_ids->size() == out_values->size());
+
+    if (!prim_ids->empty() && background_value_index >= 0 && background_value_index < prim_ids->size() - 1) {
+      std::swap(prim_ids->at(prim_ids->size() - 1), prim_ids->at(background_value_index));
+      background_value_index = static_cast<int>(prim_ids->size() - 1);
+    }
+
+    // TODO(daeyun): `prim_ids` can probably be incorrectly ordered if there are coinciding surfaces.
+
+    return background_value_index;
+  }
+
   // Returns the thickness of the first surface in the inward normal direction.
   virtual float ObjectCenteredVolume(int x, int y) const {
+    // DEPRECATED.
     Vec3 ray_direction = this->RayDirection(x, y);
 
     int count = 0;

@@ -7,7 +7,7 @@ add_library(file_io file_io.cc file_io.h)
 target_link_libraries(file_io spdlog assimp common cpp_gsl Boost::filesystem blosc)
 
 add_library(camera camera.cc camera.h)
-target_link_libraries(camera common cpp_gsl)
+target_link_libraries(camera common cpp_gsl file_io)
 
 add_library(ray_mesh_intersection_cgal ray_mesh_intersection_cgal.cc ray_mesh_intersection_cgal.h)
 target_link_libraries(ray_mesh_intersection_cgal PRIVATE common CGAL)
@@ -42,3 +42,6 @@ target_link_libraries(string_utils PUBLIC common)
 
 add_library(suncg_utils suncg_utils.h suncg_utils.cc)
 target_link_libraries(suncg_utils PUBLIC common file_io camera nlohmann_json string_utils assimp Boost::filesystem csv_parser lrucache pthread benchmark pcl)
+
+add_library(epipolar epipolar.h)
+target_link_libraries(epipolar PUBLIC common file_io camera benchmark pcl)

@@ -15,8 +15,25 @@ class Image {
     data_.resize(height_ * width_);
   }
 
+  Image(T *data, unsigned int height, unsigned int width, T null_value) : Image(height, width, null_value) {
+    const size_t num_items = height_ * width_;
+    std::copy(data, data + num_items, data_.data());
+  }
+
+  void Resize(unsigned int height, unsigned int width) {
+    height_ = height;
+    width_ = width;
+    data_.resize(height_ * width_);
+  }
+
   void Save(const string &filename) const {
     SerializeTensor<T>(filename, this->data(), {height_, width_});
+  }
+
+  void Transform(std::function<T(size_t, T)> fn) {
+    for (size_t i = 0; i < data_.size(); ++i) {
+        data_[i] = fn(i, data_[i]);
+    }
   }
 
   inline T &at(unsigned int index) {
@@ -53,7 +70,7 @@ class Image {
 
  private:
   vector<T> data_;
-  unsigned int height_, width_;
+  unsigned int height_ = 0, width_ = 0;
   T null_value_;
 };
 
@@ -115,10 +132,11 @@ class MultiLayerImage {
     }
   }
 
-  void Transform(std::function<T(T)> fn) {
-    for (int i = 0; i < data_.size(); ++i) {
-      for (int j = 0; j < data_[i]->size(); ++j) {
-        data_[i]->at(j) = fn(data_[i]->at(j));
+  // Callback parameters: index, l, value.
+  void Transform(std::function<T(size_t, size_t, T)> fn) {
+    for (size_t i = 0; i < data_.size(); ++i) {
+      for (size_t j = 0; j < data_[i]->size(); ++j) {
+        data_[i]->at(j) = fn(i, j, data_[i]->at(j));
       }
     }
   }

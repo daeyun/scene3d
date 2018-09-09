@@ -4,6 +4,8 @@
 
 #include "camera.h"
 
+#include "file_io.h"
+
 namespace scene3d {
 
 void SaveCamera(const string &txt_filename, const scene3d::Camera &camera) {
@@ -35,6 +37,8 @@ void SaveCamera(const string &txt_filename, const scene3d::Camera &camera) {
 }
 
 void SaveCameras(const string &txt_filename, const vector<scene3d::Camera *> &cameras) {
+  PrepareDirForFile(txt_filename);
+
   int precision = 12;
   std::ofstream ofile;
   ofile.open(txt_filename, std::ios::out);
@@ -63,6 +67,48 @@ void SaveCameras(const string &txt_filename, const vector<scene3d::Camera *> &ca
   }
 
   ofile.close();
+}
+
+void ReadCameras(const string &txt_filename, vector<unique_ptr<Camera>> *cameras) {
+  LOGGER->info("Reading file {}", txt_filename);
+
+  std::ifstream source;
+  source.open(txt_filename, std::ios_base::in);
+  if (!source) {
+    throw std::runtime_error("Can't open file.");
+  }
+
+  for (std::string line; std::getline(source, line);) {
+    if (line.empty()) {
+      continue;
+    }
+
+    std::istringstream in(line);
+    Vec3 position;
+    Vec3 viewing_direction;
+    Vec3 up;
+    FrustumParams frustum;
+
+    char camera_type;
+
+    in >> camera_type;
+    in >> position[0] >> position[1] >> position[2];
+    in >> viewing_direction[0] >> viewing_direction[1] >> viewing_direction[2];
+    in >> up[0] >> up[1] >> up[2];
+    in >> frustum.left >> frustum.right >> frustum.bottom >> frustum.top >> frustum.near >> frustum.far;
+
+    Ensures(std::abs(viewing_direction.norm() - 1.0) < 1e-7);
+    Ensures(std::abs(up.norm() - 1.0) < 1e-7);
+
+    if (camera_type == 'P') {
+      cameras->push_back(make_unique<PerspectiveCamera>(position, position + viewing_direction, up, frustum));
+    } else if (camera_type == 'O') {
+      cameras->push_back(make_unique<OrthographicCamera>(position, position + viewing_direction, up, frustum));
+    } else {
+      LOGGER->error("Unrecognized camera type in {}:\n{}", txt_filename, line);
+      throw std::runtime_error("Unrecognized camera type. See logs.");
+    }
+  }
 }
 
 FrustumParams MakePerspectiveFrustumParams(double hw_ratio, double x_fov, double near, double far) {

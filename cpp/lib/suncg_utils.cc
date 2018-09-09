@@ -185,6 +185,7 @@ void Scene::Build() {
   Ensures(!this->vertices.empty());
 
   has_normal.resize(this->faces.size());
+  face_normals.resize(this->faces.size());
 
   for (const auto &group_name : face_group_names) {
     string instance_id;

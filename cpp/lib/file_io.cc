@@ -231,6 +231,43 @@ void DecompressBytes(const void *src, std::string *out) {
   }
 }
 
+std::string ReadBytes(const std::string &path) {
+  auto canonical_path = boost::filesystem::canonical(path).string();
+  std::ifstream stream(canonical_path);
+  std::string content((std::istreambuf_iterator<char>(stream)),
+                      (std::istreambuf_iterator<char>()));
+  return content;
+}
+
+template<typename T>
+void ReadTensorData(const string &filename, vector<int> *shape, vector<T> *data) {
+  const string compressed = ReadBytes(filename);
+  string serialized;
+  DecompressBytes(compressed.data(), &serialized);
+
+  const auto *header = reinterpret_cast<const int32_t *>(serialized.data());
+  const int32_t dims = *header;
+
+  for (int i = 1; i <= dims; ++i) {
+    shape->push_back(*(header + i));
+  }
+
+  size_t size = serialized.size() - sizeof(int32_t) * (dims + 1);
+
+  size_t shape_prod = static_cast<size_t>(
+      std::accumulate(shape->begin(), shape->end(), 1, std::multiplies<>()));
+  size_t num_elements = size / sizeof(T);
+
+  Ensures(shape_prod == num_elements);
+
+  const auto *data_start = reinterpret_cast<const T *>(header + dims + 1);
+  data->reserve(num_elements);
+  data->assign(data_start, data_start + num_elements);
+}
+
+template void ReadTensorData<float>(const string &filename, vector<int> *shape, vector<float> *data);
+template void ReadTensorData<int>(const string &filename, vector<int> *shape, vector<int> *data);
+
 bool Exists(const std::string &filename) {
   if (filename.empty()) {
     return false;
@@ -349,5 +386,19 @@ void ReadLines(const string &filename, vector<string> *lines) {
 
 string JoinPath(const string &a, const string &b) {
   return (fs::path(a) / fs::path(b)).string();
+}
+
+void RemoveDirIfExists(const string &path) {
+  if (fs::is_directory(path)) {
+    LOGGER->info("rm -rf {}", fs::absolute(path).string());
+    fs::remove_all(path);
+  }
+}
+
+void RemoveFileIfExists(const string &path) {
+  if (fs::is_regular_file(path)) {
+    LOGGER->info("rm {}", fs::absolute(path).string());
+    fs::remove(path);
+  }
 }
 }

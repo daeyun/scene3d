@@ -42,6 +42,7 @@ int main(int argc, const char **argv) {
   auto timer1 = SimpleTimer("ray tracing");
   auto timer2 = SimpleTimer("LDI labeling");
   auto timer5 = SimpleTimer("overhead camera");
+  auto timer6 = SimpleTimer("object-centered");
   auto timer3 = SimpleTimer("saving");
 
   // Check required flags.
@@ -91,6 +92,8 @@ int main(int argc, const char **argv) {
         scene.get()
     );
 
+    // Input camera rendering
+    // -------------------------------------------------------
     timer1.Tic();
     MultiLayerImage<float> ml_depth;
     MultiLayerImage<uint32_t> ml_prim_ids;
@@ -104,7 +107,8 @@ int main(int argc, const char **argv) {
     GenerateMultiDepthExample(scene.get(), ml_depth, ml_prim_ids, &out_ml_depth, &out_ml_model_indices, &out_ml_prim_ids);
     timer2.Toc();
 
-    // Overhead camera and rendering
+    // Overhead rendering
+    // -------------------------------------------------------
     timer5.Tic();
     AABB average_bounding_box;
     vector<AABB> candidate_boxes;
@@ -149,15 +153,63 @@ int main(int argc, const char **argv) {
     }(overhead_floor_values);  // Find median.
     LOGGER->info("floor depth: {}", floor_depth);
 
-    out_ml_depth_overhead.Transform([floor_depth](float d) -> float {
-      float floor_height = floor_depth - d;
-      if (floor_height < 0) {
-        floor_height = 0;
-      }
-      return floor_height;
+    out_ml_depth_overhead.Transform([floor_depth](size_t index, size_t l, float d) -> float {
+      return std::max(floor_depth - d, 0.0f);
     });
 
     timer5.Toc();
+
+    // Object-centered thickness
+    // -------------------------------------------------------
+    timer6.Tic();
+    MultiLayerImage<float> ml_depth_objcentered;
+    MultiLayerImage<uint32_t> ml_prim_ids_objcentered;
+    RenderObjectCenteredMultiLayerDepthImage(&renderer, &ml_depth_objcentered, &ml_prim_ids_objcentered);
+
+    MultiLayerImage<float> out_ml_depth_objcentered;
+    MultiLayerImage<uint16_t> out_ml_model_indices_objcentered;
+    MultiLayerImage<uint32_t> out_ml_prim_ids_objcentered;
+    GenerateMultiDepthExample(scene.get(), ml_depth_objcentered, ml_prim_ids_objcentered, &out_ml_depth_objcentered, &out_ml_model_indices_objcentered, &out_ml_prim_ids_objcentered);
+
+    // TODO: This part can be refactored/simplified.
+    out_ml_depth_objcentered.Transform([&](size_t index, size_t l, float d) -> float {
+      if (l == 1) {
+        if (std::isfinite(d)) {
+          float ret = d - out_ml_depth_objcentered.at(index, 0);
+          Ensures(ret >= -1e-5);  // in case of numerical error.
+          return std::max(ret, 0.0f);
+        }
+      }
+      return d;
+    });
+    Image<float> object_centered_instance_thickness;
+    out_ml_depth_objcentered.ExtractLayer(1, &object_centered_instance_thickness);
+
+    // Surface normals.
+    Image<uint32_t> first_layer_prim_id;
+    MultiLayerImage<float> surface_normals(object_centered_instance_thickness.height(), object_centered_instance_thickness.width(), NAN);
+    ml_prim_ids_objcentered.ExtractLayer(0, &first_layer_prim_id);
+    for (int y = 0; y < object_centered_instance_thickness.height(); ++y) {
+      for (int x = 0; x < object_centered_instance_thickness.width(); ++x) {
+        if (std::isfinite(object_centered_instance_thickness.at(y, x))) {
+          const array<float, 3> &normal = scene->PrimNormal(first_layer_prim_id.at(y, x));
+          Vec3 cam_normal;
+          camera.WorldToCamNormal(Vec3{normal[0], normal[1], normal[2]}, &cam_normal);
+          Ensures(std::isfinite(cam_normal[0]));
+          Ensures(std::isfinite(cam_normal[1]));
+          Ensures(std::isfinite(cam_normal[2]));
+          cam_normal.normalize();
+          if (cam_normal[2] < 0) {
+            cam_normal *= -1;
+          }
+          surface_normals.values(y, x)->push_back(cam_normal[0]);
+          surface_normals.values(y, x)->push_back(cam_normal[1]);
+          surface_normals.values(y, x)->push_back(cam_normal[2]);
+        }
+      }
+    }
+
+    timer6.Toc();
 
     timer3.Tic();
     auto generate_filename = [&](int index, const string &suffix, const string &extension) -> string {
@@ -178,6 +230,8 @@ int main(int argc, const char **argv) {
     out_ml_model_indices.Save(generate_filename(camera_i, "model", "bin"), kNumLayers);
     out_ml_depth_overhead.Save(generate_filename(camera_i, "ldi-o", "bin"), kNumLayers);
     out_ml_model_indices_overhead.Save(generate_filename(camera_i, "model-o", "bin"), kNumLayers);
+    object_centered_instance_thickness.Save(generate_filename(camera_i, "oit", "bin"));
+    surface_normals.Save(generate_filename(camera_i, "n", "bin"), 3);
 
     SaveCameras(generate_filename(camera_i, "cam", "txt"), vector<Camera *>{&camera, overhead_cam.get()});
     SaveAABB(generate_filename(camera_i, "aabb", "txt"), vector<AABB>{average_bounding_box, candidate_boxes[0], candidate_boxes[1], candidate_boxes[2]});
@@ -190,6 +244,7 @@ int main(int argc, const char **argv) {
   LOGGER->info("Elapsed time ({}) : {:.1f}", timer1.name(), timer1.Duration<std::milli>());
   LOGGER->info("Elapsed time ({}) : {:.1f}", timer2.name(), timer2.Duration<std::milli>());
   LOGGER->info("Elapsed time ({}) : {:.1f}", timer5.name(), timer5.Duration<std::milli>());
+  LOGGER->info("Elapsed time ({}) : {:.1f}", timer6.name(), timer6.Duration<std::milli>());
   LOGGER->info("Elapsed time ({}) : {:.1f}", timer3.name(), timer3.Duration<std::milli>());
   LOGGER->info("OK");
   return 0;

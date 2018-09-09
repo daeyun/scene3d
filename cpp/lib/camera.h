@@ -302,8 +302,8 @@ class PerspectiveCamera : public Camera {
                     const FrustumParams &frustum_params)
       : Camera(camera_position, lookat_position, up, frustum_params) {
     // Expects symmetric frustum.
-    Expects((frustum().bottom + frustum().top) < 1e-7);
-    Expects((frustum().left + frustum().right) < 1e-7);
+    Expects(std::abs(frustum().bottom + frustum().top) < 1e-7);  // Expects a symmetric frustum for perspective camera.
+    Expects(std::abs(frustum().left + frustum().right) < 1e-7);
 
     auto rl = frustum().right - frustum().left;
     auto tb = frustum().top - frustum().bottom;
@@ -362,6 +362,8 @@ class PerspectiveCamera : public Camera {
 void SaveCamera(const string &txt_filename, const Camera &camera);
 
 void SaveCameras(const string &txt_filename, const vector<scene3d::Camera *> &cameras);
+
+void ReadCameras(const string &txt_filename, vector<unique_ptr<scene3d::Camera>> *cameras);
 
 // `hw_ratio` is height/width.
 FrustumParams ForceFixedAspectRatio(double hw_ratio, const FrustumParams &frustum);

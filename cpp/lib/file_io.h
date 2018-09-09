@@ -30,6 +30,9 @@ void WritePclTensor(const std::string &filename, const vector<Vec3> &pcl);
 
 bool Exists(const std::string &filename);
 
+template<typename T>
+void ReadTensorData(const string &filename, vector<int> *shape, vector<T> *data);
+
 template<typename T=float>
 void WriteFloatsTxt(const std::string &txt_filename, int precision, const std::vector<T> &data);
 
@@ -42,5 +45,8 @@ bool PrepareDir(const string &dirname);
 bool PrepareDirForFile(const string &filename);
 
 string JoinPath(const string &a, const string &b);
+
+void RemoveDirIfExists(const string &path);
+void RemoveFileIfExists(const string &path);
 }
 
