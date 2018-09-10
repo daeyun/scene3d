@@ -183,7 +183,7 @@ def main():
     files_by_house_id = dict(files_by_house_id)
     camera_ids_by_house_id = dict(camera_ids_by_house_id)
 
-    house_ids = sorted(files_by_house_id.keys())
+    house_ids = [item for item in sorted(files_by_house_id.keys()) if item not in pbrs_utils.excluded_house_ids]
 
     completed_house_ids = set(load_completed_house_ids())
     remaining_house_ids = [house_id for house_id in house_ids if house_id not in completed_house_ids]
