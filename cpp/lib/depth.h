@@ -15,7 +15,7 @@ class Image {
     data_.resize(height_ * width_);
   }
 
-  Image(T *data, unsigned int height, unsigned int width, T null_value) : Image(height, width, null_value) {
+  Image(const T *data, unsigned int height, unsigned int width, T null_value) : Image(height, width, null_value) {
     const size_t num_items = height_ * width_;
     std::copy(data, data + num_items, data_.data());
   }

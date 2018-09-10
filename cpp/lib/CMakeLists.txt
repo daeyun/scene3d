@@ -1,3 +1,7 @@
+set(CMAKE_FIND_LIBRARY_SUFFIXES ".so")
+set(Boost_USE_STATIC_LIBS OFF)
+set(Boost_USE_MULTITHREADED ON)
+set(Boost_USE_STATIC_RUNTIME ON)
 find_package(Boost REQUIRED COMPONENTS system filesystem)
 
 add_library(common common.cc)
@@ -41,7 +45,11 @@ add_library(string_utils string_utils.h)
 target_link_libraries(string_utils PUBLIC common)
 
 add_library(suncg_utils suncg_utils.h suncg_utils.cc)
-target_link_libraries(suncg_utils PUBLIC common file_io camera nlohmann_json string_utils assimp Boost::filesystem csv_parser lrucache pthread benchmark pcl)
+target_link_libraries(suncg_utils PUBLIC common file_io camera nlohmann_json string_utils assimp csv_parser lrucache pthread benchmark pcl)
 
-add_library(epipolar epipolar.h)
-target_link_libraries(epipolar PUBLIC common file_io camera benchmark pcl)
+add_library(random_utils random_utils.h)
+target_link_libraries(random_utils PUBLIC common)
+
+add_library(epipolar STATIC epipolar.h epipolar.cc)
+target_link_libraries(epipolar PUBLIC common eigen3 file_io camera benchmark pcl)
+set_property(TARGET epipolar PROPERTY POSITION_INDEPENDENT_CODE ON)

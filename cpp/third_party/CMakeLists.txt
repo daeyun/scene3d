@@ -2,8 +2,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/third_party/cmak
 #set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 set(BUILD_SHARED_LIBS OFF)
 
-set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-
 find_package(Threads REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system filesystem)
 
@@ -50,7 +48,8 @@ target_include_directories(nanort BEFORE INTERFACE
 
 add_library(blosc INTERFACE)
 target_link_libraries(blosc INTERFACE
-        ${CMAKE_SOURCE_DIR}/third_party/install/c-blosc/lib/libblosc.a
+#        ${CMAKE_SOURCE_DIR}/third_party/install/c-blosc/lib/libblosc.a
+        ${CMAKE_SOURCE_DIR}/third_party/install/c-blosc/lib/libblosc.so
         )
 target_include_directories(blosc BEFORE INTERFACE
         ${CMAKE_SOURCE_DIR}/third_party/install/c-blosc/include

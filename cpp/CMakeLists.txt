@@ -26,8 +26,9 @@ endif ()
 
 include_directories(${CMAKE_SOURCE_DIR})
 
-
 add_subdirectory(third_party)
 add_subdirectory(lib)
 add_subdirectory(apps)
 add_subdirectory(tests)
+
+add_subdirectory(ctypes)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "camera.h"
 #include "pcl.h"
 
@@ -15,44 +17,22 @@ struct XYLineSegment {
 // For each non-nan pixel in the front and back input depth images, find the starting and ending XY coordinates in the target camera.
 void EpipolarLineSegmentCoordinates(const Image<float> &front_depth, const Image<float> &back_depth,
                                     const Camera &source_camera, const Camera &target_camera,
-                                    unsigned int target_height, unsigned int target_width, Image<unique_ptr<XYLineSegment>> *epipolar_mapping) {
-  Expects(source_camera.is_perspective());
-  Expects(!target_camera.is_perspective());
+                                    unsigned int target_height, unsigned int target_width, Image<unique_ptr<XYLineSegment>> *epipolar_mapping);
 
-  Points3d front_depth_pcl, back_depth_pcl;
-  Points2i source_xy_front, source_xy_back;
-  PclFromDepthInWorldCoords(front_depth, source_camera, &source_xy_front, &front_depth_pcl);
-  PclFromDepthInWorldCoords(back_depth, source_camera, &source_xy_back, &back_depth_pcl);
-  Ensures(front_depth_pcl.cols() >= back_depth_pcl.cols());
-  Ensures(front_depth_pcl.cols() == source_xy_front.cols());
-  Ensures(back_depth_pcl.cols() == source_xy_back.cols());
+void LineCoordinates(int x1, int y1, int x2, int y2, vector<array<int, 2>> *xy);
 
-  Points2i target_xy_front, target_xy_back;
-  target_camera.WorldToImage(front_depth_pcl, target_height, target_width, &target_xy_front, nullptr);
-  target_camera.WorldToImage(back_depth_pcl, target_height, target_width, &target_xy_back, nullptr);
-  Ensures(target_xy_front.cols() >= target_xy_back.cols());
-  Ensures(source_xy_front.cols() == target_xy_front.cols());
-  Ensures(source_xy_back.cols() == target_xy_back.cols());
+void LineCoordinatesValidRange(int x1, int y1, int x2, int y2, int height, int width, vector<array<int, 2>> *xy);
 
-  epipolar_mapping->Resize(front_depth.height(), front_depth.width());
+// Memory ordering must be (H, W, C).
+void EpipolarFeatureTransform(const float *feature_map_data,
+                              const float *front_depth_data,
+                              const float *back_depth_data,
+                              uint32_t source_channels,
+                              uint32_t source_height,
+                              uint32_t source_width,
+                              const char *camera_filename,
+                              uint32_t target_height,
+                              uint32_t target_width,
+                              std::vector<float> *transformed);
 
-  for (int i = 0; i < source_xy_front.cols(); ++i) {
-    unsigned int x = source_xy_front.col(i)[0];
-    unsigned int y = source_xy_front.col(i)[1];
-    Expects(epipolar_mapping->at(y, x) == nullptr);
-    auto segment = make_unique<XYLineSegment>();
-    segment->xy1 = {static_cast<int32_t>(target_xy_front.col(i)[0]), static_cast<int32_t>(target_xy_front.col(i)[1])};
-    epipolar_mapping->at(y, x) = move(segment);
-  }
-
-  for (int i = 0; i < source_xy_back.cols(); ++i) {
-    unsigned int x = source_xy_back.col(i)[0];
-    unsigned int y = source_xy_back.col(i)[1];
-    Expects(epipolar_mapping->at(y, x) != nullptr);
-    auto &segment = epipolar_mapping->at(y, x);
-    Expects(!segment->has_xy2);
-    segment->xy2 = {static_cast<int32_t>(target_xy_back.col(i)[0]), static_cast<int32_t>(target_xy_back.col(i)[1])};
-    segment->has_xy2 = true;
-  }
-}
-}
+}  // namespace scene3d

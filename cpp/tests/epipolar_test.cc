@@ -14,6 +14,7 @@
 #include "lib/vectorization_utils.h"
 #include "lib/epipolar.h"
 #include "lib/benchmark.h"
+#include "lib/random_utils.h"
 
 using namespace scene3d;
 
@@ -224,4 +225,128 @@ TEST_CASE("camera test") {
   // Depth point cloud reprojected to overhead image space.
   Eigen::Matrix<int, Eigen::Dynamic, 2, Eigen::RowMajor> transposed_points = xy.transpose().cast<int>().eval();
   SerializeTensor<int>("/tmp/scene3d_test/xy.bin", transposed_points.data(), {static_cast<int>(xy.cols()), 2});
+}
+
+TEST_CASE("line drawing") {
+  vector<array<int, 2>> xy;
+
+  SECTION("45 degree line") {
+    LineCoordinates(0, 1, 10, 11, &xy);
+    REQUIRE(xy.size() == 11);  // Ending point should be inclusive.
+    REQUIRE(xy[0][0] == 0);
+    REQUIRE(xy[0][1] == 1);
+    REQUIRE(xy[1][0] == 1);
+    REQUIRE(xy[1][1] == 2);
+    REQUIRE(xy[9][0] == 9);
+    REQUIRE(xy[9][1] == 10);
+    REQUIRE(xy[10][0] == 10);
+    REQUIRE(xy[10][1] == 11);
+  };
+
+  SECTION("45 degree line, negative slope") {
+    LineCoordinates(0, 1, -10, 11, &xy);
+    REQUIRE(xy.size() == 11);  // Ending point should be inclusive.
+    REQUIRE(xy[0][0] == 0);
+    REQUIRE(xy[0][1] == 1);
+    REQUIRE(xy[1][0] == -1);
+    REQUIRE(xy[1][1] == 2);
+    REQUIRE(xy[9][0] == -9);
+    REQUIRE(xy[9][1] == 10);
+    REQUIRE(xy[10][0] == -10);
+    REQUIRE(xy[10][1] == 11);
+  };
+
+  SECTION("Vertical line +y") {
+    LineCoordinates(0, 0, 0, 10, &xy);
+    REQUIRE(xy.size() == 11);  // Ending point should be inclusive.
+    REQUIRE(xy[0][0] == 0);
+    REQUIRE(xy[0][1] == 0);
+    REQUIRE(xy[1][0] == 0);
+    REQUIRE(xy[1][1] == 1);
+    REQUIRE(xy[9][0] == 0);
+    REQUIRE(xy[9][1] == 9);
+    REQUIRE(xy[10][0] == 0);
+    REQUIRE(xy[10][1] == 10);
+  };
+
+  SECTION("Vertical line -y") {
+    LineCoordinates(0, 0, 0, -10, &xy);
+    REQUIRE(xy.size() == 11);  // Ending point should be inclusive.
+    REQUIRE(xy[0][0] == 0);
+    REQUIRE(xy[0][1] == 0);
+    REQUIRE(xy[1][0] == 0);
+    REQUIRE(xy[1][1] == -1);
+    REQUIRE(xy[9][0] == 0);
+    REQUIRE(xy[9][1] == -9);
+    REQUIRE(xy[10][0] == 0);
+    REQUIRE(xy[10][1] == -10);
+  };
+
+  SECTION("Horizontal line +x") {
+    LineCoordinates(0, 0, 10, 0, &xy);
+    REQUIRE(xy.size() == 11);  // Ending point should be inclusive.
+    REQUIRE(xy[0][0] == 0);
+    REQUIRE(xy[0][1] == 0);
+    REQUIRE(xy[1][0] == 1);
+    REQUIRE(xy[1][1] == 0);
+    REQUIRE(xy[9][0] == 9);
+    REQUIRE(xy[9][1] == 0);
+    REQUIRE(xy[10][0] == 10);
+    REQUIRE(xy[10][1] == 0);
+  };
+
+  SECTION("Horizontal line -x") {
+    LineCoordinates(0, 0, -10, 0, &xy);
+    REQUIRE(xy.size() == 11);  // Ending point should be inclusive.
+    REQUIRE(xy[0][0] == 0);
+    REQUIRE(xy[0][1] == 0);
+    REQUIRE(xy[1][0] == -1);
+    REQUIRE(xy[1][1] == 0);
+    REQUIRE(xy[9][0] == -9);
+    REQUIRE(xy[9][1] == 0);
+    REQUIRE(xy[10][0] == -10);
+    REQUIRE(xy[10][1] == 0);
+  };
+
+  SECTION("Point") {
+    LineCoordinates(-2, -1, -2, -1, &xy);
+    REQUIRE(xy.size() == 1);
+    REQUIRE(xy[0][0] == -2);
+    REQUIRE(xy[0][1] == -1);
+  };
+
+  SECTION("Random") {
+    for (int i = 0; i < 1000; ++i) {
+      int x1 = Random::UniformInt(20) - 10;
+      int y1 = Random::UniformInt(20) - 10;
+      int x2 = Random::UniformInt(20) - 10;
+      int y2 = Random::UniformInt(20) - 10;
+
+      xy.clear();
+      LineCoordinates(x1, y1, x2, y2, &xy);
+      REQUIRE(xy[0][0] == x1);
+      REQUIRE(xy[0][1] == y1);
+      REQUIRE(xy[xy.size() - 1][0] == x2);
+      REQUIRE(xy[xy.size() - 1][1] == y2);
+    }
+  };
+
+  SECTION("Draw") {
+    int x1 = 150;
+    int y1 = 150;
+    const double kRadius = 100;
+    for (double theta = 0; theta < 2 * M_PI; theta += 0.1) {
+      int x2 = static_cast<int>(std::cos(theta) * kRadius);
+      int y2 = static_cast<int>(std::sin(theta) * kRadius);
+      LineCoordinates(x1, y1, x1 + x2, y1 + y2, &xy);
+    }
+
+    Image<float> image(300, 300, NAN);
+    for (const auto &item : xy) {
+      image.at(item[1], item[0]) = 1.0f;
+    }
+
+    image.Save("/tmp/scene3d_test/line_drawing.bin");
+  };
+
 }
