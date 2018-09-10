@@ -13,6 +13,7 @@
 #include "lib/pcl.h"
 #include "lib/vectorization_utils.h"
 #include "lib/epipolar.h"
+#include "lib/benchmark.h"
 
 using namespace scene3d;
 
@@ -51,8 +52,8 @@ TEST_CASE("simple reprojection") {
   REQUIRE(overhead_shape[1] == 300);
   REQUIRE(overhead_shape[2] == 300);
 
-  const auto overhead_height = static_cast<unsigned int>(shape[1]);
-  const auto overhead_width = static_cast<unsigned int>(shape[2]);
+  const auto overhead_height = static_cast<unsigned int>(overhead_shape[1]);
+  const auto overhead_width = static_cast<unsigned int>(overhead_shape[2]);
 
   vector<unique_ptr<scene3d::Camera>> cameras;
   ReadCameras(camera_filename, &cameras);
@@ -61,6 +62,8 @@ TEST_CASE("simple reprojection") {
 
   REQUIRE(cameras[0]->is_perspective());
   REQUIRE(!cameras[1]->is_perspective());
+
+  auto stime = TimeSinceEpoch<std::milli>();
 
   Image<unique_ptr<XYLineSegment>> epipolar_mapping;
   EpipolarLineSegmentCoordinates(
@@ -71,6 +74,8 @@ TEST_CASE("simple reprojection") {
       overhead_height,
       overhead_width,
       &epipolar_mapping);
+
+  LOGGER->info("Elapsed (EpipolarLineSegmentCoordinates): {}", TimeSinceEpoch<std::milli>() - stime);
 
   REQUIRE(epipolar_mapping.height() == front_layer.height());
   REQUIRE(epipolar_mapping.width() == front_layer.width());
@@ -90,11 +95,18 @@ TEST_CASE("simple reprojection") {
   REQUIRE(epipolar_mapping.at(130, 170)->has_xy2);
   REQUIRE(epipolar_mapping.at(130, 170)->has_xy2);
 
-  // TODO
-  unsigned int x = 53;
-  unsigned int y = 180;
-  LOGGER->info("{}, {}", epipolar_mapping.at(y, x)->xy1[0], epipolar_mapping.at(y, x)->xy1[1]);
-  LOGGER->info("{}, {}", epipolar_mapping.at(y, x)->xy2[0], epipolar_mapping.at(y, x)->xy2[1]);
+  unsigned int x = 150;
+  unsigned int y = 150;
+
+  Image<float> overhead_front_layer(overhead_ldi_data.data(), overhead_height, overhead_width, NAN);
+
+  float reprojected_depth_front = overhead_front_layer.at(static_cast<unsigned int>(epipolar_mapping.at(y, x)->xy1[1]), static_cast<unsigned int>(epipolar_mapping.at(y, x)->xy1[0]));
+  float reprojected_depth_back = overhead_front_layer.at(static_cast<unsigned int>(epipolar_mapping.at(y, x)->xy2[1]), static_cast<unsigned int>(epipolar_mapping.at(y, x)->xy2[0]));
+
+  REQUIRE(reprojected_depth_front > 0.7);
+  REQUIRE(reprojected_depth_front < 0.75);
+  REQUIRE(reprojected_depth_back > 0.7);
+  REQUIRE(reprojected_depth_back < 0.75);
 }
 
 TEST_CASE("simple reprojection 2") {
@@ -155,12 +167,6 @@ TEST_CASE("simple reprojection 2") {
 
   REQUIRE(epipolar_mapping.height() == front_layer.height());
   REQUIRE(epipolar_mapping.width() == front_layer.width());
-
-  // TODO
-  unsigned int x = 127;
-  unsigned int y = 100;
-  LOGGER->info("{}, {}", epipolar_mapping.at(y, x)->xy1[0], epipolar_mapping.at(y, x)->xy1[1]);
-  LOGGER->info("{}, {}", epipolar_mapping.at(y, x)->xy2[0], epipolar_mapping.at(y, x)->xy2[1]);
 }
 
 TEST_CASE("camera test") {
@@ -210,15 +216,12 @@ TEST_CASE("camera test") {
   });
 
   PointCloud pcl;
-  PclFromDepth(front_layer, *cameras[0], &pcl);
+  PclFromDepthInWorldCoords(front_layer, *cameras[0], &pcl);
 
   Points2i xy;
   cameras[1]->WorldToImage(pcl.points(), 300, 300, &xy);
 
-//  pcl.Save("/tmp/scene3d_test/pcl.bin");
-
+  // Depth point cloud reprojected to overhead image space.
   Eigen::Matrix<int, Eigen::Dynamic, 2, Eigen::RowMajor> transposed_points = xy.transpose().cast<int>().eval();
   SerializeTensor<int>("/tmp/scene3d_test/xy.bin", transposed_points.data(), {static_cast<int>(xy.cols()), 2});
-
-
 }

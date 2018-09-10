@@ -289,7 +289,7 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
   return move(ret);
 }
 
-void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out) {
+void PclFromDepthInWorldCoords(const Image<float> &depth, const Camera &camera, PointCloud *out) {
   Points3d pts;
   PclFromDepthInWorldCoords(depth, camera, &pts);
   *out = PointCloud(pts);

@@ -61,7 +61,7 @@ TEST_CASE("pcl from depth") {
     Image<float> depth(height, width, NAN);
     ml_depth.ExtractLayer(0, &depth);
 
-    PclFromDepth(depth, camera, &pcl);
+    PclFromDepthInWorldCoords(depth, camera, &pcl);
 
     pcl.Save("/tmp/scene3d_test/dummy_obj_pcl_00.bin");
   }
@@ -104,7 +104,7 @@ TEST_CASE("pcl from depth") {
     Image<float> depth(height, width, NAN);
     ml_depth.ExtractLayer(0, &depth);
 
-    PclFromDepth(depth, camera, &pcl);
+    PclFromDepthInWorldCoords(depth, camera, &pcl);
 
     pcl.Save("/tmp/scene3d_test/dummy_obj_pcl_01.bin");
   }

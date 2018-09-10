@@ -12,10 +12,13 @@ struct XYLineSegment {
   bool has_xy2{false};  // If false, this is a segment of length 1.
 };
 
-// For each finite pixel in the front and back input depth images, find the starting and ending image coordinates from the target camera.
+// For each non-nan pixel in the front and back input depth images, find the starting and ending XY coordinates in the target camera.
 void EpipolarLineSegmentCoordinates(const Image<float> &front_depth, const Image<float> &back_depth,
                                     const Camera &source_camera, const Camera &target_camera,
                                     unsigned int target_height, unsigned int target_width, Image<unique_ptr<XYLineSegment>> *epipolar_mapping) {
+  Expects(source_camera.is_perspective());
+  Expects(!target_camera.is_perspective());
+
   Points3d front_depth_pcl, back_depth_pcl;
   Points2i source_xy_front, source_xy_back;
   PclFromDepthInWorldCoords(front_depth, source_camera, &source_xy_front, &front_depth_pcl);

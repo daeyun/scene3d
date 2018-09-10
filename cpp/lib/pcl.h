@@ -116,7 +116,7 @@ void PclFromDepthInWorldCoords(const Image<float> &depth, const Camera &camera, 
 
 void PclFromDepthInWorldCoords(const Image<float> &depth, const Camera &camera, Points2i *xy, Points3d *out);
 
-void PclFromDepth(const Image<float> &depth, const Camera &camera, PointCloud *out);
+void PclFromDepthInWorldCoords(const Image<float> &depth, const Camera &camera, PointCloud *out);
 
 void MeanAndStd(const Points3d &points, Vec3 *mean, Vec3 *stddev);
 
