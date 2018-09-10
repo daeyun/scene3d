@@ -32,7 +32,7 @@ void RenderObjectCenteredMultiLayerDepthImage(MultiLayerDepthRenderer *renderer,
     for (unsigned int x = 0; x < renderer->width(); x++) {
       vector<float> *depth_values = ml_depth->values(y, x);
       vector<uint32_t> *prim_ids = ml_prim_ids->values(y, x);
-      renderer->ObjectCenteredDepthValues(x, y, depth_values, prim_ids);
+      renderer->ObjectCenteredRayDisplacement(x, y, depth_values, prim_ids);
     }
   }
 }

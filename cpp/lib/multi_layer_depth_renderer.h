@@ -81,7 +81,7 @@ class MultiLayerDepthRenderer {
 
   // Implementation specific.
   virtual int DepthValues(int x, int y, vector<float> *out, vector<uint32_t> *prim_ids) const = 0;
-  virtual int ObjectCenteredDepthValues(int x, int y, vector<float> *out, vector<uint32_t> *prim_ids) const = 0;
+  virtual int ObjectCenteredRayDisplacement(int x, int y, vector<float> *out, vector<uint32_t> *prim_ids) const = 0;
 
   size_t width() const {
     return width_;
@@ -146,7 +146,7 @@ class SimpleMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
     return count;
   }
 
-  virtual int ObjectCenteredDepthValues(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
+  virtual int ObjectCenteredRayDisplacement(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
     LOGGER->error("Not implemented");
     throw std::runtime_error("not implemented");
     return 0;
@@ -241,7 +241,7 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
     return background_value_index;
   }
 
-  virtual int ObjectCenteredDepthValues(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
+  virtual int ObjectCenteredRayDisplacement(int x, int y, vector<float> *out_values, vector<uint32_t> *prim_ids) const override {
     const Vec3 &ray_direction = this->RayDirection(x, y);
 
     const double kMargin = 0.001;  // This margin can be pretty big, for some reason; based on inspection of nested floors.
@@ -298,11 +298,7 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
       return true;
     });
 
-    // Convert ray displacement to depth.
-    const double z = camera_->viewing_direction().dot(ray_direction);
-    for (auto &t : *out_values) {
-      t *= z;
-    }
+    // We want ray displacement, not depth. So no conversion here.
 
     Ensures(prim_ids->size() == out_values->size());
 
@@ -314,32 +310,6 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
     // TODO(daeyun): `prim_ids` can probably be incorrectly ordered if there are coinciding surfaces.
 
     return background_value_index;
-  }
-
-  // Returns the thickness of the first surface in the inward normal direction.
-  virtual float ObjectCenteredVolume(int x, int y) const {
-    // DEPRECATED.
-    Vec3 ray_direction = this->RayDirection(x, y);
-
-    int count = 0;
-    float ret = -1;
-
-    // Depth values are collected in the callback function, in the order traversed.
-    ray_tracer_->TraverseInwardNormalDirection(this->RayOrigin(x, y), ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
-      bool is_background = scene_->IsPrimBackground(prim_id);
-
-      if (is_background) {
-        return false;  // Stop traversal.
-      }
-      if (count > 0) {
-        ret = t;
-        return false;  // Stop traversal.
-      }
-
-      count++;
-      return true;
-    });
-    return ret;
   }
 
   void set_overhead_rendering_mode(bool value) {

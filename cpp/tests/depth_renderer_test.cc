@@ -166,17 +166,28 @@ TEST_CASE("thickness in inner normal direction") {
 
   renderer.ray_tracer()->PrintStats();
 
-  float t = 0;
   SECTION("Top of coffee table") {
-    t = renderer.ObjectCenteredVolume(150, 200);
-    LOGGER->info("First thickness value at (150, 200): {}", t);
-    REQUIRE(t > 0);
-    REQUIRE(Approx(0.03) == t);
+    {
+      vector<float> values;
+      vector<uint32_t> prim_ids;
+      renderer.ObjectCenteredRayDisplacement(150, 200, &values, &prim_ids);
+      REQUIRE(values.size() > 2);
+      float t = values[1] - values[0];
+      LOGGER->info("First thickness value at (150, 200): {}", t);
+      REQUIRE(t > 0);
+      REQUIRE(Approx(0.03) == t);
+    }
 
-    t = renderer.ObjectCenteredVolume(205, 187);
-    LOGGER->info("First thickness value at (205, 187): {}", t);
-    REQUIRE(t > 0);
-    REQUIRE(Approx(0.03) == t);
+    {
+      vector<float> values;
+      vector<uint32_t> prim_ids;
+      renderer.ObjectCenteredRayDisplacement(205, 187, &values, &prim_ids);
+      REQUIRE(values.size() > 2);
+      float t = values[1] - values[0];
+      LOGGER->info("First thickness value at (205, 187): {}", t);
+      REQUIRE(t > 0);
+      REQUIRE(Approx(0.03) == t);
+    }
   }
 }
 

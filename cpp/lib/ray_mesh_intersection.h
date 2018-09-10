@@ -107,7 +107,7 @@ class RayTracer {
           }
 
           // For some reason, negative zeros in the ray direction confuses the ray tracer.
-          // TODO: make sure this doesn't happen in other cases.
+          // TODO: make sure this is not a problem in other parts of our pipeline.
           for (int i = 0; i < 3; ++i) {
             if (std::abs(new_dir[i]) < 1e-8) {
               new_dir[i] = 0;
