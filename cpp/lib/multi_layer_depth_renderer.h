@@ -269,6 +269,7 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
               category.nyuv2_40class == "person" ||
               category.fine_grained_class == "plant" ||
               category.fine_grained_class == "chandelier" ||
+              category.fine_grained_class == "ceiling_fan" ||
               category.fine_grained_class == "decoration" ||
               category.fine_grained_class == "surveillance_camera") {
             return true;
