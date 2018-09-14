@@ -349,8 +349,27 @@ void ParseCategoryMapping(const string &csv_filename, map<string, CategoryMappin
   csv_reader.read_header(io::ignore_extra_column, "index", "model_id", "fine_grained_class", "coarse_grained_class", "empty_struct_obj", "nyuv2_40class", "wnsynsetid", "wnsynsetkey");
   CategoryMappingEntry entry;
   string model_id;
-  while (csv_reader.read_row(entry.index, model_id, entry.fine_grained_class, entry.coarse_grained_class, entry.empty_struct_obj, entry.nyuv2_40class, entry.wnsynsetid, entry.wnsynsetkey)) {
-    (*model_id_to_category)[model_id] = entry;
+
+  int line_count = 0;
+  // TODO(daeyun):  There seems to be a bug in the CSV parser library. See the warning log message below. This catch block and `line_count` can be removed when we for sure this is fixed.
+  try {
+    while (csv_reader.read_row(entry.index, model_id, entry.fine_grained_class, entry.coarse_grained_class, entry.empty_struct_obj, entry.nyuv2_40class, entry.wnsynsetid, entry.wnsynsetkey)) {
+      Ensures(!model_id.empty());
+      Ensures(model_id.length() < 1024);
+      Ensures(!entry.wnsynsetkey.empty());  // Empty cells should have "-" values.
+      Ensures(entry.wnsynsetkey.length() < 1024);
+
+      (*model_id_to_category)[model_id] = entry;
+
+      line_count++;
+    }
+  } catch (io::error::too_few_columns &ex) {
+    LOGGER->warn("There seems to be a bug in the CSV parser library that causes it to read beyond EOF. "
+                 "When parsing SUNCG's ModelCategoryMapping.csv, this hard-coded sanity check will work, for now. "
+                 "If you're seeing this error for the first time, it could actually be the case that there are too few columns, so first make sure your CSV file's format is correct.");
+    if (line_count != 2553) {
+      throw;
+    }
   }
 }
 

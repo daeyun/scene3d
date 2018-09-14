@@ -42,7 +42,7 @@ struct CategoryMappingEntry {
   string nyuv2_40class;
   string wnsynsetid;
   string wnsynsetkey;
-};
+};  // "-" value means no-value.
 
 // Run `Build()` before use.
 class Scene {

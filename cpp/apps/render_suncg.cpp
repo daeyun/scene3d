@@ -162,10 +162,15 @@ int main(int argc, const char **argv) {
         }
       }
       float floor_depth = [&](vector<float> &v) -> float {
+        if (v.empty()) {
+          // There is no floor pixel in this image. Assume floor is at 0.
+          // This is very rare, but happens at least once in 16cf44a3f11809f4098d7a306eadcba4/000007
+          return static_cast<float>(overhead_cam->position()[1]);
+        }
         size_t n = v.size() / 2;
         nth_element(v.begin(), v.begin() + n, v.end());
         return v[n];
-      }(overhead_floor_values);  // Find median.
+      }(overhead_floor_values);  // Find median. Mutates `overhead_floor_values`.
       LOGGER->info("floor depth: {}", floor_depth);
 
       out_ml_depth_overhead.Transform([floor_depth](size_t index, size_t l, float d) -> float {
@@ -204,7 +209,10 @@ int main(int argc, const char **argv) {
         if (l == 1) {
           if (std::isfinite(d)) {
             float ret = d - out_ml_depth_objcentered.at(index, 0);
-            Ensures(ret >= -1e-5);  // in case of numerical error.
+            if (ret < -1e-3) {
+              LOGGER->info("{}", ret);  // TODO(daeyun): this part can be removed later.
+            }
+            Ensures(ret >= -1e-3);  // in case of numerical error. This does happen sometimes.
             return std::max(ret, 0.0f);
           }
         }
