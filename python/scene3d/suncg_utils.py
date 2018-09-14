@@ -87,7 +87,7 @@ def house_obj_from_json(house_id, out_file='/tmp/scene3d/house_obj_default/house
 
     new_house_json_filename = path.join(path.dirname(out_file), 'house_p.json')
     with open(new_house_json_filename, 'w') as f:
-        json.dump(house_json, f)
+        json.dump(house_json, f, check_circular=True, indent=2)
 
     if path.isfile(out_file):
         os.remove(out_file)

@@ -18,7 +18,7 @@ excluded_house_ids = {
 """
 Special house ids
 
-19e13fe07c37efba7a739d31cd7b130a     # Apartment with no furniture. Renderings only contain doors.
+19e13fe07c37efba7a739d31cd7b130a     # Apartment with no furniture. A lot of doors.
 """
 
 __house_id_to_camera_ids_cache = None

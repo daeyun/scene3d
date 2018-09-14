@@ -70,3 +70,20 @@ class Unet0(nn.Module):
         out = self.dec4(torch.cat([x1, self.unpool(out)], dim=1))  # (240, 320)
         out = self.dec5(out)  # (480, 640)
         return out
+
+
+def get_feature_map_output(model: Unet0, x):
+    x1 = model.enc1(x)  # (240, 320)
+    x2 = model.enc2(model.pool(x1))  # (120, 160)
+    x3 = model.enc3(model.pool(x2))  # (60, 80)
+    x4 = model.enc4(model.pool(x3))  # (30, 40)
+    out = model.enc5(model.pool(x4))  # (15, 20)
+
+    out = model.dec1(torch.cat([x4, model.unpool(out)], dim=1))  # (30, 40)
+    out = model.dec2(torch.cat([x3, model.unpool(out)], dim=1))  # (60, 80)
+    out = model.dec3(torch.cat([x2, model.unpool(out)], dim=1))  # (120, 160)
+
+    # (240, 320)
+    out = model.dec4[:3](torch.cat([x1, model.unpool(out)], dim=1))
+
+    return out

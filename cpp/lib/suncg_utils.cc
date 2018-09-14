@@ -40,6 +40,11 @@ void ParseObjectRoomHierarchy(const string &house_json_filename, map<string, Ins
     for (int node_i = 0; node_i < num_nodes; ++node_i) {
       const auto &node = j["levels"][level]["nodes"][node_i];
 
+      // For some reason, some nodes are empty and do not have an id.
+      if (node.find("id") == node.end()) {
+        continue;
+      }
+
       bool is_valid = node["valid"].get<uint8_t>();
       // Some rooms are invalid.
 
@@ -80,6 +85,11 @@ void ParseObjectRoomHierarchy(const string &house_json_filename, map<string, Ins
     int num_nodes = j["levels"][level]["nodes"].size();
     for (int node_i = 0; node_i < num_nodes; ++node_i) {
       const auto &node = j["levels"][level]["nodes"][node_i];
+
+      // For some reason, some nodes are empty and do not have an id.
+      if (node.find("id") == node.end()) {
+        continue;
+      }
 
       bool is_valid = node["valid"].get<uint8_t>();
       string node_id = node["id"].get<string>();

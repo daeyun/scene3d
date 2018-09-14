@@ -21,8 +21,17 @@ from scene3d import render_depth
 from scene3d import suncg_utils
 from scene3d import pbrs_utils
 
+"""
+This script writes a lot of temporary files.
+For performance reasons and to save SSD write cycles, the recommended way is to mount a memory mapped volume for those temporary files.
+See https://www.jamescoyle.net/how-to/943-create-a-ram-disk-in-linux
+
+> sudo mount -t tmpfs -o size=2600m tmpfs /mnt/ramdisk
+"""
+
 num_threads = 12
 out_root = '/data2/scene3d/v8'
+
 # Can be any directory. Temporary output files are written here.
 # tmp_out_root = '/tmp/scene3d'
 tmp_out_root = '/mnt/ramdisk/scene3d'
@@ -53,6 +62,7 @@ def load_completed_house_ids():
 
 def generate_depth_images(thread_id, house_id):
     out_dir = path.join(out_root, 'renderings/{}'.format(house_id))
+    log.info("Processing house id: {}  (thread {})".format(house_id, thread_id))
 
     io_utils.ensure_dir_exists(out_dir)
 

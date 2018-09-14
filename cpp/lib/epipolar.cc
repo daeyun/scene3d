@@ -138,9 +138,9 @@ void LineCoordinatesValidRange(int x1, int y1, int x2, int y2, int height, int w
 void EpipolarFeatureTransform(const float *feature_map_data,
                               const float *front_depth_data,
                               const float *back_depth_data,
-                              uint32_t source_channels,
                               uint32_t source_height,
                               uint32_t source_width,
+                              uint32_t source_channels,
                               const char *camera_filename,
                               uint32_t target_height,
                               uint32_t target_width,
@@ -196,7 +196,7 @@ void EpipolarFeatureTransform(const float *feature_map_data,
   }
 
   const uint32_t num_channels = source_channels;
-  transformed->resize(num_channels * target_height * target_width);
+  transformed->resize(target_height * target_width * num_channels);
   std::fill(transformed->begin(), transformed->end(), 0);
 
   for (int y = 0; y < target_height; ++y) {

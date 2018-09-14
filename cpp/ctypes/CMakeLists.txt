@@ -1,2 +1,2 @@
 add_library(epipolar_transform_ctypes SHARED epipolar_transform.cc)
-target_link_libraries(epipolar_transform_ctypes eigen3 epipolar benchmark)
+target_link_libraries(epipolar_transform_ctypes eigen3 epipolar benchmark pthread)

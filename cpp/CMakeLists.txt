@@ -9,6 +9,7 @@ set(CMAKE_C_COMPILER "gcc-7")
 set(CMAKE_CXX_COMPILER "g++-7")
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
+find_package(Threads REQUIRED)
 
 set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
 #set(CMAKE_EXE_LINKER_FLAGS "-static-libgcc -static-libstdc++ -static")

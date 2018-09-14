@@ -8,6 +8,9 @@ from scene3d import camera
 
 
 def epipolar_line(xy, cam_params, td_cam_params, depth_image, back_depth_image, td_depth_image, plot=True):
+    """
+    Deprecated. Do not use.
+    """
     depth_image = depth_image.squeeze()
     back_depth_image = back_depth_image.squeeze()
     td_depth_image = td_depth_image.squeeze()
@@ -76,3 +79,25 @@ def epipolar_line(xy, cam_params, td_cam_params, depth_image, back_depth_image, 
         pt.imshow(td_depth_image)
 
     return xy1, xy2, coords
+
+
+def fix_ray_displacement(depth):
+    """
+    There was a bug in some examples in the v2 dataset. Use this to fix it, if you're still using v2. New users do not have to worry about this.
+    """
+    distance_to_image_plane = float(np.mean([160 / np.tan(0.5534), 120 / np.tan(0.433896)]))
+
+    h = 240
+    w = 320
+    xy = np.mgrid[:h, :w][::-1, :, :]
+    z = np.full_like(xy[:1], fill_value=-distance_to_image_plane)
+    xyz = np.concatenate((xy + 0.5, z), axis=0)
+
+    cam_ray_direction = xyz - np.array([w * 0.5, h * 0.5, 0])[:, None, None]
+    cam_ray_direction = cam_ray_direction.transpose([1, 2, 0]).reshape(-1, 3).copy()
+    cam_ray_direction = cam_ray_direction / la.norm(cam_ray_direction, axis=1)[:, None]
+
+    new_z = -depth.reshape(-1) * cam_ray_direction[:, 2]
+
+    fixed = new_z.reshape(depth.shape)
+    return fixed.astype(depth.dtype)

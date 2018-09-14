@@ -95,7 +95,8 @@ GLOG_PREFIX_REGEX = (
 # Defaults
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(GlogFormatter())
-logger.addHandler(stream_handler)
+
+# logger.addHandler(stream_handler)
 setLevel(logging.DEBUG)
 
 stream_handler.setLevel(logging.INFO)
