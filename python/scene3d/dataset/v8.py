@@ -38,7 +38,7 @@ class MultiLayerDepth(data.Dataset):
     TODO(daeyun): incomplete implemetnation
     """
 
-    def __init__(self, split='train', first_n=None, rgb_scale=1.0, subtract_mean=True, image_hw=(240, 320)):
+    def __init__(self, split='train', first_n=None, start_index=None, rgb_scale=1.0, subtract_mean=True, image_hw=(240, 320)):
         if split == 'train':
             split_filename = path.join(config.scene3d_root, 'v8/train.txt')
         elif split == 'test':
@@ -52,7 +52,11 @@ class MultiLayerDepth(data.Dataset):
         self.filename_prefixes = io_utils.read_lines_and_strip(split_filename)
 
         if first_n is not None and first_n > 0:
+            assert start_index is None
             self.filename_prefixes = self.filename_prefixes[:first_n]
+        elif start_index is not None and start_index > 0:
+            assert first_n is None
+            self.filename_prefixes = self.filename_prefixes[start_index:]
 
         self.image_hw = image_hw
         self.rgb_mean = np.array([178.1781, 158.5039, 142.5141], dtype=np.float32)

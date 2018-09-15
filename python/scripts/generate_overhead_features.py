@@ -1,4 +1,5 @@
 import time
+import os
 from multiprocessing.dummy import Pool as ThreadPool
 
 import cv2
@@ -24,9 +25,11 @@ from scene3d.dataset import v8
 
 model_filename = '/data2/out/scene3d/v2/multi-layer-d-3/0/v1_030_0000850_00664000.pth'
 batch_size = 12
-num_data_workers = 2
+num_data_workers = 3
 
 out_dir = '/data3/scene3d/v8/overhead/v1'
+
+pool = ThreadPool(3)
 
 
 def print_eta(start_time, num_processed, num_total):
@@ -36,11 +39,33 @@ def print_eta(start_time, num_processed, num_total):
     log.info('{}/{}   ETA: {:d} minutes'.format(num_processed, num_total, round(eta_seconds / 60)))
 
 
+def make_output_filename(example_name):
+    return path.join(out_dir, 'features', example_name + '.bin')
+
+
+def make_dataset_object():
+    dataset_all = v8.MultiLayerDepth(split='all', subtract_mean=True, image_hw=(240, 320), rgb_scale=1.0 / 255)
+
+    # Pick up from where we left off.
+    filename_index_offset = 0
+    while filename_index_offset < len(dataset_all.filename_prefixes):
+        example_name = dataset_all.filename_prefixes[filename_index_offset]
+        out_filename = make_output_filename(example_name)
+        if not path.isfile(out_filename):
+            break
+        filename_index_offset += 1
+    if filename_index_offset > 0:
+        dataset_all = v8.MultiLayerDepth(split='all', subtract_mean=True, start_index=filename_index_offset, image_hw=(240, 320), rgb_scale=1.0 / 255)
+    log.info('filename_index_offset: {}'.format(filename_index_offset))
+
+    return dataset_all
+
+
 def main():
     cudnn.enabled = True
     cudnn.benchmark = True
 
-    dataset_all = v8.MultiLayerDepth(split='all', subtract_mean=True, image_hw=(240, 320), rgb_scale=1.0 / 255)
+    dataset_all = make_dataset_object()
 
     log.info('Loading model {}'.format(model_filename))
     model = torch_utils.load_torch_model(model_filename, use_cpu=False)
@@ -86,17 +111,16 @@ def main():
         out_transformed_batch_list = []
         for j in range(num_examples):
             example_name = batch['name'][j]
-
             assert example_name in camera_filenames[j], (example_name, camera_filenames[j])
-            out_filename = path.join(out_dir, 'features', example_name + '.bin')
+            out_filename = make_output_filename(example_name)
             io_utils.ensure_dir_exists(path.dirname(out_filename))
             out_filenames.append(out_filename)
             out_transformed_batch_list.append(tranformed_batch[j])
 
-        pool = ThreadPool(9)
         pool.starmap(io_utils.save_array_compressed, zip(out_filenames, out_transformed_batch_list))
+        # for out_filename, out_transformed_batch in zip(out_filenames, out_transformed_batch_list):
+        #     io_utils.save_array_compressed(out_filename, out_transformed_batch)
 
-        # io_utils.save_array_compressed(out_filename, tranformed_batch[j])
         log.info(out_filenames)
         num_processed += num_examples
         print_eta(start_time, num_processed, num_total)

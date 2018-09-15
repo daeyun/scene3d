@@ -1,5 +1,6 @@
 import contextlib
 import copy
+import typing
 import errno
 import fcntl
 import hashlib
@@ -11,6 +12,7 @@ import tempfile
 import time
 import struct
 from os import path
+from multiprocessing.dummy import Pool as ThreadPool
 
 import numpy as np
 import scipy.misc
@@ -520,7 +522,7 @@ def read_array_compressed(filename, dtype=np.float32):
 
 def save_array_compressed(filename, arr: np.ndarray):
     encoded = array_to_bytes(arr)
-    compressed = blosc.compress(encoded, arr.dtype.itemsize, clevel=9, shuffle=True, cname='lz4hc')
+    compressed = blosc.compress(encoded, arr.dtype.itemsize, clevel=5, shuffle=True, cname='lz4hc')
     with open(filename, mode='wb') as f:
         f.write(compressed)
 
