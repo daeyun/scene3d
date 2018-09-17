@@ -10,11 +10,13 @@ import time
 import re
 from scene3d.dataset import v1
 from scene3d.dataset import v2
+from scene3d.dataset import v8
 from torch.utils import data
 import time
 from torch.backends import cudnn
 from scene3d.net import deeplab
 from scene3d.net import unet
+from scene3d.net import unet_overhead
 from scene3d.net import unet_no_bn
 from scene3d import log
 from scene3d import torch_utils
@@ -41,15 +43,29 @@ available_experiments = ['multi-layer',
                          'multi-layer-and-segmentation',
                          'single-layer-and-segmentation',
                          'multi-layer-3',
-                         'multi-layer-d-3',
+                         'multi-layer-3',
+                         'overhead-features-01-log-l1-loss',
+                         'overhead-features-01-l1-loss',
                          ]
-available_models = ['unet_v0', 'unet_v0_no_bn']
+available_models = ['unet_v0', 'unet_v0_no_bn', 'unet_v0_overhead']
 
 
 def loss_calc(pred, target):
     assert pred.shape[1] > 1
     mask = ~torch.isnan(target)
     return (torch.log2(target[mask] + 0.5) - pred[mask]).abs().mean()
+
+
+def loss_calc_overhead_single_log(pred, target):
+    assert pred.shape[1] == 1
+    mask = ~torch.isnan(target)
+    return (torch.log2(target[mask] + 0.5) - pred[mask]).abs().mean()
+
+
+def loss_calc_overhead_single_raw(pred, target):
+    assert pred.shape[1] == 1
+    mask = ~torch.isnan(target)
+    return (target[mask] - pred[mask]).abs().mean()
 
 
 def loss_calc_single_depth(pred, target):
@@ -90,6 +106,8 @@ def main():
         depth_dataset = v2.MultiLayerDepth_0(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
     elif args.experiment == 'multi-layer-d-3':
         depth_dataset = v2.MultiLayerDepth_1(train=True, subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255)
+    elif args.experiment.startswith('overhead-features-01'):
+        depth_dataset = v8.MultiLayerDepth(split='train', subtract_mean=True, image_hw=(240, 320), first_n=args.first_n, rgb_scale=1.0 / 255, fields=('features_overhead', 'depth_overhead'))
     else:
         raise NotImplementedError()
 
@@ -102,9 +120,17 @@ def main():
         assert path.isfile(args.load_checkpoint)
         assert args.load_checkpoint.endswith('.pth')
         log.info('Loading from checkpoint file {}'.format(args.load_checkpoint))
-        model = torch_utils.load_torch_model(args.load_checkpoint, use_cpu=False)
-        global_step = int(re.findall(r'_([0-9]+).pth', args.load_checkpoint)[0])
-        global_step += 1
+        loaded_model = torch_utils.load_torch_model(args.load_checkpoint, use_cpu=False)
+        if isinstance(loaded_model, dict):
+            model = loaded_model['model']
+            global_step = loaded_model['global_step']
+            global_step += 1
+        elif isinstance(loaded_model, nn.Module):
+            model = loaded_model
+            global_step = int(re.findall(r'_([0-9]+).pth', args.load_checkpoint)[0])
+            global_step += 1
+        else:
+            raise NotImplementedError()
     else:
         if args.model == 'deeplab':
             raise NotImplementedError()
@@ -140,6 +166,11 @@ def main():
                 model = unet_no_bn.Unet0(out_channels=3)
             elif args.experiment == 'multi-layer-d-3':
                 model = unet_no_bn.Unet0(out_channels=3)
+            else:
+                raise NotImplementedError()
+        elif args.model == 'unet_v0_overhead':
+            if args.experiment.startswith('overhead-features-01'):
+                model = unet_overhead.Unet0(out_channels=1)
             else:
                 raise NotImplementedError()
         else:
@@ -212,6 +243,20 @@ def main():
                 pred = model(in_rgb)
                 target = target.cuda()
                 loss = loss_calc(pred, target)
+            elif args.experiment == 'overhead-features-01-l1-loss':
+                example_name = batch['name']
+                # Excluding RGB features. 64 channels
+                input_features = batch['features_overhead'][:, 3:].cuda()
+                target_depth = batch['depth_overhead'][:, :1].cuda()
+                pred = model(input_features)
+                loss = loss_calc_overhead_single_raw(pred, target_depth)
+            elif args.experiment == 'overhead-features-01-log-l1-loss':
+                example_name = batch['name']
+                # Excluding RGB features. 64 channels
+                input_features = batch['features_overhead'][:, 3:].cuda()
+                target_depth = batch['depth_overhead'][:, :1].cuda()
+                pred = model(input_features)
+                loss = loss_calc_overhead_single_log(pred, target_depth)
             else:
                 raise NotImplementedError()
 
@@ -220,10 +265,15 @@ def main():
             log.info('%08d, %03d, %07d, %.5f', global_step, i_epoch, i_iter, loss)
 
             if global_step % args.save_every == 0:
-                save_filename = path.join(args.save_dir, 'v1_{:03d}_{:07d}_{:08d}.pth'.format(i_epoch, i_iter, global_step))
+                save_filename = path.join(args.save_dir, 'v1_{:08d}_{:03d}_{:07d}.pth'.format(global_step, i_epoch, i_iter))
                 log.info('Saving %s', save_filename)
                 with open(save_filename, 'wb') as f:
-                    torch.save(model, f)
+                    torch.save({
+                        'model': model,
+                        'global_step': global_step,
+                        'epoch': i_epoch,
+                        'iter': i_iter,
+                    }, f)
             global_step += 1
 
 
