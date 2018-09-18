@@ -53,14 +53,14 @@ def setLevel(newlevel):
     logger.debug('Log level set to %s', newlevel)
 
 
-debug = logging.debug
-info = logging.info
-warning = logging.warning
-warn = logging.warning
-error = logging.error
-exception = logging.exception
-fatal = logging.fatal
-log = logging.log
+debug = logger.debug
+info = logger.info
+warning = logger.warning
+warn = logger.warning
+error = logger.error
+exception = logger.exception
+fatal = logger.fatal
+log = logger.log
 
 DEBUG = logging.DEBUG
 INFO = logging.INFO
@@ -92,11 +92,15 @@ GLOG_PREFIX_REGEX = (
                         """) % ''.join(_level_letters)
 """Regex you can use to parse glog line prefixes."""
 
-# Defaults
+# Clear any default handlers.
+if logger.hasHandlers():
+    logger.handlers.clear()
+
+# Add new defaults.
 stream_handler = logging.StreamHandler()
 stream_handler.setFormatter(GlogFormatter())
 
-# logger.addHandler(stream_handler)
+logger.addHandler(stream_handler)
 setLevel(logging.DEBUG)
 
 stream_handler.setLevel(logging.INFO)
