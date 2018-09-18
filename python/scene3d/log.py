@@ -45,23 +45,6 @@ class GlogFormatter(logging.Formatter):
         return logging.Formatter.format(self, record)
 
 
-logger = logging.getLogger()
-
-
-def setLevel(newlevel):
-    logger.setLevel(newlevel)
-    logger.debug('Log level set to %s', newlevel)
-
-
-debug = logger.debug
-info = logger.info
-warning = logger.warning
-warn = logger.warning
-error = logger.error
-exception = logger.exception
-fatal = logger.fatal
-log = logger.log
-
 DEBUG = logging.DEBUG
 INFO = logging.INFO
 WARNING = logging.WARNING
@@ -92,28 +75,49 @@ GLOG_PREFIX_REGEX = (
                         """) % ''.join(_level_letters)
 """Regex you can use to parse glog line prefixes."""
 
-# Clear any default handlers.
-if logger.hasHandlers():
-    logger.handlers.clear()
 
-# Add new defaults.
-stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(GlogFormatter())
-
-logger.addHandler(stream_handler)
-setLevel(logging.DEBUG)
-
-stream_handler.setLevel(logging.INFO)
+def make_logger(name, level=logging.INFO):
+    new_logger = logging.getLogger(name)
+    # Clear any default handlers.
+    if new_logger.hasHandlers():
+        new_logger.handlers.clear()
+    new_logger.setLevel(level)
+    new_logger.propagate = False
+    return new_logger
 
 
-def add_file_handler(filename):
+def add_file_handler(logger_obj, filename, level=logging.INFO):
     if os.path.isfile(filename):
         info('Appending to an existing log file {}'.format(filename))
     else:
         info('New log file {}'.format(filename))
     file_handler = logging.FileHandler(filename)
     file_handler.setFormatter(GlogFormatter())
-    file_handler.setLevel(logging.DEBUG)
-    logger.addHandler(file_handler)
+    file_handler.setLevel(level)
+    logger_obj.addHandler(file_handler)
 
-# logging.debug(time.strftime("Local time zone: %Z (%z)", time.localtime()))
+
+def add_stream_handler(logger_obj, level=logging.INFO):
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(GlogFormatter())
+    stream_handler.setLevel(level)
+    logger_obj.addHandler(stream_handler)
+
+
+# Clear root logger.
+_root_logger = logging.getLogger()
+if _root_logger.hasHandlers():
+    _root_logger.handlers.clear()
+_root_logger.propagate = False
+
+logger = make_logger(name='global', level=logging.INFO)
+add_stream_handler(logger, level=logging.INFO)
+
+debug = logger.debug
+info = logger.info
+warning = logger.warning
+warn = logger.warning
+error = logger.error
+exception = logger.exception
+fatal = logger.fatal
+log = logger.log
