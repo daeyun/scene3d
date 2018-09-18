@@ -10,6 +10,8 @@ import os
 import sys
 import tempfile
 import time
+import datetime
+import dateutil
 import struct
 from os import path
 from multiprocessing.dummy import Pool as ThreadPool
@@ -23,6 +25,7 @@ import ujson
 import blosc
 import PIL.Image
 import pyassimp
+import pytz
 
 from scene3d import log
 
@@ -603,3 +606,14 @@ def read_lines_and_strip(filename):
     with open(filename, 'r') as f:
         lines = f.readlines()
     return list(filter(bool, [item.strip() for item in lines]))
+
+
+def timestamp_now_isoformat(timezone='America/Los_Angeles') -> str:
+    """
+    :param timezone: 'America/Los_Angeles', 'UTC', etc.
+    :return: A string timestamp that looks like this: '2018-09-17T18:22:01.279533-07:00'
+    """
+    now = datetime.datetime.now()
+    timezone = pytz.timezone(timezone)
+    localized_now = timezone.localize(now)
+    return localized_now.isoformat()

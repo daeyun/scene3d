@@ -54,12 +54,12 @@ def recursive_torch_to_numpy(data):
         raise RuntimeError('unknown data type {}'.format(data))
 
 
-def load_torch_model(filename, use_cpu=True):
+def load_torch_model(filename, use_cpu=True) -> dict:
     """
     Returns a dict of pytorch modules.
     :param filename: e.g. /data/mvshape/out/pytorch/mv6_vpo/models5_0050.pth
     :param use_cpu: If True, the model is loaded in cpu mode.
-    :return: A dict of pytorch models that make up a neural net.  TODO(daeyun)
+    :return: A dict of pytorch models and metadata that define a neural net.
     """
     with open(filename, 'rb') as f:
         model = torch.load(f, map_location=lambda storage, loc: storage)
