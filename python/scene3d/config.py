@@ -14,20 +14,24 @@ scene3d:
 """
 
 hostname = socket.gethostname()
-if hostname == 'daeyun-01':
-    suncg_root = '/data/daeyun-data-02/suncg_data'
-    pbrs_root = '/data/daeyun-data-02/data2/pbrs'
-    scene3d_root = '/data/daeyun-data-02/scene3d'
 
-elif hostname == 'daeyun-02':
-    suncg_root = '/data/daeyun-data-01/suncg_data'
-    pbrs_root = '/data/daeyun-data-01/data2/pbrs'
-    scene3d_root = '/data/daeyun-data-01/scene3d'
+if path.isfile(path.expanduser('~/.is_chase_ci')):
+    if hostname == 'daeyun-01':
+        suncg_root = '/data/daeyun-data-02/suncg_data'
+        pbrs_root = '/data/daeyun-data-02/data2/pbrs'
+        scene3d_root = '/data/daeyun-data-02/scene3d'
 
-elif hostname == 'daeyun-03':
-    suncg_root = '/data/daeyun-data-03/suncg_data'
-    pbrs_root = '/data/daeyun-data-03/data2/pbrs'
-    scene3d_root = '/data/daeyun-data-03/scene3d'
+    elif hostname == 'daeyun-02':
+        suncg_root = '/data/daeyun-data-01/suncg_data'
+        pbrs_root = '/data/daeyun-data-01/data2/pbrs'
+        scene3d_root = '/data/daeyun-data-01/scene3d'
+
+    elif hostname == 'daeyun-03':
+        suncg_root = '/data/daeyun-data-03/suncg_data'
+        pbrs_root = '/data/daeyun-data-03/data2/pbrs'
+        scene3d_root = '/data/daeyun-data-03/scene3d'
+    else:
+        raise RuntimeError('Unknown hostname: {}'.format(hostname))
 
 elif hostname == 'ren-ubuntu':
     suncg_root = '/media/ren/devRen4T/research/datasets/suncg'
