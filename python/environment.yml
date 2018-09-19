@@ -6,7 +6,7 @@ dependencies:
   - backcall=0.1.0=py36_0
   - blas=1.0=mkl
   - bleach=2.1.3=py36_0
-  - blosc=1.12.0=ha156899_0
+  - blosc=1.14.4=hdbcaa40_0
   - bzip2=1.0.6=h9a117a8_4
   - ca-certificates=2018.03.07=0
   - cairo=1.14.12=h77bcde2_0
@@ -140,15 +140,12 @@ dependencies:
   - pip:
     - cbor==1.0.0
     - colorspacious==1.1.2
-    - dshin==0.1
     - graphviz==0.8.2
     - numpy-indexed==0.3.5
     - numpy-stl==2.4.1
-    - peewee==3.1.7
     - plyfile==0.5
     - pyassimp==3.3
     - pymaxflow==1.2.9
     - pymcubes==0.0.6
     - pymesh==1.0.2
-    - python-utils==2.3.0
     - torch==0.4.1.post2

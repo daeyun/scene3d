@@ -307,8 +307,6 @@ class BottleneckDetector(object):
 
 class Trainer(object):
     def __init__(self, args: argparse.Namespace):
-        assert isinstance(args, argparse.Namespace)
-
         assert args.save_dir.startswith('/'), args.save_dir
         io_utils.ensure_dir_exists(args.save_dir)
 
@@ -333,6 +331,11 @@ class Trainer(object):
         log.add_file_handler(self.logger, filename=self.log_filename, level=log.DEBUG)
 
         self.logger.info('Initializing Trainer:\n{}'.format(args))
+
+        if not self.use_cpu:
+            torch.set_default_tensor_type('torch.cuda.FloatTensor')
+            self.logger.info('cudnn version: {}'.format(cudnn.version()))
+            assert torch.cuda.is_available()
 
         self.dataset = get_dataset(experiment_name=self.experiment_name, split_name='train')
         self.logger.info('Number of examples: %d', len(self.dataset))
@@ -363,9 +366,8 @@ class Trainer(object):
         self.model.train()
 
         if not self.use_cpu:
-            self.logger.info('cudnn version: {}'.format(cudnn.version()))
-            assert torch.cuda.is_available()
             self.model.cuda()
+            torch.set_default_tensor_type('torch.FloatTensor')  # Back to defaults.
 
         self.logger.info('Initialized model. Current global step: {}'.format(self.global_step))
 

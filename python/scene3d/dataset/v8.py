@@ -6,6 +6,7 @@ from torch.utils import data
 
 from scene3d import config
 from scene3d import log
+from scene3d import training_utils_cpp
 from scene3d import torch_utils
 from scene3d import io_utils
 from scene3d import render_depth
@@ -66,11 +67,15 @@ class MultiLayerDepth(data.Dataset):
 
         valid_fields = (
             'rgb',
-            'depth',
+            'multi_layer_depth',
             'depth_overhead',
             'features_overhead',
             'name',
             'camera_filename',
+            'normals',
+            'normal_direction_volume',
+            'model_id',
+            'category_nyu40_empty_background',
         )
 
         assert isinstance(fields, (tuple, list))
@@ -80,6 +85,8 @@ class MultiLayerDepth(data.Dataset):
                 raise RuntimeError('Unknown field name: {}', field)
 
         self.fields = fields
+
+        training_utils_cpp.initialize_category_mapping()  # Should run only once.
 
     def __len__(self):
         return len(self.filename_prefixes)
@@ -103,8 +110,8 @@ class MultiLayerDepth(data.Dataset):
         in_rgb = dataset_utils.force_contiguous(in_rgb)
         ret[field_name] = in_rgb
 
-    def get_depth(self, example_name, ret):
-        field_name = 'depth'
+    def get_multi_layer_depth(self, example_name, ret):
+        field_name = 'multi_layer_depth'
         if field_name not in self.fields or field_name in ret:
             return
         bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi.bin')
@@ -134,6 +141,62 @@ class MultiLayerDepth(data.Dataset):
         ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
         ret[field_name] = ldi_overhead
 
+    def get_normals(self, example_name, ret):
+        field_name = 'normals'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_n.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.float32)
+        d = dataset_utils.force_contiguous(d)
+        ret[field_name] = d
+
+    def get_normal_direction_volume(self, example_name, ret):
+        field_name = 'normal_direction_volume'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_oit.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.float32)
+        d = dataset_utils.force_contiguous(d)
+        ret[field_name] = d
+
+    def get_model_id(self, example_name, ret):
+        field_name = 'model_id'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
+        d = dataset_utils.force_contiguous(d)
+        ret[field_name] = d
+
+    def get_model_id_overhead(self, example_name, ret):
+        field_name = 'model_id_overhead'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model-o.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
+        d = dataset_utils.force_contiguous(d)
+        ret[field_name] = d
+
+    def get_category_nyu40_empty_background(self, example_name, ret):
+        field_name = 'category_nyu40_empty_background'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
+        d = dataset_utils.force_contiguous(d)
+        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_empty_background")
+        ret[field_name] = d
+
+    def get_category_nyu40_empty_background_overhead(self, example_name, ret):
+        field_name = 'category_nyu40_empty_background'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model-o.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
+        d = dataset_utils.force_contiguous(d)
+        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_empty_background")
+        ret[field_name] = d.astype(np.int)
+
     def __getitem__(self, index):
         example_name = self.filename_prefixes[index]
         # TODO: some images don't have background.
@@ -158,8 +221,12 @@ class MultiLayerDepth(data.Dataset):
         }
 
         self.get_rgb(example_name, ret)
-        self.get_depth(example_name, ret)
+        self.get_multi_layer_depth(example_name, ret)
         self.get_depth_overhead(example_name, ret)
         self.get_features_overhead(example_name, ret)
+        self.get_normals(example_name, ret)
+        self.get_normal_direction_volume(example_name, ret)
+        self.get_model_id(example_name, ret)
+        self.get_category_nyu40_empty_background(example_name, ret)
 
         return ret

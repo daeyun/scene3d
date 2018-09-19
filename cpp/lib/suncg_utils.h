@@ -113,6 +113,7 @@ class Scene {
     const auto &coarse_grained = catetory.coarse_grained_class;
 
     // TV?
+    // This should be the same as training_utils.cc
     bool ret = nyu40_category == "wall" ||
         nyu40_category == "floor" ||
         nyu40_category == "ceiling" ||

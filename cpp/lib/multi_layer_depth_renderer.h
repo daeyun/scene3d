@@ -219,7 +219,7 @@ class SunCgMultiLayerDepthRenderer : public MultiLayerDepthRenderer {
           }
         } else {
           return false;  // Stop traversal.
-        }
+      }
       }
       return true;
     });

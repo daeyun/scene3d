@@ -17,8 +17,10 @@ hostname = socket.gethostname()
 
 if path.isfile(path.expanduser('~/.is_chase_ci')):
     if hostname == 'daeyun-01':
-        suncg_root = '/data/daeyun-data-02/suncg_data'
-        pbrs_root = '/data/daeyun-data-02/data2/pbrs'
+        # suncg_root = '/data/daeyun-data-02/suncg_data'
+        # pbrs_root = '/data/daeyun-data-02/data2/pbrs'
+        suncg_root = '/data/ucicompvishomes/daeyuns/data2/suncg_data'
+        pbrs_root = '/data/ucicompvishomes/daeyuns/data2/p'
         scene3d_root = '/data/daeyun-data-02/scene3d'
 
     elif hostname == 'daeyun-02':
