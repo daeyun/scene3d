@@ -16,6 +16,8 @@ using std::set;
 
 using Selector = std::function<string(const CategoryMappingEntry &)>;
 
+const uint16_t kVoid = 65535;  // Max value for uint16
+
 //map<uint16_t, uint16_t> model_index_to_fine_grained_class_index;
 //map<uint16_t, uint16_t> model_index_to_coarse_grained_class_index;
 //map<uint16_t, uint16_t> model_index_to_empty_struct_obj_index;
@@ -38,7 +40,10 @@ void initialize_category_mapping(const char *csv_file_name);
 void MapNameToSortedIndex(const map<string, CategoryMappingEntry> &model_id_to_category_mapping, const Selector &selector, map<string, uint16_t> *out) {
   set<string> names;
   for (const auto &kv : model_id_to_category_mapping) {
-    names.insert(selector(kv.second));
+    // Ignore "empty" category when assigning indices.
+    if (kv.second.index != 0) {
+      names.insert(selector(kv.second));
+    }
   }
   vector<string> output(names.size());
   std::copy(names.begin(), names.end(), output.begin());
@@ -47,6 +52,13 @@ void MapNameToSortedIndex(const map<string, CategoryMappingEntry> &model_id_to_c
   for (int i = 0; i < output.size(); ++i) {
     (*out)[output[i]] = static_cast<uint16_t>(i);
   }
+
+  // Regardless of which mapping we're using, reserve those category names for void.
+  (*out)["Empty"] = kVoid;
+  (*out)["empty"] = kVoid;
+  (*out)["void"] = kVoid;
+  (*out)["empty.n.01"] = kVoid;
+  (*out)["n03284308"] = kVoid;
 }
 
 void initialize_category_mapping(const char *csv_file_name) {
@@ -55,7 +67,7 @@ void initialize_category_mapping(const char *csv_file_name) {
   }
   if (is_initialized) {
     LOGGER->error("Category mapping is already initialized.");
-    throw std::runtime_error("");
+    return;
   }
   std::string csv_file_name_str(csv_file_name);
   map<string, CategoryMappingEntry> model_id_to_category_mapping;
@@ -108,17 +120,27 @@ void model_index_to_category(const char *mapping_name,
   // TODO(daeyun): not used at the moment. Assume this is NYU40.
   const std::string mapping_name_str(mapping_name);
 
-//  auto start_time = scene3d::TimeSinceEpoch<std::milli>();
-  for (uint32_t i = 0; i < num_items; ++i) {
-    uint16_t model_index = *(data + i);
-    auto it = model_index_to_nyuv2_40class_index.find(model_index);
-    Ensures(it != model_index_to_nyuv2_40class_index.end());
-    if (is_model_index_background[model_index]) {
-      *(data + i) = 0;  // The "empty" category.
-    } else {
+  if (mapping_name_str == "nyuv2_40class_merged_background") {
+    for (uint32_t i = 0; i < num_items; ++i) {
+      uint16_t model_index = *(data + i);
+      auto it = model_index_to_nyuv2_40class_index.find(model_index);
+      Ensures(it != model_index_to_nyuv2_40class_index.end());
+      if (is_model_index_background[model_index]) {
+        *(data + i) = kVoid;  // Group background into "void" category.
+      } else {
+        *(data + i) = it->second;  // This includes void.
+      }
+    }
+  } else if (mapping_name_str == "nyuv2_40class") {
+    for (uint32_t i = 0; i < num_items; ++i) {
+      uint16_t model_index = *(data + i);
+      auto it = model_index_to_nyuv2_40class_index.find(model_index);
+      Ensures(it != model_index_to_nyuv2_40class_index.end());
       *(data + i) = it->second;
     }
+  } else {
+    LOGGER->error("Unrecognized mapping name: {}", mapping_name_str);
+    throw std::runtime_error("");
   }
-//  LOGGER->info("Elapsed: {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 }
 

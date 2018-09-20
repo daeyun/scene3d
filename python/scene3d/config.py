@@ -54,3 +54,4 @@ else:
     raise RuntimeError('Unknown hostname: {}'.format(hostname))
 
 cpp_third_party_root = path.abspath(path.join(path.dirname(__file__), '../../cpp/third_party'))
+category_mapping_csv_filename = path.realpath(path.join(path.dirname(__file__), '../../resources/ModelCategoryMapping.csv'))

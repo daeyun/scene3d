@@ -144,7 +144,7 @@ dependencies:
     - numpy-indexed==0.3.5
     - numpy-stl==2.4.1
     - plyfile==0.5
-    - pyassimp==3.3
+    - pyassimp==4.1.3
     - pymaxflow==1.2.9
     - pymcubes==0.0.6
     - pymesh==1.0.2

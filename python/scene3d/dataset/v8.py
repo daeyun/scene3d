@@ -68,14 +68,19 @@ class MultiLayerDepth(data.Dataset):
         valid_fields = (
             'rgb',
             'multi_layer_depth',
-            'depth_overhead',
-            'features_overhead',
+            'multi_layer_depth_aligned_background',
+            'multi_layer_depth_all_background',
+            'multi_layer_overhead_depth',
+            'overhead_features',
             'name',
             'camera_filename',
             'normals',
             'normal_direction_volume',
             'model_id',
-            'category_nyu40_empty_background',
+            'category_nyu40',
+            'category_nyu40_merged_background',
+            'overhead_category_nyu40',
+            'overhead_category_nyu40_merged_background',
         )
 
         assert isinstance(fields, (tuple, list))
@@ -123,8 +128,44 @@ class MultiLayerDepth(data.Dataset):
         ldi = dataset_utils.force_contiguous(ldi)
         ret[field_name] = ldi
 
-    def get_depth_overhead(self, example_name, ret):
-        field_name = 'depth_overhead'
+    def get_multi_layer_depth_aligned_background(self, example_name, ret):
+        field_name = 'multi_layer_depth_aligned_background'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi.bin')
+        ldi = io_utils.read_array_compressed(bin_filename, dtype=np.float32)
+        _, h, w = ldi.shape
+        if (h, w) != tuple(self.image_hw):
+            # TODO(daeyun): need to double check this.
+            ldi = cv2.resize(ldi.transpose(1, 2, 0), dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
+
+        # Swap visible background in channels 0 and 3.
+        bg_mask = np.isnan(ldi[3])
+        ldi[0][bg_mask], ldi[3][bg_mask] = ldi[3][bg_mask], ldi[0][bg_mask]
+
+        ldi = dataset_utils.force_contiguous(ldi)
+        ret[field_name] = ldi
+
+    def get_multi_layer_depth_all_background(self, example_name, ret):
+        field_name = 'multi_layer_depth_all_background'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi.bin')
+        ldi = io_utils.read_array_compressed(bin_filename, dtype=np.float32)
+        _, h, w = ldi.shape
+        if (h, w) != tuple(self.image_hw):
+            # TODO(daeyun): need to double check this.
+            ldi = cv2.resize(ldi.transpose(1, 2, 0), dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
+
+        # Copy visible background to all channels.
+        bg_mask = np.isnan(ldi[3])
+        ldi[1][bg_mask] = ldi[2][bg_mask] = ldi[3][bg_mask] = ldi[0][bg_mask]
+
+        ldi = dataset_utils.force_contiguous(ldi)
+        ret[field_name] = ldi
+
+    def get_multi_layer_overhead_depth(self, example_name, ret):
+        field_name = 'multi_layer_overhead_depth'
         if field_name not in self.fields or field_name in ret:
             return
         bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi-o.bin')
@@ -132,8 +173,8 @@ class MultiLayerDepth(data.Dataset):
         ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
         ret[field_name] = ldi_overhead
 
-    def get_features_overhead(self, example_name, ret, version='v1'):
-        field_name = 'features_overhead'
+    def get_overhead_features(self, example_name, ret, version='v1'):
+        field_name = 'overhead_features'
         if field_name not in self.fields or field_name in ret:
             return
         bin_filename = path.join(config.scene3d_root, 'v8/overhead/{}/features'.format(version), example_name + '.bin')
@@ -177,42 +218,48 @@ class MultiLayerDepth(data.Dataset):
         d = dataset_utils.force_contiguous(d)
         ret[field_name] = d
 
-    def get_category_nyu40_empty_background(self, example_name, ret):
-        field_name = 'category_nyu40_empty_background'
+    def get_category_nyu40(self, example_name, ret):
+        field_name = 'category_nyu40'
         if field_name not in self.fields or field_name in ret:
             return
         bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model.bin')
         d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
         d = dataset_utils.force_contiguous(d)
-        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_empty_background")
+        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class")
         ret[field_name] = d
 
-    def get_category_nyu40_empty_background_overhead(self, example_name, ret):
-        field_name = 'category_nyu40_empty_background'
+    def get_category_nyu40_merged_background(self, example_name, ret):
+        field_name = 'category_nyu40_merged_background'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
+        d = dataset_utils.force_contiguous(d)
+        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_merged_background")
+        ret[field_name] = d
+
+    def get_overhead_category_nyu40(self, example_name, ret):
+        field_name = 'overhead_category_nyu40'
         if field_name not in self.fields or field_name in ret:
             return
         bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model-o.bin')
         d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
         d = dataset_utils.force_contiguous(d)
-        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_empty_background")
+        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class")
+        ret[field_name] = d.astype(np.int)
+
+    def get_overhead_category_nyu40_merged_background(self, example_name, ret):
+        field_name = 'overhead_category_nyu40_merged_background'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model-o.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
+        d = dataset_utils.force_contiguous(d)
+        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_merged_background")
         ret[field_name] = d.astype(np.int)
 
     def __getitem__(self, index):
         example_name = self.filename_prefixes[index]
-        # TODO: some images don't have background.
-        bin_filenames = [
-            path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi.bin'),
-            path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi-o.bin'),
-            path.join(config.scene3d_root, 'v8/renderings', example_name + '_model.bin'),
-            path.join(config.scene3d_root, 'v8/renderings', example_name + '_model-o.bin'),
-            path.join(config.scene3d_root, 'v8/renderings', example_name + '_n.bin'),
-            path.join(config.scene3d_root, 'v8/renderings', example_name + '_oit.bin'),
-        ]
-        txt_filenames = [
-            path.join(config.scene3d_root, 'v8/renderings', example_name + '_cam.txt'),
-            path.join(config.scene3d_root, 'v8/renderings', example_name + '_aabb.txt'),
-        ]
-
         camera_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_cam.txt')
 
         ret = {
@@ -220,13 +267,20 @@ class MultiLayerDepth(data.Dataset):
             'camera_filename': camera_filename,
         }
 
+        # some images don't have background.
+
         self.get_rgb(example_name, ret)
         self.get_multi_layer_depth(example_name, ret)
-        self.get_depth_overhead(example_name, ret)
-        self.get_features_overhead(example_name, ret)
+        self.get_multi_layer_depth_aligned_background(example_name, ret)
+        self.get_multi_layer_depth_all_background(example_name, ret)
+        self.get_multi_layer_overhead_depth(example_name, ret)
+        self.get_overhead_features(example_name, ret)
         self.get_normals(example_name, ret)
         self.get_normal_direction_volume(example_name, ret)
         self.get_model_id(example_name, ret)
-        self.get_category_nyu40_empty_background(example_name, ret)
+        self.get_category_nyu40(example_name, ret)
+        self.get_category_nyu40_merged_background(example_name, ret)
+        self.get_overhead_category_nyu40(example_name, ret)
+        self.get_overhead_category_nyu40_merged_background(example_name, ret)
 
         return ret

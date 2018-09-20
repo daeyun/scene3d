@@ -91,7 +91,7 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
     # End of legacy code.
 
     elif experiment_name.startswith('overhead-features-01'):
-        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('features_overhead', 'depth_overhead'))
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('overhead_features', 'multi_layer_overhead_depth'))
 
     else:
         raise NotImplementedError()
@@ -206,15 +206,15 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch
     elif experiment_name == 'overhead-features-01-l1-loss':
         example_name = batch['name']
         # Excluding RGB features. 64 channels
-        input_features = batch['features_overhead'][:, 3:].cuda()
-        target_depth = batch['depth_overhead'][:, :1].cuda()
+        input_features = batch['overhead_features'][:, 3:].cuda()
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].cuda()
         pred = pytorch_model(input_features)
         loss_all = loss_fn.loss_calc_overhead_single_raw(pred, target_depth)
     elif experiment_name == 'overhead-features-01-log-l1-loss':
         example_name = batch['name']
         # Excluding RGB features. 64 channels
-        input_features = batch['features_overhead'][:, 3:].cuda()
-        target_depth = batch['depth_overhead'][:, :1].cuda()
+        input_features = batch['overhead_features'][:, 3:].cuda()
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].cuda()
         pred = pytorch_model(input_features)
         loss_all = loss_fn.loss_calc_overhead_single_log(pred, target_depth)
     else:
@@ -319,8 +319,8 @@ class Trainer(object):
         self.model_name = args.model
         self.save_every = args.save_every
         self.max_epochs = args.max_epochs
-        self.load_checkpoint = args.load_checkpoint
-        self.save_dir = args.save_dir
+        self.load_checkpoint = path.expanduser(args.load_checkpoint)
+        self.save_dir = path.expanduser(args.save_dir)
         self.num_data_workers = args.num_data_workers
         self.batch_size = args.batch_size
         self.use_cpu = args.use_cpu

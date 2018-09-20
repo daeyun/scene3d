@@ -10,7 +10,7 @@ from scene3d import io_utils
 from scene3d import exec_utils
 
 renderer_executable = path.abspath(path.join(path.dirname(__file__), '../../cpp/cmake-build-release/apps/render_suncg'))
-category_mapping_file = path.abspath(path.join(path.dirname(__file__), '../../resources/ModelCategoryMapping.csv'))
+category_mapping_file = config.category_mapping_csv_filename
 
 
 def parse_overhead_cam(s):

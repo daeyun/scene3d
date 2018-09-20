@@ -3,6 +3,7 @@ import copy
 import typing
 import errno
 import fcntl
+import csv
 import hashlib
 import json
 import numbers
@@ -617,3 +618,14 @@ def timestamp_now_isoformat(timezone='America/Los_Angeles') -> str:
     timezone = pytz.timezone(timezone)
     localized_now = timezone.localize(now)
     return localized_now.isoformat()
+
+
+def get_column_from_csv(filename, column_name, delimiter=','):
+    ret = []
+    with open(filename, mode='r', newline='') as csvfile:
+        reader = csv.reader(csvfile, delimiter=delimiter)
+        head = next(reader)  # type: typing.Sequence[str]
+        column_index = head.index(column_name)
+        for row in reader:
+            ret.append(row[column_index])
+    return ret

@@ -8,6 +8,7 @@ import numpy as np
 from numpy.ctypeslib import ndpointer
 
 from scene3d import log
+from scene3d import config
 
 ctypes_lib_dirname = path.realpath(path.join(path.dirname(__file__), '../../cpp/cmake-build-release/ctypes'))
 
@@ -40,7 +41,8 @@ _is_initialized = False
 
 def model_index_to_category(model_indices: np.ndarray, mapping_name):
     assert mapping_name in [
-        "nyuv2_40class_empty_background",
+        "nyuv2_40class_merged_background",
+        "nyuv2_40class",
     ]
 
     c_func_name = 'model_index_to_category'
@@ -66,7 +68,7 @@ def initialize_category_mapping():
 
     c_func = getattr(lib, c_func_name)
 
-    csv_filename = path.realpath(path.join(path.dirname(__file__), '../../resources/ModelCategoryMapping.csv'))
+    csv_filename = config.category_mapping_csv_filename
     assert path.isfile(csv_filename)
 
     # Releases GIL.

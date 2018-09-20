@@ -18,7 +18,7 @@ from scene3d import suncg_utils
 # %%
 
 
-csv_filename = path.join(config.cpp_third_party_root, 'repos/SUNCGtoolbox/metadata/ModelCategoryMapping.csv')
+csv_filename = config.category_mapping_csv_filename
 
 import re
 import csv
