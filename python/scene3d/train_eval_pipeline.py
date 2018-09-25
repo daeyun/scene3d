@@ -47,12 +47,21 @@ available_experiments = [
     'multi-layer-3',
     'overhead-features-01-log-l1-loss',
     'overhead-features-01-l1-loss',
+    'v8-multi_layer_depth',
+    'v8-multi_layer_depth_aligned_background',
+    'v8-multi_layer_depth_replicated_background',
+    'v8-multi_layer_depth_aligned_background_multi_branch',
+    'v8-multi_layer_depth_replicated_background_multi_branch',
+    'v8-multi_layer_depth_aligned_background_multi_branch_32',
+    'v8-multi_layer_depth_aligned_background_multi_branch_nolog',
 ]
 
 available_models = [
     'unet_v0',
     'unet_v0_no_bn',
     'unet_v0_overhead',
+    'unet_v1',
+    'unet_v2',
 ]
 
 
@@ -92,7 +101,25 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
 
     elif experiment_name.startswith('overhead-features-01'):
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('overhead_features', 'multi_layer_overhead_depth'))
-
+    elif experiment_name.startswith('overhead-features-eval-01'):
+        """This is not actually one of the available experiments, but this has RGB images for evaluation or visualization mode. This can be deleted later. This is a preliminary experiment anyway.
+        """
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255,
+                                     fields=('overhead_features', 'multi_layer_depth', 'multi_layer_overhead_depth', 'rgb'))
+    elif experiment_name == 'v8-multi_layer_depth':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
+    elif experiment_name == 'v8-multi_layer_depth_replicated_background':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_replicated_background'))
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
+    elif experiment_name == 'v8-multi_layer_depth_replicated_background_multi_branch':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_replicated_background'))
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch_32':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch_nolog':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
     else:
         raise NotImplementedError()
 
@@ -139,6 +166,26 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     elif model_name == 'unet_v0_overhead':
         if experiment_name.startswith('overhead-features-01'):
             model = unet_overhead.Unet0(out_channels=1)
+        else:
+            raise NotImplementedError()
+    elif model_name == 'unet_v1':
+        if experiment_name == 'v8-multi_layer_depth':
+            model = unet.Unet0(out_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_aligned_background':
+            model = unet.Unet0(out_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_replicated_background':
+            model = unet.Unet0(out_channels=4)
+        else:
+            raise NotImplementedError()
+    elif model_name == 'unet_v2':
+        if experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch':
+            model = unet.Unet2(out_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_replicated_background_multi_branch':
+            model = unet.Unet2(out_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch_32':
+            model = unet.Unet2(out_channels=4, ch=(32, 64, 64, 256, 512), ch_branch=24)
+        elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch_nolog':
+            model = unet.Unet2(out_channels=4)
         else:
             raise NotImplementedError()
     else:
@@ -217,6 +264,43 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch
         target_depth = batch['multi_layer_overhead_depth'][:, :1].cuda()
         pred = pytorch_model(input_features)
         loss_all = loss_fn.loss_calc_overhead_single_log(pred, target_depth)
+
+    # v8
+    elif experiment_name == 'v8-multi_layer_depth':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_aligned_background'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_replicated_background':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_replicated_background'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_aligned_background'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_replicated_background_multi_branch':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_replicated_background'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch_32':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_aligned_background'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch_nolog':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_aligned_background'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=False)
     else:
         raise NotImplementedError()
 
@@ -276,6 +360,10 @@ def save_checkpoint(save_dir: str, pytorch_model: nn.Module, optimizer: torch.op
 
 
 class BottleneckDetector(object):
+    """
+    Used to detect IO bottleneck and show a warning message.
+    """
+
     def __init__(self, name, logger, check_every=20, threshold_seconds=0.2):
         self.check_every = check_every
         self.last_seen = time.time()
@@ -399,9 +487,9 @@ class Trainer(object):
         for i_epoch in range(max_epochs):
             self.epoch = i_epoch
 
-            bottleneck_detector = BottleneckDetector(name='IO', logger=self.logger, check_every=20, threshold_seconds=0.15)
+            io_bottleneck_detector = BottleneckDetector(name='IO', logger=self.logger, check_every=20, threshold_seconds=0.15)
             for i_iter, batch in enumerate(self.data_loader):
-                bottleneck_detector.toc()
+                io_bottleneck_detector.toc()
 
                 self.optimizer.zero_grad()
                 loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name)
@@ -413,4 +501,4 @@ class Trainer(object):
                 self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all)
 
                 self.try_save_checkpoint()
-                bottleneck_detector.tic()
+                io_bottleneck_detector.tic()

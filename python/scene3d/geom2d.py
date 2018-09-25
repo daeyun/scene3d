@@ -151,6 +151,21 @@ def montage(images, in_order='chw', gridwidth=None, empty_value=0):
     return m.astype(imtype)
 
 
+def display_montage(images, in_order='chw', gridwidth=None, empty_value=0):
+    feat_montage = montage(images, in_order=in_order, gridwidth=gridwidth, empty_value=empty_value)
+
+    pt.imshow(feat_montage)
+
+    ax = pt.gca()
+    ax.set_xticks(np.arange(0, feat_montage.shape[1], images.shape[2]))
+    ax.set_yticks(np.arange(0, feat_montage.shape[0], images.shape[1]))
+    ax.grid(which='major', color='w', linestyle='-', linewidth=1)
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+
+    return ax
+
+
 def apply_colormap(img, cmap_name='viridis'):
     if cmap_name != 'viridis':
         raise NotImplementedError(cmap_name)
@@ -178,7 +193,7 @@ def draw_rectangles(rects: np.ndarray, ax=None, **kargs):
         y = min(rects[i, 1], rects[i, 3])
         w = abs(rects[i, 0] - rects[i, 2])
         h = abs(rects[i, 1] - rects[i, 3])
-        if w*h < 0.5:
+        if w * h < 0.5:
             continue  # TODO: temporary
         r = Rectangle((x, y), w, h, alpha=1, facecolor='none', fill=None, **kargs)
         ax.add_patch(r)

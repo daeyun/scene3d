@@ -69,7 +69,7 @@ class MultiLayerDepth(data.Dataset):
             'rgb',
             'multi_layer_depth',
             'multi_layer_depth_aligned_background',
-            'multi_layer_depth_all_background',
+            'multi_layer_depth_replicated_background',
             'multi_layer_overhead_depth',
             'overhead_features',
             'name',
@@ -101,7 +101,7 @@ class MultiLayerDepth(data.Dataset):
         if field_name not in self.fields or field_name in ret:
             return
         png_filename = path.join(config.pbrs_root, 'mlt_v2', example_name + '_mlt.png')
-        in_rgb = cv2.cvtColor(cv2.imread(png_filename), cv2.COLOR_BGR2RGB)
+        in_rgb = cv2.cvtColor(cv2.imread(png_filename, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
         h, w, ch = in_rgb.shape
         assert ch == 3
         if (h, w) != tuple(self.image_hw):
@@ -146,8 +146,8 @@ class MultiLayerDepth(data.Dataset):
         ldi = dataset_utils.force_contiguous(ldi)
         ret[field_name] = ldi
 
-    def get_multi_layer_depth_all_background(self, example_name, ret):
-        field_name = 'multi_layer_depth_all_background'
+    def get_multi_layer_depth_replicated_background(self, example_name, ret):
+        field_name = 'multi_layer_depth_replicated_background'
         if field_name not in self.fields or field_name in ret:
             return
         bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi.bin')
@@ -272,7 +272,7 @@ class MultiLayerDepth(data.Dataset):
         self.get_rgb(example_name, ret)
         self.get_multi_layer_depth(example_name, ret)
         self.get_multi_layer_depth_aligned_background(example_name, ret)
-        self.get_multi_layer_depth_all_background(example_name, ret)
+        self.get_multi_layer_depth_replicated_background(example_name, ret)
         self.get_multi_layer_overhead_depth(example_name, ret)
         self.get_overhead_features(example_name, ret)
         self.get_normals(example_name, ret)

@@ -20,18 +20,38 @@ if path.isfile(path.expanduser('~/.is_chase_ci')):
         # suncg_root = '/data/daeyun-data-02/suncg_data'
         # pbrs_root = '/data/daeyun-data-02/data2/pbrs'
         suncg_root = '/data/ucicompvishomes/daeyuns/data2/suncg_data'
-        pbrs_root = '/data/ucicompvishomes/daeyuns/data2/p'
+        pbrs_root = '/data/ucicompvishomes/daeyuns/data2/pbrs'
         scene3d_root = '/data/daeyun-data-02/scene3d'
 
     elif hostname == 'daeyun-02':
         suncg_root = '/data/daeyun-data-01/suncg_data'
-        pbrs_root = '/data/daeyun-data-01/data2/pbrs'
+        pbrs_root = '/data/daeyun-data-01/pbrs'
         scene3d_root = '/data/daeyun-data-01/scene3d'
 
     elif hostname == 'daeyun-03':
         suncg_root = '/data/daeyun-data-03/suncg_data'
-        pbrs_root = '/data/daeyun-data-03/data2/pbrs'
+        pbrs_root = '/data/daeyun-data-03/pbrs'
         scene3d_root = '/data/daeyun-data-03/scene3d'
+
+    elif hostname == 'daeyun-04':
+        suncg_root = '/data/daeyun-data-04/suncg_data'
+        pbrs_root = '/data/daeyun-data-04/pbrs'
+        scene3d_root = '/data/daeyun-data-04/scene3d'
+
+    elif hostname == 'daeyun-05':
+        suncg_root = '/data/daeyun-data-05/suncg_data'
+        pbrs_root = '/data/daeyun-data-05/pbrs'
+        scene3d_root = '/data/daeyun-data-05/scene3d'
+
+    elif hostname == 'daeyun-06':
+        suncg_root = '/data/daeyun-data-06/suncg_data'
+        pbrs_root = '/data/daeyun-data-06/data2/pbrs'
+        scene3d_root = '/data/daeyun-data-06/scene3d'
+
+    elif hostname == 'daeyun-07':
+        suncg_root = '/data/daeyun-data-07/suncg_data'
+        pbrs_root = '/data/daeyun-data-07/pbrs'
+        scene3d_root = '/data/daeyun-data-07/scene3d'
     else:
         raise RuntimeError('Unknown hostname: {}'.format(hostname))
 

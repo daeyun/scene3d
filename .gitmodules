@@ -40,3 +40,6 @@
 [submodule "cpp/third_party/repos/lrucache11"]
 	path = cpp/third_party/repos/lrucache11
 	url = https://github.com/mohaps/lrucache11.git
+[submodule "python/third_party/inplace_abn"]
+	path = python/third_party/inplace_abn
+	url = https://github.com/mapillary/inplace_abn.git
