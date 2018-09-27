@@ -1,3 +1,5 @@
+The directory structure of our `v8` dataset:
+
 ```
 all.txt              A list of all house_id, camera_id pairs, e.g. "0004dd3cb11e50530676f77b55262d38/000000". There are 568743 examples.
 train.txt            A list of examples in the training set, of size 540705.  ~95%
@@ -19,6 +21,10 @@ renderings/0004dd3cb11e50530676f77b55262d38
 ├── 000000_oit.bin           -   Object-centered (inward normal direction) instance thickness. Size (240, 320) and type float32.
 ....
 ```
+
+The PyTorch dataset object can be found in [dataset/v8.py](/python/scene3d/dataset/v8.py)
+
+If you wanted to inspect the dataset or read the `.bin` files separately, you can use the `read_array_compressed` method in [io_utils.py](/python/scene3d/io_utils.py#L517)
 
 
 You can find the RGB image for house `0004dd3cb11e50530676f77b55262d38` and camera `000000` in `pbrs/mlt_v2/0004dd3cb11e50530676f77b55262d38/000000_mlt.png`
