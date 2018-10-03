@@ -94,14 +94,14 @@ class Unet0(nn.Module):
 
 
 class Unet1(nn.Module):
-    def __init__(self, out_channels=1):
+    def __init__(self, out_channels=1, in_channels=3):
         super().__init__()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=False)
         self.unpool = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
 
         ch = [64, 64, 64, 384, 768]
 
-        self.enc1 = conv_0_ip(3, ch[0])
+        self.enc1 = conv_0_ip(in_channels, ch[0])
         self.enc2 = conv_0_ip(ch[0], ch[1])
         self.enc3 = conv_1_ip(ch[1], ch[2])
         self.enc4 = conv_1_ip(ch[2], ch[3])
@@ -134,12 +134,12 @@ class Unet2(nn.Module):
     Branched unet.
     """
 
-    def __init__(self, out_channels=1, ch=(48, 64, 64, 384, 768), ch_branch=32):
+    def __init__(self, out_channels=1, ch=(48, 64, 64, 384, 768), ch_branch=32, in_channels=3):
         super().__init__()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=False)
         self.unpool = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
 
-        self.enc1 = conv_0_ip(3, ch[0])
+        self.enc1 = conv_0_ip(in_channels, ch[0])
         self.enc2 = conv_0_ip(ch[0], ch[1])
         self.enc3 = conv_1_ip(ch[1], ch[2])
         self.enc4 = conv_1_ip(ch[2], ch[3])

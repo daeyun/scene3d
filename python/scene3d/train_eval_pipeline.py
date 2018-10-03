@@ -1,5 +1,6 @@
 import multiprocessing
 
+import glob
 import torch
 import numpy as np
 from scene3d import config
@@ -50,10 +51,27 @@ available_experiments = [
     'v8-multi_layer_depth',
     'v8-multi_layer_depth_aligned_background',
     'v8-multi_layer_depth_replicated_background',
+    'v8-multi_layer_depth_aligned_background-unet_v1',
+    'v8-multi_layer_depth_replicated_background-unet_v1',
     'v8-multi_layer_depth_aligned_background_multi_branch',
     'v8-multi_layer_depth_replicated_background_multi_branch',
     'v8-multi_layer_depth_aligned_background_multi_branch_32',
     'v8-multi_layer_depth_aligned_background_multi_branch_nolog',
+    'v8-category_nyu40-1l',
+    'v8-category_nyu40_merged_background-1l',
+    'v8-category_nyu40_merged_background-2l',
+    'v8-category_nyu40_merged_background-2l-solo',
+    'v8-normals',
+    'v8-normals-acos',
+    'v8-normal_direction_volume',
+    'v8-multi_layer_depth_multi_branch-from_rgbd',
+    'v8-multi_layer_depth_multi_branch-from_d',
+    'v8-multi_layer_depth_aligned_background_multi_branch-from_rgbd',
+    'v8-multi_layer_depth_aligned_background_multi_branch-from_d',
+    'v8-category_nyu40-1l-from_rgbd',
+    'v8-category_nyu40-1l-from_d',
+    'v8-category_nyu40_merged_background-2l-from_rgbd',
+    'v8-category_nyu40_merged_background-2l-from_d',
 ]
 
 available_models = [
@@ -112,6 +130,10 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
     elif experiment_name == 'v8-multi_layer_depth_replicated_background':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_replicated_background'))
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background-unet_v1':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
+    elif experiment_name == 'v8-multi_layer_depth_replicated_background-unet_v1':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_replicated_background'))
     elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
     elif experiment_name == 'v8-multi_layer_depth_replicated_background_multi_branch':
@@ -120,6 +142,36 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
     elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch_nolog':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
+    elif experiment_name == 'v8-category_nyu40-1l':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40'))
+    elif experiment_name == 'v8-category_nyu40_merged_background-1l':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background'))
+    elif experiment_name == 'v8-category_nyu40_merged_background-2l':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background'))
+    elif experiment_name == 'v8-category_nyu40_merged_background-2l-solo':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background_replicated'))
+    elif experiment_name == 'v8-normals':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'normals'))
+    elif experiment_name == 'v8-normals-acos':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'normals'))
+    elif experiment_name == 'v8-normal_direction_volume':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'normal_direction_volume'))
+    elif experiment_name == 'v8-multi_layer_depth_multi_branch-from_rgbd':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_and_input_depth'))
+    elif experiment_name == 'v8-multi_layer_depth_multi_branch-from_d':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_and_input_depth'))
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch-from_rgbd':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background_and_input_depth'))
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch-from_d':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background_and_input_depth'))
+    elif experiment_name == 'v8-category_nyu40-1l-from_rgbd':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40', 'input_depth'))
+    elif experiment_name == 'v8-category_nyu40-1l-from_d':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40', 'input_depth'))
+    elif experiment_name == 'v8-category_nyu40_merged_background-2l-from_rgbd':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background', 'input_depth'))
+    elif experiment_name == 'v8-category_nyu40_merged_background-2l-from_d':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background', 'input_depth'))
     else:
         raise NotImplementedError()
 
@@ -175,6 +227,32 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             model = unet.Unet0(out_channels=4)
         elif experiment_name == 'v8-multi_layer_depth_replicated_background':
             model = unet.Unet0(out_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_aligned_background-unet_v1':
+            model = unet.Unet1(out_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_replicated_background-unet_v1':
+            model = unet.Unet1(out_channels=4)
+        elif experiment_name == 'v8-category_nyu40-1l':
+            model = unet.Unet1(out_channels=40)  # category 34 is wall=background.
+        elif experiment_name == 'v8-category_nyu40_merged_background-1l':
+            model = unet.Unet1(out_channels=40)  # category 34 is wall=background.
+        elif experiment_name == 'v8-category_nyu40_merged_background-2l':
+            model = unet.Unet1(out_channels=80)  # two layer segmentation
+        elif experiment_name == 'v8-category_nyu40_merged_background-2l-solo':
+            model = unet.Unet1(out_channels=40)  # layer 2 segmentation
+        elif experiment_name == 'v8-normals':
+            model = unet.Unet1(out_channels=3)
+        elif experiment_name == 'v8-normals-acos':
+            model = unet.Unet1(out_channels=3)
+        elif experiment_name == 'v8-normal_direction_volume':
+            model = unet.Unet1(out_channels=1)
+        elif experiment_name == 'v8-category_nyu40-1l-from_rgbd':
+            model = unet.Unet1(out_channels=40, in_channels=4)  # category 34 is wall=background.
+        elif experiment_name == 'v8-category_nyu40-1l-from_d':
+            model = unet.Unet1(out_channels=40, in_channels=1)  # category 34 is wall=background.
+        elif experiment_name == 'v8-category_nyu40_merged_background-2l-from_rgbd':
+            model = unet.Unet1(out_channels=80, in_channels=4)  # category 34 is wall=background.
+        elif experiment_name == 'v8-category_nyu40_merged_background-2l-from_d':
+            model = unet.Unet1(out_channels=80, in_channels=1)  # category 34 is wall=background.
         else:
             raise NotImplementedError()
     elif model_name == 'unet_v2':
@@ -186,6 +264,14 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             model = unet.Unet2(out_channels=4, ch=(32, 64, 64, 256, 512), ch_branch=24)
         elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch_nolog':
             model = unet.Unet2(out_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_multi_branch-from_rgbd':
+            model = unet.Unet2(out_channels=4, in_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_multi_branch-from_d':
+            model = unet.Unet2(out_channels=4, in_channels=1)
+        elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch-from_rgbd':
+            model = unet.Unet2(out_channels=4, in_channels=4)
+        elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch-from_d':
+            model = unet.Unet2(out_channels=4, in_channels=1)
         else:
             raise NotImplementedError()
     else:
@@ -281,6 +367,16 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch
         target = batch['multi_layer_depth_replicated_background'].cuda()
         pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
         loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background-unet_v1':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_aligned_background'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_replicated_background-unet_v1':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_replicated_background'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
     elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch':
         in_rgb = batch['rgb'].cuda()
         target = batch['multi_layer_depth_aligned_background'].cuda()
@@ -301,6 +397,124 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch
         target = batch['multi_layer_depth_aligned_background'].cuda()
         pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
         loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=False)
+    elif experiment_name == 'v8-category_nyu40-1l':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['category_nyu40'][:, 0].cuda()  # (B, 240, 320)
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        assert pred.shape[1] == 40
+        loss_all = loss_fn.loss_calc_classification(pred, target, ignore_index=65535)  # ignore empty
+    elif experiment_name == 'v8-category_nyu40_merged_background-1l':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['category_nyu40_merged_background'][:, 0].cuda()  # (B, 240, 320)
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        assert pred.shape[1] == 40
+        loss_all = loss_fn.loss_calc_classification(pred, target, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
+    elif experiment_name == 'v8-category_nyu40_merged_background-2l':
+        in_rgb = batch['rgb'].cuda()
+        target1 = batch['category_nyu40_merged_background'][:, 0].cuda()  # (B, 240, 320)
+        target2 = batch['category_nyu40_merged_background'][:, 2].cuda()  # (B, 240, 320)
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        assert pred.shape[1] == 80
+        loss1 = loss_fn.loss_calc_classification(pred[:, :40], target1, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
+        loss2 = loss_fn.loss_calc_classification(pred[:, 40:], target2, ignore_index=65535)  # ignore empty. background is ignored
+        loss_all = (loss1 + loss2) / 2
+    elif experiment_name == 'v8-category_nyu40_merged_background-2l-solo':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['category_nyu40_merged_background_replicated'][:, 2].cuda()  # (B, 240, 320)
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        assert pred.shape[1] == 40
+        loss_all = loss_fn.loss_calc_classification(pred, target, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
+    elif experiment_name == 'v8-normals':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['normals'].cuda()  # (B, 3, 240, 320)
+        pred = pytorch_model(in_rgb)  # (B, 3, 240, 320)
+        loss_all = loss_fn.compute_masked_surface_normal_loss(pred, target=target, use_inverse_cosine=False)
+    elif experiment_name == 'v8-normals-acos':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['normals'].cuda()  # (B, 3, 240, 320)
+        pred = pytorch_model(in_rgb)  # (B, 3, 240, 320)
+        loss_all = loss_fn.compute_masked_surface_normal_loss(pred, target=target, use_inverse_cosine=True)
+    elif experiment_name == 'v8-normal_direction_volume':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['normal_direction_volume'].cuda()  # (B, 1, 240, 320)
+        pred = pytorch_model(in_rgb)  # (B, 1, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=False)
+    elif experiment_name == 'v8-multi_layer_depth_multi_branch-from_rgbd':
+        rgb = batch['rgb']
+        d_ldi = batch['multi_layer_depth_and_input_depth']
+        assert d_ldi.shape[1] == 5
+        depth = d_ldi[:, :1]
+        in_rgbd = torch.cat([rgb, depth], dim=1).cuda()
+        target = d_ldi[:, 1:].cuda()
+        assert in_rgbd.shape[1] == 4
+        assert target.shape[1] == 4
+        pred = pytorch_model(in_rgbd)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_multi_branch-from_d':
+        d_ldi = batch['multi_layer_depth_and_input_depth'].cuda()
+        assert d_ldi.shape[1] == 5
+        in_depth = d_ldi[:, :1]
+        target = d_ldi[:, 1:]
+        assert target.shape[1] == 4
+        pred = pytorch_model(in_depth)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch-from_rgbd':
+        rgb = batch['rgb']
+        d_ldi = batch['multi_layer_depth_aligned_background_and_input_depth']
+        assert d_ldi.shape[1] == 5
+        depth = d_ldi[:, :1]  # (B, 1, H, W)
+        in_rgbd = torch.cat([rgb, depth], dim=1).cuda()
+        target = d_ldi[:, 1:].cuda()  # (B, 4, H, W)
+        assert target.shape[1] == 4
+        assert in_rgbd.shape[1] == 4
+        pred = pytorch_model(in_rgbd)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch-from_d':
+        d_ldi = batch['multi_layer_depth_aligned_background_and_input_depth'].cuda()
+        assert d_ldi.shape[1] == 5
+        in_depth = d_ldi[:, :1]  # (B, 1, H, W)
+        target = d_ldi[:, 1:]  # (B, 4, H, W)
+        assert target.shape[1] == 4
+        pred = pytorch_model(in_depth)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-category_nyu40-1l-from_rgbd':
+        rgb = batch['rgb']
+        depth = batch['input_depth']
+        in_rgbd = torch.cat([rgb, depth], dim=1).cuda()
+        assert in_rgbd.shape[1] == 4
+        target = batch['category_nyu40'][:, 0].cuda()  # (B, 240, 320)
+        pred = pytorch_model(in_rgbd)  # (B, C, 240, 320)
+        assert pred.shape[1] == 40
+        loss_all = loss_fn.loss_calc_classification(pred, target, ignore_index=65535)  # ignore empty
+    elif experiment_name == 'v8-category_nyu40-1l-from_d':
+        in_depth = batch['input_depth'].cuda()
+        assert in_depth.shape[1] == 1
+        target = batch['category_nyu40'][:, 0].cuda()  # (B, 240, 320)
+        pred = pytorch_model(in_depth)  # (B, C, 240, 320)
+        assert pred.shape[1] == 40
+        loss_all = loss_fn.loss_calc_classification(pred, target, ignore_index=65535)  # ignore empty
+    elif experiment_name == 'v8-category_nyu40_merged_background-2l-from_rgbd':
+        rgb = batch['rgb']
+        depth = batch['input_depth']
+        in_rgbd = torch.cat([rgb, depth], dim=1).cuda()
+        assert in_rgbd.shape[1] == 4
+        target1 = batch['category_nyu40_merged_background'][:, 0].cuda()  # (B, 240, 320)
+        target2 = batch['category_nyu40_merged_background'][:, 2].cuda()  # (B, 240, 320)
+        pred = pytorch_model(in_rgbd)  # (B, C, 240, 320)
+        assert pred.shape[1] == 80
+        loss1 = loss_fn.loss_calc_classification(pred[:, :40], target1, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
+        loss2 = loss_fn.loss_calc_classification(pred[:, 40:], target2, ignore_index=65535)  # ignore empty. background is ignored
+        loss_all = (loss1 + loss2) / 2
+    elif experiment_name == 'v8-category_nyu40_merged_background-2l-from_d':
+        in_depth = batch['input_depth'].cuda()
+        assert in_depth.shape[1] == 1
+        target1 = batch['category_nyu40_merged_background'][:, 0].cuda()  # (B, 240, 320)
+        target2 = batch['category_nyu40_merged_background'][:, 2].cuda()  # (B, 240, 320)
+        pred = pytorch_model(in_depth)  # (B, C, 240, 320)
+        assert pred.shape[1] == 80
+        loss1 = loss_fn.loss_calc_classification(pred[:, :40], target1, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
+        loss2 = loss_fn.loss_calc_classification(pred[:, 40:], target2, ignore_index=65535)  # ignore empty. background is ignored
+        loss_all = (loss1 + loss2) / 2
     else:
         raise NotImplementedError()
 
@@ -417,6 +631,20 @@ class Trainer(object):
         self.logger = log.make_logger('trainer', level=log.DEBUG)
         log.add_stream_handler(self.logger, level=log.INFO)
         log.add_file_handler(self.logger, filename=self.log_filename, level=log.DEBUG)
+
+        if self.load_checkpoint == 'most_recent':
+            saved_checkpoints = sorted(glob.glob(path.join(self.save_dir, '*.pth')))  # sorting is important
+            self.logger.info('\n' + '\n'.join(saved_checkpoints))
+            assert len(saved_checkpoints) > 0
+            self.load_checkpoint = saved_checkpoints[-1]
+            assert int(path.basename(self.load_checkpoint).split('_')[0]) != 0
+            self.logger.info('Using most recent checkpoint: '.format(self.load_checkpoint))
+
+        elif self.load_checkpoint and not self.load_checkpoint.startswith('/'):
+            # If a filename is given, assume it's in the save directory.
+            self.load_checkpoint = path.join(self.save_dir, self.load_checkpoint)
+
+        assert path.isfile(self.load_checkpoint)
 
         self.logger.info('Initializing Trainer:\n{}'.format(args))
 

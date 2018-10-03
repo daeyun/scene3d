@@ -67,8 +67,11 @@ class MultiLayerDepth(data.Dataset):
 
         valid_fields = (
             'rgb',
+            'input_depth',
             'multi_layer_depth',
+            'multi_layer_depth_and_input_depth',
             'multi_layer_depth_aligned_background',
+            'multi_layer_depth_aligned_background_and_input_depth',
             'multi_layer_depth_replicated_background',
             'multi_layer_overhead_depth',
             'overhead_features',
@@ -79,6 +82,7 @@ class MultiLayerDepth(data.Dataset):
             'model_id',
             'category_nyu40',
             'category_nyu40_merged_background',
+            'category_nyu40_merged_background_replicated',
             'overhead_category_nyu40',
             'overhead_category_nyu40_merged_background',
         )
@@ -92,6 +96,9 @@ class MultiLayerDepth(data.Dataset):
         self.fields = fields
 
         training_utils_cpp.initialize_category_mapping()  # Should run only once.
+
+        self.depth_mean = 2.8452337
+        self.depth_std = 1.1085573
 
     def __len__(self):
         return len(self.filename_prefixes)
@@ -115,6 +122,23 @@ class MultiLayerDepth(data.Dataset):
         in_rgb = dataset_utils.force_contiguous(in_rgb)
         ret[field_name] = in_rgb
 
+    def get_input_depth(self, example_name, ret):
+        field_name = 'input_depth'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi.bin')
+        ldi = io_utils.read_array_compressed(bin_filename, dtype=np.float32)
+        depth = ldi[:1]
+        depth = (depth - self.depth_mean) / (self.depth_std * 3)
+        depth[np.isnan(depth)] = 0  # NOTE: This is used as input. So nan values are zeroed.
+        c, h, w = depth.shape
+        assert c == 1
+        if (h, w) != tuple(self.image_hw):
+            # TODO(daeyun): need to double check this.
+            depth = cv2.resize(depth.transpose(1, 2, 0), dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
+        depth = dataset_utils.force_contiguous(depth)
+        ret[field_name] = depth
+
     def get_multi_layer_depth(self, example_name, ret):
         field_name = 'multi_layer_depth'
         if field_name not in self.fields or field_name in ret:
@@ -125,8 +149,37 @@ class MultiLayerDepth(data.Dataset):
         if (h, w) != tuple(self.image_hw):
             # TODO(daeyun): need to double check this.
             ldi = cv2.resize(ldi.transpose(1, 2, 0), dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
+
+        # fix bug in last-exit layer
+        last_exit_mask = np.isnan(ldi[2])
+        ldi[2][last_exit_mask] = ldi[1][last_exit_mask]
+
         ldi = dataset_utils.force_contiguous(ldi)
         ret[field_name] = ldi
+
+    def get_multi_layer_depth_and_input_depth(self, example_name, ret):
+        field_name = 'multi_layer_depth_and_input_depth'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi.bin')
+        ldi = io_utils.read_array_compressed(bin_filename, dtype=np.float32)
+        _, h, w = ldi.shape
+        if (h, w) != tuple(self.image_hw):
+            # TODO(daeyun): need to double check this.
+            ldi = cv2.resize(ldi.transpose(1, 2, 0), dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
+
+        depth = ldi[:1].copy()  # traditional depth
+        depth = (depth - self.depth_mean) / (self.depth_std * 3)
+        depth[np.isnan(depth)] = 0  # NOTE: This is used as input. So nan values are zeroed.
+
+        # fix bug in last-exit layer
+        last_exit_mask = np.isnan(ldi[2])
+        ldi[2][last_exit_mask] = ldi[1][last_exit_mask]
+
+        # Depth is in the first channel.
+        depth_and_ldi = np.concatenate((depth, ldi), axis=0)
+        depth_and_ldi = dataset_utils.force_contiguous(depth_and_ldi)
+        ret[field_name] = depth_and_ldi
 
     def get_multi_layer_depth_aligned_background(self, example_name, ret):
         field_name = 'multi_layer_depth_aligned_background'
@@ -140,11 +193,43 @@ class MultiLayerDepth(data.Dataset):
             ldi = cv2.resize(ldi.transpose(1, 2, 0), dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
 
         # Swap visible background in channels 0 and 3.
-        bg_mask = np.isnan(ldi[3])
+        bg_mask = np.isnan(ldi[1])
         ldi[0][bg_mask], ldi[3][bg_mask] = ldi[3][bg_mask], ldi[0][bg_mask]
+
+        # fix bug in last-exit layer
+        last_exit_mask = np.isnan(ldi[2])
+        ldi[2][last_exit_mask] = ldi[1][last_exit_mask]
 
         ldi = dataset_utils.force_contiguous(ldi)
         ret[field_name] = ldi
+
+    def get_multi_layer_depth_aligned_background_and_input_depth(self, example_name, ret):
+        field_name = 'multi_layer_depth_aligned_background_and_input_depth'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_ldi.bin')
+        ldi = io_utils.read_array_compressed(bin_filename, dtype=np.float32)
+        _, h, w = ldi.shape
+        if (h, w) != tuple(self.image_hw):
+            # TODO(daeyun): need to double check this.
+            ldi = cv2.resize(ldi.transpose(1, 2, 0), dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
+
+        depth = ldi[:1].copy()  # traditional depth
+        depth = (depth - self.depth_mean) / (self.depth_std * 3)
+        depth[np.isnan(depth)] = 0  # NOTE: This is used as input. So nan values are zeroed.
+
+        # Swap visible background in channels 0 and 3.
+        bg_mask = np.isnan(ldi[3])
+        ldi[0][bg_mask], ldi[3][bg_mask] = ldi[3][bg_mask], ldi[0][bg_mask]
+
+        # fix bug in last-exit layer
+        last_exit_mask = np.isnan(ldi[2])
+        ldi[2][last_exit_mask] = ldi[1][last_exit_mask]
+
+        # Depth is in the first channel.
+        depth_and_ldi = np.concatenate((depth, ldi), axis=0)
+        depth_and_ldi = dataset_utils.force_contiguous(depth_and_ldi)
+        ret[field_name] = depth_and_ldi
 
     def get_multi_layer_depth_replicated_background(self, example_name, ret):
         field_name = 'multi_layer_depth_replicated_background'
@@ -158,8 +243,12 @@ class MultiLayerDepth(data.Dataset):
             ldi = cv2.resize(ldi.transpose(1, 2, 0), dsize=(self.image_hw[1], self.image_hw[0]), interpolation=cv2.INTER_NEAREST).transpose(2, 0, 1)
 
         # Copy visible background to all channels.
-        bg_mask = np.isnan(ldi[3])
+        bg_mask = np.isnan(ldi[1])
         ldi[1][bg_mask] = ldi[2][bg_mask] = ldi[3][bg_mask] = ldi[0][bg_mask]
+
+        # fix bug in last-exit layer
+        last_exit_mask = np.isnan(ldi[2])
+        ldi[2][last_exit_mask] = ldi[1][last_exit_mask]
 
         ldi = dataset_utils.force_contiguous(ldi)
         ret[field_name] = ldi
@@ -198,7 +287,8 @@ class MultiLayerDepth(data.Dataset):
         bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_oit.bin')
         d = io_utils.read_array_compressed(bin_filename, dtype=np.float32)
         d = dataset_utils.force_contiguous(d)
-        ret[field_name] = d
+        assert d.ndim == 2
+        ret[field_name] = d[None]
 
     def get_model_id(self, example_name, ret):
         field_name = 'model_id'
@@ -216,7 +306,7 @@ class MultiLayerDepth(data.Dataset):
         bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model-o.bin')
         d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
         d = dataset_utils.force_contiguous(d)
-        ret[field_name] = d
+        ret[field_name] = d.astype(np.int)
 
     def get_category_nyu40(self, example_name, ret):
         field_name = 'category_nyu40'
@@ -226,6 +316,12 @@ class MultiLayerDepth(data.Dataset):
         d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
         d = dataset_utils.force_contiguous(d)
         training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class")
+
+        # fix bug in last-exit layer
+        last_exit_mask = d[2] == 65535
+        d[2][last_exit_mask] = d[1][last_exit_mask]
+
+        d = dataset_utils.force_contiguous(d.astype(np.int))
         ret[field_name] = d
 
     def get_category_nyu40_merged_background(self, example_name, ret):
@@ -236,6 +332,34 @@ class MultiLayerDepth(data.Dataset):
         d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
         d = dataset_utils.force_contiguous(d)
         training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_merged_background")
+
+        bg_mask = d[0] == 34  # merged into wall category (34). Ignored in layers >=1.
+        d[1][bg_mask] = d[2][bg_mask] = d[3][bg_mask] = 65535
+
+        # fix bug in last-exit layer
+        last_exit_mask = d[2] == 65535
+        d[2][last_exit_mask] = d[1][last_exit_mask]
+
+        d = dataset_utils.force_contiguous(d.astype(np.int))
+        ret[field_name] = d
+
+    def get_category_nyu40_merged_background_replicated(self, example_name, ret):
+        field_name = 'category_nyu40_merged_background_replicated'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_model.bin')
+        d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
+        d = dataset_utils.force_contiguous(d)
+        training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_merged_background")
+
+        bg_mask = d[0] == 34  # merged into wall category (34). Ignored in layers >=1.
+        d[1][bg_mask] = d[2][bg_mask] = d[3][bg_mask] = d[0][bg_mask]
+
+        # fix bug in last-exit layer
+        last_exit_mask = d[2] == 65535
+        d[2][last_exit_mask] = d[1][last_exit_mask]
+
+        d = dataset_utils.force_contiguous(d.astype(np.int))
         ret[field_name] = d
 
     def get_overhead_category_nyu40(self, example_name, ret):
@@ -256,6 +380,11 @@ class MultiLayerDepth(data.Dataset):
         d = io_utils.read_array_compressed(bin_filename, dtype=np.uint16)
         d = dataset_utils.force_contiguous(d)
         training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_merged_background")
+
+        bg_mask = d[0] == 34  # merged into wall category (34). Ignored in layers >=1.
+        d[1][bg_mask] = d[2][bg_mask] = d[3][bg_mask] = 65535
+
+        d = dataset_utils.force_contiguous(d)
         ret[field_name] = d.astype(np.int)
 
     def __getitem__(self, index):
@@ -270,8 +399,11 @@ class MultiLayerDepth(data.Dataset):
         # some images don't have background.
 
         self.get_rgb(example_name, ret)
+        self.get_input_depth(example_name, ret)
         self.get_multi_layer_depth(example_name, ret)
+        self.get_multi_layer_depth_and_input_depth(example_name, ret)
         self.get_multi_layer_depth_aligned_background(example_name, ret)
+        self.get_multi_layer_depth_aligned_background_and_input_depth(example_name, ret)
         self.get_multi_layer_depth_replicated_background(example_name, ret)
         self.get_multi_layer_overhead_depth(example_name, ret)
         self.get_overhead_features(example_name, ret)
@@ -280,6 +412,7 @@ class MultiLayerDepth(data.Dataset):
         self.get_model_id(example_name, ret)
         self.get_category_nyu40(example_name, ret)
         self.get_category_nyu40_merged_background(example_name, ret)
+        self.get_category_nyu40_merged_background_replicated(example_name, ret)
         self.get_overhead_category_nyu40(example_name, ret)
         self.get_overhead_category_nyu40_merged_background(example_name, ret)
 

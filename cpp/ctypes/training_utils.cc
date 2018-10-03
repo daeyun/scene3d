@@ -17,6 +17,7 @@ using std::set;
 using Selector = std::function<string(const CategoryMappingEntry &)>;
 
 const uint16_t kVoid = 65535;  // Max value for uint16
+const uint16_t kBackground = 34;  // Max value for uint16
 
 //map<uint16_t, uint16_t> model_index_to_fine_grained_class_index;
 //map<uint16_t, uint16_t> model_index_to_coarse_grained_class_index;
@@ -126,7 +127,7 @@ void model_index_to_category(const char *mapping_name,
       auto it = model_index_to_nyuv2_40class_index.find(model_index);
       Ensures(it != model_index_to_nyuv2_40class_index.end());
       if (is_model_index_background[model_index]) {
-        *(data + i) = kVoid;  // Group background into "void" category.
+        *(data + i) = kBackground;  // Group background into "wall" category.
       } else {
         *(data + i) = it->second;  // This includes void.
       }

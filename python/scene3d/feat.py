@@ -152,25 +152,65 @@ def overhead_features_from_trained_model(i, dataset, model):
     return overhead_all_features, p_front, t_back_ordering_enforced, t_front, t_back
 
 
-def display_error_map(overhead_pred, overhead_gt):
-    mask = np.isnan(overhead_gt) | np.isclose(overhead_gt, 0, rtol=0.001, atol=0.001)
+def finite_mean(arr):
+    m = np.isfinite(arr)
+    return arr[m].mean()
+
+
+def tight_ax():
+    ax = pt.gca()
+    ax.set_xticklabels([])
+    ax.set_yticklabels([])
+    pt.axis('off')
+
+
+def compute_error(overhead_pred, overhead_gt, overhead_features, plot=True):
     l1 = np.abs(overhead_pred - overhead_gt)
-    # l1[mask] = np.nan
+    error1 = finite_mean(l1)
 
-    pt.imshow(l1, cmap='Reds')
-    pt.clim(0, 1)
+    mask = np.isnan(overhead_gt) | np.isclose(overhead_gt, 0, rtol=0.001, atol=0.001)
+
+    mask1 = mask | np.isclose(overhead_features[0], 0, rtol=0.001, atol=0.001)
+    l1_copy = l1.copy()
+    l1_copy[mask1] = np.nan
+    error2 = finite_mean(l1_copy)
+
+    mask2 = mask | ~np.isclose(overhead_features[0], 0, rtol=0.001, atol=0.001)
+    l1_copy2 = l1.copy()
+    l1_copy2[mask2] = np.nan
+    error3 = finite_mean(l1_copy2)
+
+    if plot:
+        pt.figure(figsize=(19, 4))
+        pt.subplot(1, 3, 1)
+
+        tight_ax()
+        pt.imshow(l1, cmap='Reds')
+        pt.title('F\nL1 Error: {:.3f}'.format(error1))
+        pt.clim(0, 1)
+        pt.colorbar()
+
+        pt.subplot(1, 3, 2)
+        tight_ax()
+        pt.imshow(l1_copy, cmap='Reds')
+        pt.title('F\nL1 Error (interpolation): {:.3f}'.format(error2))
+        pt.clim(0, 1)
+        pt.colorbar()
+
+        pt.subplot(1, 3, 3)
+        tight_ax()
+        pt.imshow(l1_copy2, cmap='Reds')
+        pt.title('F\nL1 Error (extrapolation): {:.3f}'.format(error3))
+        pt.clim(0, 1)
+        pt.colorbar()
+
+    return (error1, error2, error3)
 
 
-def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ldi, use_gt_front=False):
+def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ldi, use_gt_front=False, plot=True, is_log_depth=False):
     """
     This probably doesn't belong in this file. Should be moved later.
     """
-
-    def tight_ax():
-        ax = pt.gca()
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        pt.axis('off')
 
     example = dataset[i]
 
@@ -179,64 +219,74 @@ def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ld
         overhead_features = example['overhead_features']
 
     out = model_overhead(torch.Tensor(overhead_features[None, 3:]).cuda())
+
+    if is_log_depth:
+        out = (2 ** out) - 0.5
+
     out_np = torch_utils.recursive_torch_to_numpy(out)
 
     rgb_nosub = (example['rgb'] / dataset.rgb_scale + dataset.rgb_mean[:, None, None]) * dataset.rgb_scale  # (3, 240, 320)
 
-    pt.figure(figsize=(18, 10))
-    pt.subplot(1, 3, 1)
-    pt.title('A\nInput RGB')
-    pt.imshow(rgb_nosub.transpose(1, 2, 0))
-    tight_ax()
-
-    if use_gt_front:
-        pt.subplot(1, 3, 2)
-        pt.title('B\nFront (GT)')
-        pt.imshow(t_front)
+    if plot:
+        pt.figure(figsize=(18, 10))
+        pt.subplot(1, 3, 1)
+        pt.title('A\nInput RGB')
+        pt.imshow(rgb_nosub.transpose(1, 2, 0))
         tight_ax()
+
+        if use_gt_front:
+            pt.subplot(1, 3, 2)
+            pt.title('B\nFront (GT)')
+            pt.imshow(t_front)
+            tight_ax()
+
+            pt.subplot(1, 3, 3)
+            pt.title('C\nBack (GT Instance-exit)')
+            pt.imshow(t_back)
+            tight_ax()
+
+        else:
+            pt.subplot(1, 3, 2)
+            pt.title('B\nFront (predicted)')
+            pt.imshow(front)
+            tight_ax()
+
+            pt.subplot(1, 3, 3)
+            pt.title('C\nBack (GT Instance-exit)')
+            pt.imshow(back)
+            tight_ax()
+
+        pt.figure(figsize=(20, 20))
+        pt.title('D\nTransformed overhead feature map\n(64, 300, 300)')
+        geom2d.display_montage(overhead_features[3:], gridwidth=15)
+
+        pt.figure(figsize=(19, 5))
+        pt.subplot(1, 3, 1)
+        pt.title('E\nTransformed overhead RGB\n(3, 300, 300)')
+        pt.imshow(overhead_features[:3].transpose(1, 2, 0))
+        tight_ax()
+
+        gt_finite_mask = np.isfinite(example['multi_layer_overhead_depth'][0])
+        cmax = example['multi_layer_overhead_depth'][0][gt_finite_mask].max()
+        cmin = example['multi_layer_overhead_depth'][0][gt_finite_mask].min()
+
+        pt.subplot(1, 3, 2)
+        pt.title('F\nPredicted height map\n(1, 300, 300)')
+        pt.imshow(out_np[0, 0])
+        tight_ax()
+        pt.clim(cmin, cmax)
+        pt.colorbar()
 
         pt.subplot(1, 3, 3)
-        pt.title('C\nBack (GT Instance-exit)')
-        pt.imshow(t_back)
+        pt.title('G\nGT height map\n(1, 300, 300)')
+        pt.imshow(example['multi_layer_overhead_depth'][0])
         tight_ax()
+        pt.clim(cmin, cmax)
+        pt.colorbar()
 
-    else:
-        pt.subplot(1, 3, 2)
-        pt.title('B\nFront (predicted)')
-        pt.imshow(front)
-        tight_ax()
+    errors = compute_error(out_np[0, 0], example['multi_layer_overhead_depth'][0], overhead_features, plot=plot)
 
-        pt.subplot(1, 3, 3)
-        pt.title('C\nBack (GT Instance-exit)')
-        pt.imshow(back)
-        tight_ax()
+    if plot:
+        pt.show()
 
-    pt.figure(figsize=(20, 20))
-    pt.title('D\nTransformed overhead feature map\n(64, 300, 300)')
-    geom2d.display_montage(overhead_features[3:], gridwidth=15)
-
-    pt.figure(figsize=(19, 5))
-    pt.subplot(1, 3, 1)
-    pt.title('E\nTransformed overhead RGB\n(3, 300, 300)')
-    pt.imshow(overhead_features[:3].transpose(1, 2, 0))
-    tight_ax()
-
-    pt.subplot(1, 3, 2)
-    pt.title('F\nPredicted height map\n(1, 300, 300)')
-    pt.imshow(out_np[0, 0])
-    tight_ax()
-    pt.colorbar()
-
-    pt.subplot(1, 3, 3)
-    pt.title('G\nGT height map\n(1, 300, 300)')
-    pt.imshow(example['multi_layer_overhead_depth'][0])
-    tight_ax()
-    pt.colorbar()
-
-    pt.figure()
-    pt.title('F\nL1 Error')
-    display_error_map(out_np[0, 0], example['multi_layer_overhead_depth'][0])
-    tight_ax()
-    pt.colorbar()
-
-    pt.show()
+    return errors

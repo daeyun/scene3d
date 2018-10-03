@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 
 def loss_calc(pred, target):
@@ -26,15 +27,18 @@ def loss_calc_single_depth(pred, target):
     return (torch.log2(target_single_depth[mask] + 0.5) - pred[mask]).abs().mean()
 
 
-def loss_calc_classification(pred, target):
+def loss_calc_classification(pred, target, ignore_index=None):
     target = target.long().cuda()
-    criterion = torch.nn.CrossEntropyLoss(ignore_index=255).cuda()
+    ignore_index_ = -100
+    if ignore_index:
+        ignore_index_ = ignore_index
+    criterion = torch.nn.CrossEntropyLoss(ignore_index=ignore_index_).cuda()
     return criterion(pred, target)
 
 
 def compute_masked_smooth_l1_loss(pred, target, apply_log_to_target=True):
     assert pred.dim() == 4
-    assert target.size() == pred.size()
+    assert target.size() == pred.size(), (target.shape, pred.shape)
 
     valid = torch.isfinite(target)  # (B, C, H, W)
 
@@ -58,3 +62,25 @@ def compute_masked_smooth_l1_loss(pred, target, apply_log_to_target=True):
     loss = (loss / (area.type(loss.dtype) + 1e-3)).mean()
 
     return loss
+
+
+def compute_masked_surface_normal_loss(pred, target, use_inverse_cosine=False):
+    assert pred.dim() == 4
+    assert pred.shape[1] == 3
+    assert target.size() == pred.size(), (target.shape, pred.shape)
+
+    finite_mask = torch.isfinite(target)  # (B, 1, H, W)
+
+    pred_normalized = F.normalize(pred, p=2, dim=1)
+
+    dotproduct = (pred_normalized * target.masked_fill(~finite_mask, 0)).sum(dim=1, keepdim=True)  # contains nans
+
+    valid_values = dotproduct[finite_mask[:, :1]]  # n'n
+
+    if use_inverse_cosine:
+        lmda = 4
+        loss = (-valid_values + lmda * torch.acos(valid_values)).mean()
+    else:
+        loss = -valid_values.mean()
+
+    return loss  # every pixel contributes equally
