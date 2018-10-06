@@ -72,6 +72,8 @@ available_experiments = [
     'v8-category_nyu40-1l-from_d',
     'v8-category_nyu40_merged_background-2l-from_rgbd',
     'v8-category_nyu40_merged_background-2l-from_d',
+    'overfit-v8-multi_layer_depth-unet_v1',
+    'overfit-v8-multi_layer_depth-unet_v2',
 ]
 
 available_models = [
@@ -172,6 +174,10 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background', 'input_depth'))
     elif experiment_name == 'v8-category_nyu40_merged_background-2l-from_d':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background', 'input_depth'))
+    elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v1':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
+    elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v2':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
     else:
         raise NotImplementedError()
 
@@ -253,6 +259,8 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             model = unet.Unet1(out_channels=80, in_channels=4)  # category 34 is wall=background.
         elif experiment_name == 'v8-category_nyu40_merged_background-2l-from_d':
             model = unet.Unet1(out_channels=80, in_channels=1)  # category 34 is wall=background.
+        elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v1':
+            model = unet.Unet1(out_channels=4)
         else:
             raise NotImplementedError()
     elif model_name == 'unet_v2':
@@ -272,6 +280,8 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             model = unet.Unet2(out_channels=4, in_channels=4)
         elif experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch-from_d':
             model = unet.Unet2(out_channels=4, in_channels=1)
+        elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v2':
+            model = unet.Unet2(out_channels=4)
         else:
             raise NotImplementedError()
     else:
@@ -279,7 +289,8 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
 
     params = list(filter(lambda p: p.requires_grad, model.parameters()))
     log.info('Number of pytorch parameter tensors %d', len(params))
-    optimizer = optim.Adam(params, lr=0.0005)
+    learning_rate = 0.0005
+    optimizer = optim.Adam(params, lr=learning_rate)
     optimizer.zero_grad()
 
     return model, optimizer
@@ -515,6 +526,16 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch
         loss1 = loss_fn.loss_calc_classification(pred[:, :40], target1, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
         loss2 = loss_fn.loss_calc_classification(pred[:, 40:], target2, ignore_index=65535)  # ignore empty. background is ignored
         loss_all = (loss1 + loss2) / 2
+    elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v1':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v2':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
     else:
         raise NotImplementedError()
 
@@ -639,12 +660,12 @@ class Trainer(object):
             self.load_checkpoint = saved_checkpoints[-1]
             assert int(path.basename(self.load_checkpoint).split('_')[0]) != 0
             self.logger.info('Using most recent checkpoint: '.format(self.load_checkpoint))
+            assert path.isfile(self.load_checkpoint)
 
         elif self.load_checkpoint and not self.load_checkpoint.startswith('/'):
             # If a filename is given, assume it's in the save directory.
             self.load_checkpoint = path.join(self.save_dir, self.load_checkpoint)
-
-        assert path.isfile(self.load_checkpoint)
+            assert path.isfile(self.load_checkpoint)
 
         self.logger.info('Initializing Trainer:\n{}'.format(args))
 
@@ -656,7 +677,17 @@ class Trainer(object):
         self.dataset = get_dataset(experiment_name=self.experiment_name, split_name='train')
         self.logger.info('Number of examples: %d', len(self.dataset))
 
-        self.data_loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, num_workers=self.num_data_workers, shuffle=True, drop_last=True, pin_memory=True)
+        self.use_subset = 'overfit-' in self.experiment_name
+
+        if self.use_subset:
+            sampler = torch.utils.data.SubsetRandomSampler(np.arange(7))
+            shuffle = None
+            self.logger.info('Debug mode. Using subset.')
+        else:
+            sampler = None
+            shuffle = True
+
+        self.data_loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.batch_size, num_workers=self.num_data_workers, shuffle=shuffle, drop_last=True, pin_memory=True, sampler=sampler)
         self.logger.info('Initialized data loader.')
 
         self.global_step = 0  # Total number of steps. Preserved across checkpoints.

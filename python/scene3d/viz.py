@@ -1,8 +1,19 @@
 from scene3d import io_utils
 from scene3d import geom2d
 import cv2
+import typing
 import numpy as np
 import matplotlib.pyplot as pt
+
+
+def find_common_y_data(global_steps_list: typing.Sequence[typing.Sequence[int]], y_data_list: typing.Sequence[typing.Sequence[float]]):
+    assert len(global_steps_list) == len(y_data_list)
+    raise NotImplementedError()
+
+
+def movingaverage(interval, window_size):
+    window = np.ones(int(window_size)) / float(window_size)
+    return np.convolve(interval, window, 'same')
 
 
 def remove_matching(a, value):

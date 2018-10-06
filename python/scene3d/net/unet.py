@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import torch.nn as nn
+import torch.nn.functional
 from third_party.inplace_abn.modules import InPlaceABN
 
 
@@ -58,12 +59,10 @@ def up(in_ch, out_ch):
 
 
 class Unet0(nn.Module):
-    def __init__(self, out_channels=1):
+    def __init__(self, out_channels=1, ch=(64, 64, 64, 256, 512)):
         super().__init__()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=False)
         self.unpool = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-
-        ch = [64, 64, 64, 256, 512]
 
         self.enc1 = conv_0(3, ch[0])
         self.enc2 = conv_0(ch[0], ch[1])
@@ -94,12 +93,9 @@ class Unet0(nn.Module):
 
 
 class Unet1(nn.Module):
-    def __init__(self, out_channels=1, in_channels=3):
+    def __init__(self, out_channels=1, in_channels=3, ch=(64, 64, 64, 384, 768)):
         super().__init__()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=False)
-        self.unpool = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
-
-        ch = [64, 64, 64, 384, 768]
 
         self.enc1 = conv_0_ip(in_channels, ch[0])
         self.enc2 = conv_0_ip(ch[0], ch[1])
@@ -121,10 +117,12 @@ class Unet1(nn.Module):
         x4 = self.enc4(self.pool(x3))  # (30, 40)
         out = self.enc5(self.pool(x4))  # (15, 20)
 
-        out = self.dec1(torch.cat([x4, self.unpool(out)], dim=1))  # (30, 40)
-        out = self.dec2(torch.cat([x3, self.unpool(out)], dim=1))  # (60, 80)
-        out = self.dec3(torch.cat([x2, self.unpool(out)], dim=1))  # (120, 160)
-        out = self.dec4(torch.cat([x1, self.unpool(out)], dim=1))  # (240, 320)
+        unpool = lambda x: nn.functional.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
+
+        out = self.dec1(torch.cat([x4, unpool(out)], dim=1))  # (30, 40)
+        out = self.dec2(torch.cat([x3, unpool(out)], dim=1))  # (60, 80)
+        out = self.dec3(torch.cat([x2, unpool(out)], dim=1))  # (120, 160)
+        out = self.dec4(torch.cat([x1, unpool(out)], dim=1))  # (240, 320)
         out = self.dec5(out)  # (240, 320)
         return out
 
@@ -137,7 +135,6 @@ class Unet2(nn.Module):
     def __init__(self, out_channels=1, ch=(48, 64, 64, 384, 768), ch_branch=32, in_channels=3):
         super().__init__()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=False)
-        self.unpool = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False)
 
         self.enc1 = conv_0_ip(in_channels, ch[0])
         self.enc2 = conv_0_ip(ch[0], ch[1])
@@ -150,11 +147,11 @@ class Unet2(nn.Module):
         self.dec3 = conv_0_ip(ch[2] + ch[1], ch[1])
         self.dec4 = conv_0_ip(ch[1] + ch[0], ch[0])
 
-        self.dec5_branched = []
+        self.dec5_branched = nn.ModuleList()
         for i in range(out_channels):
-            self.dec5_branched.append(conv_0_ip(ch[0], ch_branch))
+            self.dec5_branched.append(conv_1_ip(ch[0], ch_branch))
 
-        self.dec6_branched = []
+        self.dec6_branched = nn.ModuleList()
         for i in range(out_channels):
             self.dec6_branched.append(nn.Conv2d(ch_branch, 1, kernel_size=3, padding=1, bias=False))
 
@@ -165,14 +162,17 @@ class Unet2(nn.Module):
         x4 = self.enc4(self.pool(x3))  # (30, 40)
         out = self.enc5(self.pool(x4))  # (15, 20)
 
-        out = self.dec1(torch.cat([x4, self.unpool(out)], dim=1))  # (30, 40)
-        out = self.dec2(torch.cat([x3, self.unpool(out)], dim=1))  # (60, 80)
-        out = self.dec3(torch.cat([x2, self.unpool(out)], dim=1))  # (120, 160)
-        out = self.dec4(torch.cat([x1, self.unpool(out)], dim=1))  # (240, 320)
+        unpool = lambda x: nn.functional.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
+
+        out = self.dec1(torch.cat([x4, unpool(out)], dim=1))  # (30, 40)
+        out = self.dec2(torch.cat([x3, unpool(out)], dim=1))  # (60, 80)
+        out = self.dec3(torch.cat([x2, unpool(out)], dim=1))  # (120, 160)
+        out = self.dec4(torch.cat([x1, unpool(out)], dim=1))  # (240, 320)
 
         out_branched = []
         for i in range(len(self.dec5_branched)):
-            out_i = self.dec5_branched[i](out)  # (B, 32, 240, 320)
+            out_i = out
+            out_i = self.dec5_branched[i](out_i)  # (B, 32, 240, 320)
             out_i = self.dec6_branched[i](out_i)  # (B, 1, 240, 320)
             out_branched.append(out_i)
 
