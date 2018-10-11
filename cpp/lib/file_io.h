@@ -30,6 +30,8 @@ void WritePclTensor(const std::string &filename, const vector<Vec3> &pcl);
 
 bool Exists(const std::string &filename);
 
+void WritePly(const string &filename, const vector<array<unsigned int, 3>>& faces, const vector<array<float, 3>>& vertices, bool is_binary);
+
 template<typename T>
 void ReadTensorData(const string &filename, vector<int> *shape, vector<T> *data);
 

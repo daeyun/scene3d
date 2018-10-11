@@ -1,5 +1,7 @@
 #pragma once
 
+#include <unordered_set>
+
 #include "lib/common.h"
 #include "lib/camera.h"
 #include "lib/file_io.h"
@@ -32,7 +34,7 @@ class Image {
 
   void Transform(std::function<T(size_t, T)> fn) {
     for (size_t i = 0; i < data_.size(); ++i) {
-        data_[i] = fn(i, data_[i]);
+      data_[i] = fn(i, data_[i]);
     }
   }
 
@@ -163,6 +165,24 @@ class MultiLayerImage {
     Ensures(flat.size() == height_ * width_ * num_layers);
     LOGGER->info("{}, {}, {}", height_, width_, num_layers);
     SerializeTensor<T>(filename, flat.data(), {num_layers, height_, width_});
+  }
+
+  void UniqueValues(set<T> *out) const {
+    for (int i = 0; i < data_.size(); ++i) {
+      auto *values = data_[i].get();
+      for (int j = 0; j < values->size(); ++j) {
+        out->insert(values->at(j));
+      }
+    }
+  }
+
+  void UniqueValues(std::unordered_set<T> *out) const {
+    for (int i = 0; i < data_.size(); ++i) {
+      auto *values = data_[i].get();
+      for (int j = 0; j < values->size(); ++j) {
+        out->insert(values->at(j));
+      }
+    }
   }
 
   unsigned int height() const {

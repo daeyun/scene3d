@@ -686,3 +686,74 @@ TEST_CASE("save and read cameras") {
   REQUIRE(Approx(xf) == xf2);
   REQUIRE(Approx(yf) == yf2);
 }
+
+TEST_CASE("pixel footprint perspective") {
+  unsigned int width = 2000;
+  unsigned int height = 1500;
+  double x_fov = 30.0 / 180.0 * M_PI;  // 60 degrees left-to-right.
+  double near = 0.01;
+  double far = 20;
+  Vec3 eye = {0, 4, 0};  // This is the distance where the plane takes up 80% of the image width.
+  Vec3 up = {0, 0, -1};
+  Vec3 lookat = {0, 0, 0};
+  auto frustum = MakePerspectiveFrustumParams(static_cast<double>(height) / width, x_fov, near, far);
+  auto camera = PerspectiveCamera(eye, lookat, up, frustum);
+
+  Points2i xy(2, 4);
+  xy << 0, 0,
+      0, 0,
+      999, 749,
+      1999, 1499;
+
+  Points1d cam_depth(4);
+  cam_depth << 1.0, 2.0, 2.0, 2.0;
+
+  Points1d out;
+  camera.PixelFootprintX(xy, cam_depth, height, width, &out);
+
+  LOGGER->info("{}, {}, {}, {}", out[0], out[1], out[2], out[3]);
+
+  REQUIRE(out.size() == 4);
+  REQUIRE(out[0] < out[1]);
+}
+
+TEST_CASE("pixel footprint orthographic") {
+  unsigned int width = 2000;
+  unsigned int height = 1500;
+  double near = 0.01;
+  double far = 20;
+  Vec3 eye = {0, 4, 0};
+  Vec3 up = {0, 0, -1};
+  Vec3 lookat = {0, 0, 0};
+
+  // not symmetric.
+  FrustumParams frustum;
+  double fsize = 2;
+  frustum.left = -fsize;
+  frustum.right = fsize * 1.1;
+  frustum.bottom = -fsize * 0.75;
+  frustum.top = fsize * 0.9;
+  frustum.near = near;
+  frustum.far = far;
+
+  auto camera = OrthographicCamera(eye, lookat, up, frustum);
+
+  Points2i xy(2, 4);
+  xy << 0, 0,
+      0, 0,
+      999, 749,
+      1999, 1499;
+
+  Points1d cam_depth(4);
+  cam_depth << 1.0, 2.0, 2.0, 2.0;
+
+  Points1d out;
+  camera.PixelFootprintX(xy, cam_depth, height, width, &out);
+
+  LOGGER->info("{}, {}, {}, {}", out[0], out[1], out[2], out[3]);
+
+  REQUIRE(out.size() == 4);
+  REQUIRE(out[0] == out[1]);
+  REQUIRE(out[0] == out[2]);
+  REQUIRE(out[0] == out[3]);
+}

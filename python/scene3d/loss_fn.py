@@ -79,7 +79,7 @@ def compute_masked_surface_normal_loss(pred, target, use_inverse_cosine=False):
 
     if use_inverse_cosine:
         lmda = 4
-        loss = (-valid_values + lmda * torch.acos(valid_values)).mean()
+        loss = (-valid_values + lmda * torch.acos(torch.clamp(valid_values, -0.99, 0.99))).mean()
     else:
         loss = -valid_values.mean()
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <limits>
+#include <unordered_set>
 
 #include "common.h"
 #include "camera.h"
@@ -8,6 +9,8 @@
 #include "multi_layer_depth_renderer.h"
 #include "file_io.h"
 #include "pcl.h"
+#include "mesh.h"
+#include "vectorization_utils.h"
 
 namespace scene3d {
 
@@ -149,6 +152,149 @@ void GenerateMultiDepthExample(suncg::Scene *scene, const MultiLayerImage<float>
       }
     }
   }
+}
+
+void ExtractBackgroundFromFourLayerModel(const MultiLayerImage<float> &ml_depth, Image<float> *out) {
+  Expects(ml_depth.NumLayers() == 4);
+
+  const unsigned int height = ml_depth.height();
+  const unsigned int width = ml_depth.width();
+
+  out->Resize(height, width);
+
+  for (unsigned int y = 0; y < height; ++y) {
+    for (unsigned int x = 0; x < width; ++x) {
+      if (std::isnan(ml_depth.at(y, x, 1))) {
+        out->at(y, x) = ml_depth.at(y, x, 0);
+      } else {
+        out->at(y, x) = ml_depth.at(y, x, 3);
+      }
+    }
+  }
+}
+
+// returns floor height.
+float ExtractFrustumMesh(suncg::Scene *scene, const scene3d::Camera &camera, unsigned int height, unsigned int width, TriMesh *out_mesh, TriMesh *out_mesh_object_only = nullptr) {
+  scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
+  ray_tracer.PrintStats();
+
+  auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
+      &ray_tracer,
+      &camera,
+      width,
+      height,
+      scene
+  );
+
+  auto ml_depth = MultiLayerImage<float>(height, width, NAN);
+  auto ml_prim_ids = MultiLayerImage<uint32_t>(height, width, std::numeric_limits<uint32_t>::max());
+  RenderMultiLayerDepthImage(&renderer, &ml_depth, &ml_prim_ids);
+
+  MultiLayerImage<float> out_ml_depth;
+  MultiLayerImage<uint16_t> out_ml_model_indices;
+  MultiLayerImage<uint32_t> out_ml_prim_ids;
+  GenerateMultiDepthExample(scene, ml_depth, ml_prim_ids, &out_ml_depth, &out_ml_model_indices, &out_ml_prim_ids);
+
+  Image<float> background(out_ml_depth.height(), out_ml_depth.width(), NAN);
+  ExtractBackgroundFromFourLayerModel(out_ml_depth, &background);
+
+  TriMesh background_mesh;
+  const float dd_factor = 10.0;
+  TriangulateDepth(background, camera, dd_factor, &background_mesh.faces, &background_mesh.vertices);
+
+
+  // Floor detection
+  // TODO: this may fail if the floor height varies, for some reason.
+  float min_y = 1e10;
+  for (const auto &v : background_mesh.vertices) {
+    if (v[1] < min_y) {
+      min_y = v[1];
+    }
+  }
+  // end of floor height detection.
+
+
+//  WritePly("/tmp/scene3d_test/frustum_clipping_03.ply", background_mesh.faces, background_mesh.vertices, false);
+
+  std::unordered_set<uint16_t> visible_model_indices;
+  out_ml_model_indices.UniqueValues(&visible_model_indices);
+
+  std::unordered_set<uint32_t> unique_prim_ids;
+  ml_prim_ids.UniqueValues(&unique_prim_ids);
+  std::unordered_map<unsigned int, unsigned int> new_vertex_mapping;
+
+  TriMesh visible_triangles_mesh;
+  for (unsigned int prim_id = 0; prim_id < scene->faces.size(); ++prim_id) {
+    if (scene->IsPrimBackground(prim_id)) {
+      continue;
+    }
+
+    const auto &category = scene->PrimIdToCategory(prim_id);
+    if (visible_model_indices.find(category.index) == visible_model_indices.end()) {
+      // Face does not belong to a visible object.
+      continue;
+    }
+
+    array<unsigned int, 3> &face = scene->faces[prim_id];
+    for (int i = 0; i < 3; ++i) {
+      if (new_vertex_mapping.find(face[i]) == new_vertex_mapping.end()) {
+        new_vertex_mapping[face[i]] = static_cast<unsigned int>(visible_triangles_mesh.vertices.size());
+        visible_triangles_mesh.vertices.push_back(scene->vertices[face[i]]);
+      }
+    }
+    visible_triangles_mesh.faces.push_back(array<unsigned int, 3>{new_vertex_mapping[face[0]], new_vertex_mapping[face[1]], new_vertex_mapping[face[2]]});
+  }
+
+  array<Plane, 6> planes;
+  camera.WorldFrustumPlanes(&planes);
+
+  // TODO: This should be refactored.
+  TriMesh mesh0;
+  visible_triangles_mesh.TruncateBelow(planes[0], &mesh0);
+  TriMesh mesh1;
+  mesh0.TruncateBelow(planes[1], &mesh1);
+  TriMesh mesh2;
+  mesh1.TruncateBelow(planes[2], &mesh2);
+  TriMesh mesh3;
+  mesh2.TruncateBelow(planes[3], &mesh3);
+  TriMesh mesh4;
+  mesh3.TruncateBelow(planes[4], &mesh4);
+
+  Points3d vertex_pts;
+  ToEigen(mesh4.vertices, &vertex_pts);
+
+  Points2i image_xy;
+  Points1d cam_depth_value;
+  camera.WorldToImage(vertex_pts, background.height(), background.width(), &image_xy, &cam_depth_value);
+
+  Ensures(image_xy.cols() == vertex_pts.cols());
+  vector<bool> is_vertex_invalid;
+  is_vertex_invalid.resize(vertex_pts.cols());
+
+  const double kProjThreshold = 0.1;
+
+  for (int j = 0; j < image_xy.cols(); ++j) {
+    const Vec2i xy = image_xy.col(j);
+    if (xy[0] < 0 || xy[0] >= background.width()) {
+      continue;
+    }
+    if (xy[1] < 0 || xy[1] >= background.height()) {
+      continue;
+    }
+    const auto projected_depth = (float) cam_depth_value[j];
+    const auto image_depth = background.at((unsigned int) xy[1], (unsigned int) xy[0]);
+    is_vertex_invalid[j] = std::isfinite(image_depth) && projected_depth > image_depth + kProjThreshold;
+  }
+
+  mesh4.RemoveFacesContainingVertices(is_vertex_invalid, out_mesh);
+
+  if (out_mesh_object_only) {
+    *out_mesh_object_only = *out_mesh;
+  }
+
+  out_mesh->AddMesh(background_mesh);
+
+  return min_y;
 }
 
 }

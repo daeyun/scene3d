@@ -23,6 +23,50 @@ struct FrustumParams {
 // `x_fov` must be half-angle, in radians.
 FrustumParams MakePerspectiveFrustumParams(double hw_ratio, double x_fov, double near, double far);
 
+struct Plane {
+  Vec3 ref_point;
+  Vec3 up_normal;
+
+  double Displacement(const Vec3 &point) const {
+    return up_normal.dot(point - ref_point);
+  }
+
+  double Displacement(const array<float, 3> &point) const {
+    return up_normal.dot(Vec3{point[0], point[1], point[2]} - ref_point);
+  }
+
+  bool IsAbove(const Vec3 &point) const {
+    return Displacement(point) >= 0;
+  }
+
+  bool IsAbove(const array<float, 3> &point) const {
+    return Displacement(point) >= 0;
+  }
+
+  bool IntersectRay(const Vec3 &origin, const Vec3 &dir, double *t) const {
+    // Assuming vectors are all normalized.
+    double denom = up_normal.dot(dir);
+    if (std::abs(denom) > 1e-6) {
+      *t = up_normal.dot(ref_point - origin) / denom;
+      return *t >= 0;
+    }
+    return false;
+  }
+
+  // Used for visualization.
+  bool ToTriangle(float size, vector<array<unsigned int, 3>> *faces, vector<array<float, 3>> *vertices) const {
+    Vec3 a = up_normal.cross(Vec3::Random()).normalized();
+    Vec3 b = up_normal.cross(a).normalized();
+    Vec3 v1 = ref_point + a * size;
+    Vec3 v2 = ref_point + b * size;
+    unsigned int offset = vertices->size();
+    vertices->push_back(array<float, 3>{static_cast<float>(ref_point[0]), static_cast<float>(ref_point[1]), static_cast<float>(ref_point[2])});
+    vertices->push_back(array<float, 3>{static_cast<float>(v1[0]), static_cast<float>(v1[1]), static_cast<float>(v1[2])});
+    vertices->push_back(array<float, 3>{static_cast<float>(v2[0]), static_cast<float>(v2[1]), static_cast<float>(v2[2])});
+    faces->push_back(array<unsigned int, 3>{offset, offset + 1, offset + 2});
+  }
+};
+
 class Camera {
  public:
   Camera(const Vec3 &camera_position,
@@ -194,6 +238,73 @@ class Camera {
     CamToWorld(cam, out);
   }
 
+  void ImageToCam(const Points2i &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points3d *out) const {
+    Points2d xy_double = xy.cast<double>().array() + 0.5;
+    ImageToCamTopLeftCorner(xy_double, cam_depth, height, width, out);
+  }
+
+  // Output is in the order of left, right, bottom, top, near, far.
+  // Same ordering as http://docs.gl/gl3/glFrustum
+  // Plane up direction is inward.
+  void CamFrustumPlanes(array<Plane, 6> *out) const {
+    Vec3 topleft = Vec3{frustum().left, frustum().top, -frustum().near}.normalized();
+    Vec3 topright = Vec3{frustum().right, frustum().top, -frustum().near}.normalized();
+    Vec3 bottomleft = Vec3{frustum().left, frustum().bottom, -frustum().near}.normalized();
+    Vec3 bottomright = Vec3{frustum().right, frustum().bottom, -frustum().near}.normalized();
+
+    Vec3 topleft2bottom = bottomleft - topleft;
+    Plane left{
+        .ref_point = topleft,
+        .up_normal = topleft2bottom.cross(topleft).normalized(),
+    };
+
+    Vec3 topleft2right = topright - topleft;
+    Plane top{
+        .ref_point = topright,
+        .up_normal = topright.cross(topleft2right).normalized(),
+    };
+
+    Vec3 bottomright2top = topright - bottomright;
+    Plane right{
+        .ref_point = bottomright,
+        .up_normal = bottomright2top.cross(bottomright).normalized(),
+    };
+
+    Vec3 bottomright2left = bottomleft - bottomright;
+    Plane bottom{
+        .ref_point = bottomleft,
+        .up_normal = bottomleft.cross(bottomright2left).normalized(),
+    };
+
+    Plane near{
+        .ref_point = Vec3{0, 0, -frustum().near},
+        .up_normal = Vec3{0, 0, -1},
+    };
+
+    Plane far{
+        .ref_point = Vec3{0, 0, -frustum().far},
+        .up_normal = Vec3{0, 0, 1},
+    };
+
+    *out = array<Plane, 6>{
+        left, right, bottom, top, near, far
+    };
+  }
+
+  void WorldFrustumPlanes(array<Plane, 6> *out) const {
+    CamFrustumPlanes(out);
+
+    for (size_t i = 0; i < 6; ++i) {
+      Vec3 world_ref_point;
+      CamToWorld(out->at(i).ref_point, &world_ref_point);
+      out->at(i).ref_point = world_ref_point;
+
+      Vec3 world_normal;
+      CamToWorldNormal(out->at(i).up_normal, &world_normal);
+      out->at(i).up_normal = world_normal.normalized();
+    }
+  }
+
   const Mat44 &view_mat() const {
     return view_mat_;
   }
@@ -222,7 +333,8 @@ class Camera {
     return up_;
   }
 
-  virtual void ImageToCam(const Points2i &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points3d *out) const = 0;
+  virtual void ImageToCamTopLeftCorner(const Points2d &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points3d *out) const = 0;
+  virtual void PixelFootprintX(const Points2i &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points1d *out) const = 0;
 
   virtual const Mat44 &projection_mat() const = 0;
   virtual const Mat44 &projection_mat_inv() const = 0;
@@ -263,14 +375,21 @@ class OrthographicCamera : public Camera {
   }
 
   // Skip NDC and directly find camera coordinates.
-  void ImageToCam(const Points2i &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points3d *out) const override {
-    Points2d xy_double = xy.cast<double>();
+  void ImageToCamTopLeftCorner(const Points2d &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points3d *out) const override {
     Vec2 xy_scale{(frustum().right - frustum().left) / width, -(frustum().top - frustum().bottom) / height};
     Vec2 xy_offset{frustum().left, frustum().top};
     out->resize(3, xy.cols());
 
-    out->topRows<2>() = ((xy_double.array() + 0.5).array().colwise() * xy_scale.array()).array().colwise() + xy_offset.array();
+    out->topRows<2>() = (xy.array().colwise() * xy_scale.array()).array().colwise() + xy_offset.array();
     out->bottomRows<1>() = -cam_depth;
+  }
+
+  void PixelFootprintX(const Points2i &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points1d *out) const override {
+    // Constant for a given orthographic frustum.
+    double x_footprint = (frustum().right - frustum().left) / static_cast<double>(width);
+
+    out->resizeLike(cam_depth);
+    out->fill(x_footprint);
   }
 
   const Mat44 &projection_mat() const override {
@@ -320,15 +439,27 @@ class PerspectiveCamera : public Camera {
   }
 
   // Skip NDC and directly find camera coordinates.
-  void ImageToCam(const Points2i &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points3d *out) const override {
-    Points2d xy_double = xy.cast<double>();
+  void ImageToCamTopLeftCorner(const Points2d &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points3d *out) const override {
     Vec2 xy_scale{(frustum().right - frustum().left) / width, -(frustum().top - frustum().bottom) / height};
     Vec2 xy_offset{frustum().left, frustum().top};
     Points1d z = cam_depth.array() / frustum().near;
     out->resize(3, xy.cols());
 
-    out->topRows<2>() = (((xy_double.array() + 0.5).array().colwise() * xy_scale.array()).array().colwise() + xy_offset.array()).array().rowwise() * z.array();
+    out->topRows<2>() = ((xy.array().colwise() * xy_scale.array()).array().colwise() + xy_offset.array()).array().rowwise() * z.array();
     out->bottomRows<1>() = -cam_depth;
+  }
+
+  void PixelFootprintX(const Points2i &xy, const Points1d &cam_depth, unsigned int height, unsigned int width, Points1d *out) const override {
+    Points2d xy_double = xy.cast<double>();
+    xy_double.row(1).array() += 0.5;
+    Points3d out_left;
+    ImageToCamTopLeftCorner(xy_double, cam_depth, height, width, &out_left);
+
+    xy_double.row(0).array() += 1;
+    Points3d out_right;
+    ImageToCamTopLeftCorner(xy_double, cam_depth, height, width, &out_right);
+
+    *out = (out_left - out_right).colwise().norm();
   }
 
   const Mat44 &projection_mat() const override {

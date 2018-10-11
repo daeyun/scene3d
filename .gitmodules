@@ -43,3 +43,6 @@
 [submodule "python/third_party/inplace_abn"]
 	path = python/third_party/inplace_abn
 	url = https://github.com/mapillary/inplace_abn.git
+[submodule "cpp/third_party/repos/tinyply"]
+	path = cpp/third_party/repos/tinyply
+	url = https://github.com/ddiakopoulos/tinyply.git

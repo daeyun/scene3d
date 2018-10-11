@@ -23,7 +23,11 @@
 #include "boost/filesystem.hpp"
 #include "blosc.h"
 
+#define TINYPLY_IMPLEMENTATION
+#include "tinyply.h"
+
 #include "lib/common.h"
+#include "lib/string_utils.h"
 
 namespace scene3d {
 namespace fs = boost::filesystem;
@@ -400,5 +404,33 @@ void RemoveFileIfExists(const string &path) {
     LOGGER->info("rm {}", fs::absolute(path).string());
     fs::remove(path);
   }
+}
+
+void WritePly(const string &filename, const vector<array<unsigned int, 3>> &faces, const vector<array<float, 3>> &vertices, bool is_binary) {
+  Ensures(EndsWith(filename, ".ply"));
+  Ensures(sizeof(unsigned int) == 4);
+
+  std::filebuf buf;
+  if (is_binary) {
+    buf.open(filename, std::ios::out | std::ios::binary);
+  } else {
+    buf.open(filename, std::ios::out);
+  }
+  std::ostream outstream(&buf);
+  if (outstream.fail()) {
+    throw std::runtime_error("failed to open " + filename);
+  }
+
+  using namespace tinyply;
+
+  PlyFile ply_file;
+
+  ply_file.add_properties_to_element("vertex", {"x", "y", "z"}, Type::FLOAT32, vertices.size(), const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(&vertices[0][0])), Type::INVALID, 0);
+  ply_file.add_properties_to_element("face", {"vertex_indices"}, Type::UINT32, faces.size(), const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(&faces[0][0])), Type::UINT8, 3);
+
+  LOGGER->info("Writing {}", filename);
+
+  // Write a binary file
+  ply_file.write(outstream, true);
 }
 }

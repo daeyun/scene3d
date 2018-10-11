@@ -71,7 +71,7 @@ void Triangle::OnTransformation() {
   ac_ = c - a;
 }
 
-void SamplePointsOnTriangles(const std::vector<Triangle> &triangles, float density, Points3d *points) {
+void SamplePointsOnTriangles(const std::vector<Triangle> &triangles, float density, Points3d *points, std::vector<size_t> *triangle_indices) {
   std::vector<double> areas;
   areas.reserve(triangles.size());
   for (auto &&triangle : triangles) {
@@ -116,10 +116,16 @@ void SamplePointsOnTriangles(const std::vector<Triangle> &triangles, float densi
   counts = local_counts.rowwise().sum();
 
   points->resize(3, num_samples);
+  if (triangle_indices) {
+    triangle_indices->resize(static_cast<size_t>(num_samples));
+  }
   int k = 0;
   for (int i = 0; i < triangles.size(); ++i) {
     for (int j = 0; j < counts(i); ++j) {
       points->col(k) = triangles[i].SamplePoint();
+      if (triangle_indices) {
+        triangle_indices->push_back((size_t) i);
+      }
       ++k;
     }
   }
@@ -135,7 +141,8 @@ void SamplePointsOnTriangles(const std::vector<Triangle> &triangles, float densi
 
 float MeshToMeshDistanceOneDirection(const std::vector<Triangle> &from,
                                      const std::vector<Triangle> &to,
-                                     float sampling_density) {
+                                     float sampling_density,
+                                     std::vector<float> *distances) {
 
   Points3d points;
 
@@ -169,6 +176,12 @@ float MeshToMeshDistanceOneDirection(const std::vector<Triangle> &from,
   for (int i = 0; i < point_list.size(); ++i) {
     float dist = tree.squared_distance(point_list[i]);
     distance_sum += dist;
+
+// TODO: needs refactoring
+    if (distances) {
+#pragma omp critical
+      distances->push_back(dist);
+    }
   }
 
   LOGGER->debug("distance: {}", distance_sum);
@@ -283,6 +296,15 @@ float MeshToMeshDistance(const std::vector<Triangle> &a, const std::vector<Trian
   LOGGER->debug("Time elapsed (MeshToMeshDistance): {} ms", elapsed);
   LOGGER->debug("{}, {}", d1, d2);
   return static_cast<float>((d1 + d2) * 0.5);
+}
+
+void TrianglesFromTriMesh(const TriMesh &mesh, std::vector<Triangle> *out) {
+  for (const auto &face: mesh.faces) {
+    const auto &v1 = mesh.vertices[face[0]];
+    const auto &v2 = mesh.vertices[face[1]];
+    const auto &v3 = mesh.vertices[face[2]];
+    out->push_back(Triangle(Vec3{v1[0], v1[1], v1[2]}, Vec3{v2[0], v2[1], v2[2]}, Vec3{v3[0], v3[1], v3[2]}));
+  }
 }
 
 }

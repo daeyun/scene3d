@@ -48,7 +48,7 @@ target_include_directories(nanort BEFORE INTERFACE
 
 add_library(blosc INTERFACE)
 target_link_libraries(blosc INTERFACE
-#        ${CMAKE_SOURCE_DIR}/third_party/install/c-blosc/lib/libblosc.a
+        #        ${CMAKE_SOURCE_DIR}/third_party/install/c-blosc/lib/libblosc.a
         ${CMAKE_SOURCE_DIR}/third_party/install/c-blosc/lib/libblosc.so
         )
 target_include_directories(blosc BEFORE INTERFACE
@@ -102,6 +102,11 @@ target_include_directories(lrucache INTERFACE
         ${CMAKE_SOURCE_DIR}/third_party/repos/lrucache11
         )
 target_compile_options(lrucache INTERFACE "-lpthread")
+
+add_library(tinyply INTERFACE)
+target_include_directories(tinyply BEFORE INTERFACE
+        ${CMAKE_SOURCE_DIR}/third_party/repos/tinyply/source
+        )
 
 #add_library(visionaray INTERFACE)
 #target_link_libraries(visionaray INTERFACE

@@ -132,4 +132,6 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
 
 void SaveAABB(const string &txt_filename, const vector<AABB> &boxes);
 
+void TriangulateDepth(const Image<float> &depth, const Camera &camera, float dd_factor, vector<array<unsigned int, 3>> *faces, vector<array<float, 3>> *vertices);
+
 }

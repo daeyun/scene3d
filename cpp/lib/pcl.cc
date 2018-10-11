@@ -370,4 +370,164 @@ void SaveAABB(const string &txt_filename, const vector<AABB> &boxes) {
   ofile.close();
 }
 
+// Taken from MVE's depthmap.cc
+// BSD 3-Clause License
+// https://github.com/simonfuhrmann/mve/blob/master/LICENSE.txt
+bool dm_is_depthdisc(float *widths, float *depths, float dd_factor, int i1, int i2) {
+  // Find index that corresponds to smaller depth.
+  int i_min = i1;
+  int i_max = i2;
+  if (depths[i2] < depths[i1]) {
+    std::swap(i_min, i_max);
+  }
+
+  // Check if indices are a diagonal.
+  if (i1 + i2 == 3) {
+    dd_factor *= M_SQRT2;
+  }
+
+  // Check for depth discontinuity.
+  return depths[i_max] - depths[i_min] > widths[i_min] * dd_factor;
+}
+
+void TriangulateDepth(const Image<float> &depth, const Camera &camera, float dd_factor, vector<array<unsigned int, 3>> *faces, vector<array<float, 3>> *vertices) {
+  const unsigned int width = depth.width();
+  const unsigned int height = depth.height();
+
+  Points2i xy;
+  Points3d pcl;
+  PclFromDepthInWorldCoords(depth, camera, &xy, &pcl);
+
+  Ensures(xy.cols() == pcl.cols());
+
+  for (int k = 0; k < pcl.cols(); ++k) {
+    vertices->push_back(array<float, 3>{
+        static_cast<float>(pcl(0, k)),
+        static_cast<float>(pcl(1, k)),
+        static_cast<float>(pcl(2, k)),
+    });
+  }
+
+  Image<int> xy_to_vertex_index(height, width, -1);
+  for (int i = 0; i < xy.cols(); ++i) {
+    xy_to_vertex_index.at(xy(1, i), xy(0, i)) = static_cast<int>(i);
+  }
+
+  auto xy_to_depth = [&](int x, int y) -> float {
+    float value = depth.at(static_cast<unsigned int>(y), static_cast<unsigned int>(x));
+    if (std::isfinite(value)) {
+      return value;
+    }
+    return 0;  // 0 means invalid.
+  };
+
+  auto make_triangle = [&](int x, int y, int i1, int i2, int i3) {
+    int v1 = xy_to_vertex_index.at(static_cast<unsigned int>(y + (i1 / 2)), static_cast<unsigned int>(x + (i1 % 2)));
+    int v2 = xy_to_vertex_index.at(static_cast<unsigned int>(y + (i2 / 2)), static_cast<unsigned int>(x + (i2 % 2)));
+    int v3 = xy_to_vertex_index.at(static_cast<unsigned int>(y + (i3 / 2)), static_cast<unsigned int>(x + (i3 % 2)));
+    Expects(v1 >= 0);
+    Expects(v2 >= 0);
+    Expects(v3 >= 0);
+
+    faces->push_back(array<unsigned int, 3>{static_cast<unsigned int>(v1), static_cast<unsigned int>(v2), static_cast<unsigned int>(v3)});
+  };
+
+  for (int y = 0; y < height - 1; ++y) {
+    for (int x = 0; x < width - 1; ++x) {
+      float depths[4]{
+          xy_to_depth(x, y),
+          xy_to_depth(x + 1, y),
+          xy_to_depth(x, y + 1),
+          xy_to_depth(x + 1, y + 1),
+      };
+
+      // Based on MVE's `depthmap_triangulate` function.  See their depthmap.cc
+      // https://github.com/simonfuhrmann/mve/blob/master/LICENSE.txt
+      int mask = 0;
+      int num_valid_pixels = 0;
+      for (int j = 0; j < 4; ++j) {
+        if (depths[j] > 0.0f) {
+          mask |= 1 << j;
+          num_valid_pixels += 1;
+        }
+      }
+
+      // At least three valid depth values are required.
+      if (num_valid_pixels < 3) {
+        continue;
+      }
+
+      // Possible triangles, vertex indices relative to 2x2 block.
+      int tris[4][3] = {
+          {0, 2, 1}, {0, 3, 1}, {0, 2, 3}, {1, 2, 3}
+      };
+
+      // Decide which triangles to issue. 1-indexed. 0 means unused.
+      int tri[2] = {0, 0};
+
+      switch (mask) {
+        case 7: tri[0] = 1;
+          break;
+        case 11: tri[0] = 2;
+          break;
+        case 13: tri[0] = 3;
+          break;
+        case 14: tri[0] = 4;
+          break;
+        case 15: {
+          // Choose the triangulation with smaller diagonal.
+          float ddiff1 = std::abs(depths[0] - depths[3]);
+          float ddiff2 = std::abs(depths[1] - depths[2]);
+          if (ddiff1 < ddiff2) {
+            tri[0] = 2;
+            tri[1] = 3;
+          } else {
+            tri[0] = 1;
+            tri[1] = 4;
+          }
+          break;
+        }
+        default: continue;
+      }
+
+      // Omit depth discontinuity detection if dd_factor is zero.
+      if (dd_factor > 0.0f) {
+        // Cache pixel footprints.
+        float widths[4];
+        for (int j = 0; j < 4; ++j) {
+          if (depths[j] == 0.0f) {
+            continue;
+          }
+          Points2i v_xy(2, 1);
+          v_xy << x + (j % 2), y + (j / 2);
+          Points1d d(1, 1);
+          d << depths[j];
+
+          Points1d footprint;
+          camera.PixelFootprintX(v_xy, d, height, width, &footprint);
+          Ensures(footprint.size() == 1);
+          widths[j] = footprint[0];
+        }
+
+        // Check for depth discontinuities.
+        for (int j = 0; j < 2 && tri[j] != 0; ++j) {
+          int *tv = tris[tri[j] - 1];
+          if (dm_is_depthdisc(widths, depths, dd_factor, tv[0], tv[1])) tri[j] = 0;
+          if (dm_is_depthdisc(widths, depths, dd_factor, tv[1], tv[2])) tri[j] = 0;
+          if (dm_is_depthdisc(widths, depths, dd_factor, tv[2], tv[0])) tri[j] = 0;
+        }
+      }
+
+      // Build triangles.
+      for (int j = 0; j < 2; ++j) {
+        if (tri[j] == 0) {
+          continue;
+        }
+        make_triangle(x, y, tris[tri[j] - 1][0], tris[tri[j] - 1][1], tris[tri[j] - 1][2]);
+      }
+    }
+  }
+
+}
+
 }

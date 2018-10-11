@@ -164,3 +164,27 @@ TEST_CASE("orthographic") {
   SerializeTensor<float>("/tmp/scene3d_test/dummy_obj_depth_01.bin", depth.data(), {static_cast<int>(height), static_cast<int>(width)});
 }
 
+TEST_CASE("frustum clipping") {
+  string obj_filename = "resources/house/0004d52d1aeeb8ae6de39d6bd993e992/house.obj";
+  string json_filename = "resources/house/0004d52d1aeeb8ae6de39d6bd993e992/house_p.json";
+  string category_filename = "resources/ModelCategoryMapping.csv";
+  string camera_filename = "resources/depth_render/0004d52d1aeeb8ae6de39d6bd993e992/000003_cam.txt";
+
+  // Read the obj, json, and category mappings.
+  auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
+  scene->Build();
+
+  vector<unique_ptr<scene3d::Camera>> cameras;
+  ReadCameras(camera_filename, &cameras);
+  scene3d::Camera *camera = cameras[0].get();
+
+  const unsigned int height = 240 * 2;
+  const unsigned int width = 320 * 2;
+
+  TriMesh mesh;
+  ExtractFrustumMesh(scene.get(), *camera, height, width, &mesh);
+
+  WritePly("/tmp/scene3d_test/frustum_clipping_04.ply", mesh.faces, mesh.vertices, false);
+
+  // TODO
+}

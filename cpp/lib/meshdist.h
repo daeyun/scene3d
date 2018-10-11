@@ -11,6 +11,7 @@
 #include <omp.h>
 
 #include "lib/common.h"
+#include "lib/mesh.h"
 
 namespace scene3d {
 namespace meshdist_cgal {
@@ -49,11 +50,12 @@ class Triangle {
   Vec3 ab_, ac_;
 };
 
-void SamplePointsOnTriangles(const std::vector<Triangle> &triangles, float density, Points3d *points);
+void SamplePointsOnTriangles(const std::vector<Triangle> &triangles, float density, Points3d *points, std::vector<size_t> *triangle_indices = nullptr);
 
 float MeshToMeshDistanceOneDirection(const std::vector<Triangle> &from,
                                      const std::vector<Triangle> &to,
-                                     float sampling_density);
+                                     float sampling_density,
+                                     std::vector<float> *distances = nullptr);
 
 float PointsToMeshDistanceOneDirection(const std::vector<std::array<float, 3>> &from,
                                        const std::vector<Triangle> &to);
@@ -63,6 +65,8 @@ float MeshToPointsDistanceOneDirection(const std::vector<Triangle> &from,
                                        float sampling_density);
 
 float MeshToMeshDistance(const std::vector<Triangle> &a, const std::vector<Triangle> &b);
+
+void TrianglesFromTriMesh(const TriMesh &mesh, std::vector<Triangle> *out);
 
 }
 }

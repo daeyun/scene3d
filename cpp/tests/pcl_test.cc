@@ -159,3 +159,94 @@ TEST_CASE("mean and std") {
   REQUIRE(mean.isApprox(Vec3{0.600661, 0.57635472, 0.08370624}, 1e-5));
   REQUIRE(stddev.isApprox(Vec3{0.69566939, 0.69848476, 1.01748548}, 1e-5));
 }
+
+TEST_CASE("depth triangulation perspective") {
+  string filename = "resources/depth_render/0004d52d1aeeb8ae6de39d6bd993e992/000003_ldi.bin";
+  string camera_filename = "resources/depth_render/0004d52d1aeeb8ae6de39d6bd993e992/000003_cam.txt";
+
+  vector<int> shape;
+  vector<float> ldi_data;
+  ReadTensorData(filename, &shape, &ldi_data);
+
+  REQUIRE(shape.size() == 3);
+  REQUIRE(shape[0] == 4);
+  REQUIRE(shape[1] == 240);
+  REQUIRE(shape[2] == 320);
+
+  float *front_layer_data = ldi_data.data();
+  float *back_layer_data = ldi_data.data() + shape[1] * shape[2];
+
+  const auto height = static_cast<unsigned int>(shape[1]);
+  const auto width = static_cast<unsigned int>(shape[2]);
+
+  Image<float> front_layer(front_layer_data, height, width, NAN);
+  Image<float> back_layer(back_layer_data, height, width, NAN);
+
+  REQUIRE(front_layer.height() == height);
+  REQUIRE(front_layer.width() == width);
+
+  vector<unique_ptr<scene3d::Camera>> cameras;
+  ReadCameras(camera_filename, &cameras);
+  scene3d::Camera *camera = cameras[0].get();
+
+  vector<array<unsigned int, 3>> faces;
+  vector<array<float, 3>> vertices;
+
+  float dd_factor = 5.0;
+  TriangulateDepth(front_layer, *camera, dd_factor, &faces, &vertices);
+
+  REQUIRE(vertices.size() > 100);
+  REQUIRE(faces.size() > 100);
+
+  WritePly("/tmp/scene3d_test/depth_triangulation_01.ply", faces, vertices, false);
+}
+
+TEST_CASE("depth triangulation orthographic") {
+  string filename = "resources/depth_render/0004d52d1aeeb8ae6de39d6bd993e992/000003_ldi-o.bin";
+  string camera_filename = "resources/depth_render/0004d52d1aeeb8ae6de39d6bd993e992/000003_cam.txt";
+
+  vector<int> shape;
+  vector<float> ldi_data;
+  ReadTensorData(filename, &shape, &ldi_data);
+
+  REQUIRE(shape.size() == 3);
+  REQUIRE(shape[0] == 4);
+  REQUIRE(shape[1] == 300);
+  REQUIRE(shape[2] == 300);
+
+  float *front_layer_data = ldi_data.data();
+  float *back_layer_data = ldi_data.data() + shape[1] * shape[2];
+
+  const auto height = static_cast<unsigned int>(shape[1]);
+  const auto width = static_cast<unsigned int>(shape[2]);
+
+  Image<float> front_layer(front_layer_data, height, width, NAN);
+  Image<float> back_layer(back_layer_data, height, width, NAN);
+
+  REQUIRE(front_layer.height() == height);
+  REQUIRE(front_layer.width() == width);
+
+  vector<unique_ptr<scene3d::Camera>> cameras;
+  ReadCameras(camera_filename, &cameras);
+  scene3d::Camera *camera = cameras[1].get();
+
+  front_layer.Transform([&](size_t i, float value) -> float {
+    return cameras[1]->position()[1] - value - 0.05;
+  });
+
+  back_layer.Transform([&](size_t i, float value) -> float {
+    return cameras[1]->position()[1] - value - 0.05;
+  });
+
+  vector<array<unsigned int, 3>> faces;
+  vector<array<float, 3>> vertices;
+
+  float dd_factor = 0.0;
+  TriangulateDepth(front_layer, *camera, dd_factor, &faces, &vertices);
+
+  REQUIRE(vertices.size() > 100);
+  REQUIRE(faces.size() > 100);
+
+  WritePly("/tmp/scene3d_test/depth_triangulation_02.ply", faces, vertices, false);
+
+}
