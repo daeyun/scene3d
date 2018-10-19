@@ -74,6 +74,8 @@ available_experiments = [
     'v8-category_nyu40_merged_background-2l-from_d',
     'overfit-v8-multi_layer_depth-unet_v1',
     'overfit-v8-multi_layer_depth-unet_v2',
+    'v8-single_layer_depth',
+    'v8-two_layer_depth',
 ]
 
 available_models = [
@@ -178,6 +180,10 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
     elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v2':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
+    elif experiment_name == 'v8-single_layer_depth':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
+    elif experiment_name == 'v8-two_layer_depth':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
     else:
         raise NotImplementedError()
 
@@ -282,6 +288,10 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             model = unet.Unet2(out_channels=4, in_channels=1)
         elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v2':
             model = unet.Unet2(out_channels=4)
+        elif experiment_name == 'v8-single_layer_depth':
+            model = unet.Unet2(out_channels=1)
+        elif experiment_name == 'v8-two_layer_depth':
+            model = unet.Unet2(out_channels=2)
         else:
             raise NotImplementedError()
     else:
@@ -534,6 +544,16 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch
     elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v2':
         in_rgb = batch['rgb'].cuda()
         target = batch['multi_layer_depth'].cuda()
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-single_layer_depth':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer'][:, :1].cuda()  # (B, 1, 240, 320)
+        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-two_layer_depth':
+        in_rgb = batch['rgb'].cuda()
+        target = batch['multi_layer_depth_aligned_background'][:, (0, 3)].cuda()
         pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
         loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
     else:
