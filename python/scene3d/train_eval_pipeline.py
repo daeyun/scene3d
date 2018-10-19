@@ -621,8 +621,8 @@ class BottleneckDetector(object):
 
         if self.count >= self.check_every:
             # If delay happens more than half the times, log warning.
-            if self.delay_count > 0.5 * self.count:
-                self.logger.warning('{} bottleneck detected: {} out of {}.  Mean delay: {:.3f}'.format(self.name, self.delay_count, self.count, np.mean(self.delay_times)))
+            if self.delay_count > 0.5 * self.count or np.sum(self.delay_times) > 4:
+                self.logger.warning('{} bottleneck detected: {} out of {}.  Total delay: {:.3f}'.format(self.name, self.delay_count, self.count, np.sum(self.delay_times)))
             self.count = 0
             self.delay_count = 0
             self.delay_times.clear()
@@ -761,3 +761,69 @@ class Trainer(object):
 
                 self.try_save_checkpoint()
                 io_bottleneck_detector.tic()
+
+
+def surface_normal_eval(checkpoint_filename, split_name='test', num_examples=1000, random_seed=0, use_cpu=False, visualize=False):
+    dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'normals'))
+
+    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    model, _, loaded_metadata = load_checkpoint(checkpoint_filename, use_cpu=use_cpu)
+
+    print(loaded_metadata)
+
+    # Sanity check.
+    assert 'normals' in loaded_metadata['experiment_name']
+
+    model = model.eval()
+    model = model.cuda()
+
+    indices = np.arange(len(dataset))
+    np.random.seed(random_seed)
+    np.random.shuffle(indices)
+
+    all_eval_out = []
+
+    for i in range(num_examples):
+        index = indices[i]
+        in_rgb = torch.Tensor(dataset[index]['rgb'][None]).cuda()
+        target = torch.Tensor(dataset[index]['normals'][None]).cuda()
+
+        pred = model(in_rgb)
+
+        # error can be nan, if the scene has no objects
+        eval_out = loss_fn.eval_mode_compute_masked_surface_normal_error(pred, target, return_pred_normalized=visualize, return_error_map=visualize)
+
+        if visualize:
+            import matplotlib.pyplot as pt
+            import matplotlib.cm
+            pt.figure(figsize=(18, 3))
+
+            pt.subplot(1, 4, 1)
+            pt.imshow(v8.undo_rgb_whitening(in_rgb).squeeze().transpose(1, 2, 0))
+            pt.axis('off')
+
+            pt.subplot(1, 4, 2)
+            pt.imshow(eval_out['pred_normalized'].squeeze().transpose(1, 2, 0) * 0.5 + 0.5)
+            pt.axis('off')
+
+            pt.subplot(1, 4, 3)
+            target_viz = torch_utils.recursive_torch_to_numpy(target).squeeze().transpose(1, 2, 0) * 0.5 + 0.5
+            target_viz[np.isnan(target_viz)] = 0
+            pt.imshow(target_viz)
+            pt.axis('off')
+
+            pt.subplot(1, 4, 4)
+            pt.imshow(eval_out['error_map'].squeeze())
+            pt.colorbar()
+            pt.clim(0, 3.1415)
+            pt.set_cmap('Reds')
+            pt.axis('off')
+
+            pt.show()
+
+        all_eval_out.append(eval_out)
+
+    error = np.array([item['error'] for item in all_eval_out])
+
+    # 1-d array of all error values. Can contain nan values.
+    return error

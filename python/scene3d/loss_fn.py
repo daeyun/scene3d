@@ -1,5 +1,7 @@
+from scene3d import torch_utils
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 
 def loss_calc(pred, target):
@@ -84,3 +86,42 @@ def compute_masked_surface_normal_loss(pred, target, use_inverse_cosine=False):
         loss = -valid_values.mean()
 
     return loss  # every pixel contributes equally
+
+
+def eval_mode_compute_masked_surface_normal_error(pred, target, use_angular_error=True, return_error_map=False, return_pred_normalized=False):
+    assert pred.dim() == 4
+    assert pred.shape[1] == 3
+    assert target.size() == pred.size(), (target.shape, pred.shape)
+
+    finite_mask = torch.isfinite(target)  # (B, 1, H, W)
+
+    pred_normalized = F.normalize(pred, p=2, dim=1)
+
+    dotproduct = (pred_normalized * target.masked_fill(~finite_mask, 0)).sum(dim=1, keepdim=True)  # contains nans
+
+    valid_values = dotproduct[finite_mask[:, :1]]  # n'n
+
+    if use_angular_error:
+        error = torch.acos(torch.clamp(valid_values, -0.999999, 0.999999)).mean()
+    else:
+        error = -valid_values.mean()
+
+    error = torch_utils.recursive_torch_to_numpy(error)
+
+    ret = {
+        'error': error.item(),
+        'pred_normalized': torch_utils.recursive_torch_to_numpy(pred_normalized),
+    }
+
+    if return_error_map:
+        error_map = torch_utils.recursive_torch_to_numpy(dotproduct)
+        finitemask_np = torch_utils.recursive_torch_to_numpy(finite_mask)
+
+        error_map[~finitemask_np[:, :1].astype(np.bool)] = np.nan
+        with np.errstate(invalid='ignore'):
+            error_map[finitemask_np[:, :1].astype(np.bool)] = np.arccos(error_map[finitemask_np[:, :1].astype(np.bool)])
+
+        ret['error_map'] = error_map
+
+    # Keys: error, error_map
+    return ret

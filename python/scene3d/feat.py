@@ -207,7 +207,7 @@ def compute_error(overhead_pred, overhead_gt, overhead_features, plot=True):
     return (error1, error2, error3)
 
 
-def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ldi, use_gt_front=False, plot=True, is_log_depth=False):
+def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ldi, use_gt_front=False, plot=True, is_log_depth=False, return_output=False):
     """
     This probably doesn't belong in this file. Should be moved later.
     """
@@ -289,4 +289,6 @@ def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ld
     if plot:
         pt.show()
 
+    if return_output:
+        return errors, out_np
     return errors
