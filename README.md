@@ -24,6 +24,7 @@ More info on managing Conda environments can be found [here](https://conda.io/do
 ./cpp/third_party/build_scripts/SUNCGtoolbox.sh
 ./cpp/third_party/build_scripts/assimp.sh
 ./cpp/third_party/build_scripts/c-blosc.sh
+./cpp/third_party/build_scripts/mve.sh
 ```
 
 ```
