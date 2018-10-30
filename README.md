@@ -21,12 +21,12 @@ More info on managing Conda environments can be found [here](https://conda.io/do
 #### Build instructions for C++
 
 ```
+cd ./cpp/third_party/repos/mve
+make -j12
+# after g++-7 is installed:
 ./cpp/third_party/build_scripts/SUNCGtoolbox.sh
 ./cpp/third_party/build_scripts/assimp.sh
 ./cpp/third_party/build_scripts/c-blosc.sh
-
-cd ./cpp/third_party/repos/mve
-make -j12
 ```
 
 ```
