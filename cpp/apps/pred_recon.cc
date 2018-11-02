@@ -132,6 +132,7 @@ int main(int argc, const char **argv) {
   Expects(Exists(camera_filename));
 
   TriMesh gt_mesh;
+  TriMesh gt_mesh_background_only;
   TriMesh gt_mesh_object_only;
   // Read the obj, json, and category mappings.
   auto scene = make_unique<suncg::Scene>(json_filename, obj_filename, category_filename);
@@ -150,7 +151,11 @@ int main(int argc, const char **argv) {
     const unsigned int resample_height = 240 * 2;
     const unsigned int resample_width = 320 * 2;
 
-    floor_height = ExtractFrustumMesh(scene.get(), *camera, resample_height, resample_width, &gt_mesh, &gt_mesh_object_only);
+    floor_height = ExtractFrustumMesh(scene.get(), *camera, resample_height, resample_width, 10, &gt_mesh_background_only, &gt_mesh_object_only);
+
+    // TODO
+    gt_mesh.AddMesh(gt_mesh_object_only);
+    gt_mesh.AddMesh(gt_mesh_background_only);
 
     LOGGER->info("Floor height: {}", floor_height);
 

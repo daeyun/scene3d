@@ -36,17 +36,23 @@ class TriMesh {
       double d1 = plane.Displacement(v1);
       double d2 = plane.Displacement(v2);
 
+      bool swap_02 = false;
+      bool swap_01 = false;
+      bool swap_12 = false;
       if (d0 < d2) {
         std::swap(d0, d2);
         std::swap(v0, v2);
+        swap_02 = true;
       }
       if (d0 < d1) {
         std::swap(d0, d1);
         std::swap(v0, v1);
+        swap_01 = true;
       }
       if (d1 < d2) {
         std::swap(d1, d2);
         std::swap(v1, v2);
+        swap_12 = true;
       }
 
       const double kThreshold = 1e-4;
@@ -55,14 +61,28 @@ class TriMesh {
         continue;
       }
 
-      if (d2 > -kThreshold) {
+      // Undo swaps and save.
+      auto add_triangle = [&](Vec3 v0, Vec3 v1, Vec3 v2) {
+        if (swap_12) {
+          std::swap(v1, v2);
+        }
+        if (swap_01) {
+          std::swap(v0, v1);
+        }
+        if (swap_02) {
+          std::swap(v0, v2);
+        }
         new_mesh->AddTriangle(v0, v1, v2);
-        continue;
-      }
+      };
 
       Vec3 vv0{v0[0], v0[1], v0[2]};
       Vec3 vv1{v1[0], v1[1], v1[2]};
       Vec3 vv2{v2[0], v2[1], v2[2]};
+
+      if (d2 > -kThreshold) {
+        add_triangle(vv0, vv1, vv2);
+        continue;
+      }
 
       if (d1 < 0) {
         double t01;
@@ -72,7 +92,7 @@ class TriMesh {
         double t02;
         Vec3 v02 = (vv2 - vv0).normalized();
         Ensures(plane.IntersectRay(vv0, v02, &t02));
-        new_mesh->AddTriangle(vv0, vv0 + v01 * t01, vv0 + v02 * t02);
+        add_triangle(vv0, vv0 + v01 * t01, vv0 + v02 * t02);
       } else {
         double t20;
         Vec3 v20 = (vv0 - vv2).normalized();
@@ -82,8 +102,8 @@ class TriMesh {
         Ensures(plane.IntersectRay(vv2, v21, &t21));
         Vec3 new_v02 = vv2 + v20 * t20;
         Vec3 new_v12 = vv2 + v21 * t21;
-        new_mesh->AddTriangle(vv0, new_v12, new_v02);
-        new_mesh->AddTriangle(vv0, vv1, new_v12);
+        add_triangle(vv0, new_v12, new_v02);
+        add_triangle(vv0, vv1, new_v12);
       }
     }
   }

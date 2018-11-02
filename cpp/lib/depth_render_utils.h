@@ -5,6 +5,7 @@
 
 #include "common.h"
 #include "camera.h"
+#include "benchmark.h"
 #include "depth.h"
 #include "multi_layer_depth_renderer.h"
 #include "file_io.h"
@@ -173,11 +174,19 @@ void ExtractBackgroundFromFourLayerModel(const MultiLayerImage<float> &ml_depth,
   }
 }
 
-// returns floor height.
-float ExtractFrustumMesh(suncg::Scene *scene, const scene3d::Camera &camera, unsigned int height, unsigned int width, TriMesh *out_mesh, TriMesh *out_mesh_object_only = nullptr) {
+// returns estimated floor height (TODO: this is deprecated).
+// A reasonable dd_factor value is 10.
+float ExtractFrustumMesh(suncg::Scene *scene,
+                         const scene3d::Camera &camera,
+                         unsigned int height,
+                         unsigned int width,
+                         float dd_factor,
+                         TriMesh *out_mesh_background_only,
+                         TriMesh *out_mesh_object_only) {
   scene3d::RayTracer ray_tracer(scene->faces, scene->vertices);
   ray_tracer.PrintStats();
 
+  double start_time = scene3d::TimeSinceEpoch<std::milli>();
   auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
       &ray_tracer,
       &camera,
@@ -197,16 +206,18 @@ float ExtractFrustumMesh(suncg::Scene *scene, const scene3d::Camera &camera, uns
 
   Image<float> background(out_ml_depth.height(), out_ml_depth.width(), NAN);
   ExtractBackgroundFromFourLayerModel(out_ml_depth, &background);
+  LOGGER->info("Elapsed (ExtractFrustumMesh: depth rendering): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
-  TriMesh background_mesh;
-  const float dd_factor = 10.0;
-  TriangulateDepth(background, camera, dd_factor, &background_mesh.faces, &background_mesh.vertices);
+  start_time = scene3d::TimeSinceEpoch<std::milli>();
+//  const float dd_factor = 10.0;
+  TriangulateDepth(background, camera, dd_factor, &out_mesh_background_only->faces, &out_mesh_background_only->vertices);
+  LOGGER->info("Elapsed (ExtractFrustumMesh: TriangulateDepth): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
 
   // Floor detection
   // TODO: this may fail if the floor height varies, for some reason.
   float min_y = 1e10;
-  for (const auto &v : background_mesh.vertices) {
+  for (const auto &v : out_mesh_background_only->vertices) {
     if (v[1] < min_y) {
       min_y = v[1];
     }
@@ -214,8 +225,7 @@ float ExtractFrustumMesh(suncg::Scene *scene, const scene3d::Camera &camera, uns
   // end of floor height detection.
 
 
-//  WritePly("/tmp/scene3d_test/frustum_clipping_03.ply", background_mesh.faces, background_mesh.vertices, false);
-
+  start_time = scene3d::TimeSinceEpoch<std::milli>();
   std::unordered_set<uint16_t> visible_model_indices;
   out_ml_model_indices.UniqueValues(&visible_model_indices);
 
@@ -244,7 +254,9 @@ float ExtractFrustumMesh(suncg::Scene *scene, const scene3d::Camera &camera, uns
     }
     visible_triangles_mesh.faces.push_back(array<unsigned int, 3>{new_vertex_mapping[face[0]], new_vertex_mapping[face[1]], new_vertex_mapping[face[2]]});
   }
+  LOGGER->info("Elapsed (ExtractFrustumMesh: visibility test): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
+  start_time = scene3d::TimeSinceEpoch<std::milli>();
   array<Plane, 6> planes;
   camera.WorldFrustumPlanes(&planes);
 
@@ -286,13 +298,8 @@ float ExtractFrustumMesh(suncg::Scene *scene, const scene3d::Camera &camera, uns
     is_vertex_invalid[j] = std::isfinite(image_depth) && projected_depth > image_depth + kProjThreshold;
   }
 
-  mesh4.RemoveFacesContainingVertices(is_vertex_invalid, out_mesh);
-
-  if (out_mesh_object_only) {
-    *out_mesh_object_only = *out_mesh;
-  }
-
-  out_mesh->AddMesh(background_mesh);
+  mesh4.RemoveFacesContainingVertices(is_vertex_invalid, out_mesh_object_only);
+  LOGGER->info("Elapsed (ExtractFrustumMesh: clipping): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
   return min_y;
 }

@@ -26,7 +26,7 @@ add_library(multi_layer_depth_renderer multi_layer_depth_renderer.cc multi_layer
 target_link_libraries(multi_layer_depth_renderer PUBLIC common nanort ray_mesh_intersection file_io camera)
 
 add_library(depth_render_utils depth_render_utils.h)
-target_link_libraries(depth_render_utils PUBLIC common multi_layer_depth_renderer mesh vectorization_utils)
+target_link_libraries(depth_render_utils PUBLIC common multi_layer_depth_renderer mesh vectorization_utils benchmark)
 
 add_library(depth depth.h)
 target_link_libraries(depth PUBLIC common camera)

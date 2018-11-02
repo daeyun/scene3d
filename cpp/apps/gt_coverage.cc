@@ -150,7 +150,8 @@ int main(int argc, const char **argv) {
     const unsigned int resample_height = 240 * 2;
     const unsigned int resample_width = 320 * 2;
 
-    floor_height = ExtractFrustumMesh(scene.get(), *camera, resample_height, resample_width, &gt_mesh, &gt_mesh_object_only);
+    // TODO: DEPRECATED
+    floor_height = ExtractFrustumMesh(scene.get(), *camera, resample_height, 10, resample_width, &gt_mesh, &gt_mesh_object_only);
 
     LOGGER->info("Floor height: {}", floor_height);
 

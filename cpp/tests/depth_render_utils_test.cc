@@ -181,10 +181,10 @@ TEST_CASE("frustum clipping") {
   const unsigned int height = 240 * 2;
   const unsigned int width = 320 * 2;
 
-  TriMesh mesh;
-  ExtractFrustumMesh(scene.get(), *camera, height, width, &mesh);
-
-  WritePly("/tmp/scene3d_test/frustum_clipping_04.ply", mesh.faces, mesh.vertices, false);
+//  TriMesh mesh;
+//  ExtractFrustumMesh(scene.get(), *camera, height, width, &mesh);
+//
+//  WritePly("/tmp/scene3d_test/frustum_clipping_04.ply", mesh.faces, mesh.vertices, false);
 
   // TODO
 }
