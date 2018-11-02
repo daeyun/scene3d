@@ -529,6 +529,7 @@ def save_array_compressed(filename, arr: np.ndarray):
     compressed = blosc.compress(encoded, arr.dtype.itemsize, clevel=5, shuffle=True, cname='lz4hc')
     with open(filename, mode='wb') as f:
         f.write(compressed)
+    log.info('Saved {}'.format(filename))
 
 
 def read_txt_array(filename):

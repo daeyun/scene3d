@@ -76,6 +76,8 @@ available_experiments = [
     'overfit-v8-multi_layer_depth-unet_v2',
     'v8-single_layer_depth',
     'v8-two_layer_depth',
+    'v8-overhead_camera_pose',
+    'v8-overhead_camera_pose_4params',
 ]
 
 available_models = [
@@ -84,6 +86,7 @@ available_models = [
     'unet_v0_overhead',
     'unet_v1',
     'unet_v2',
+    'unet_v2_regression',
 ]
 
 
@@ -184,13 +187,19 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
     elif experiment_name == 'v8-two_layer_depth':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
+    elif experiment_name == 'v8-overhead_camera_pose':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_camera_pose_3params'))
+    elif experiment_name == 'v8-overhead_camera_pose_4params':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_camera_pose_4params'))
     else:
         raise NotImplementedError()
 
     return dataset
 
 
-def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> typing.Tuple[nn.Module, optim.Optimizer]:
+def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> typing.Tuple[nn.Module, optim.Optimizer, nn.Module]:
+    frozen_model = None
+
     if model_name == 'deeplab':
         raise NotImplementedError()
     elif model_name == 'unet_v0':
@@ -294,6 +303,21 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             model = unet.Unet2(out_channels=2)
         else:
             raise NotImplementedError()
+    elif model_name == 'unet_v2_regression':
+        if experiment_name == 'v8-overhead_camera_pose':
+            frozen_model_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00416000_007_0000297.pth')
+            # frozen_model_checkpoint = '/home/daeyuns/scene3d_out/out/scene3d/v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00416000_007_0000297.pth'
+            frozen_model, frozen_model_metadata = load_checkpoint_as_frozen_model(frozen_model_checkpoint)
+            log.info('Frozen model loaded: {}'.format(frozen_model_metadata))
+            model = unet.Unet2Regressor(out_features=3)
+        elif experiment_name == 'v8-overhead_camera_pose_4params':
+            frozen_model_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00416000_007_0000297.pth')
+            # frozen_model_checkpoint = '/home/daeyuns/scene3d_out/out/scene3d/v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00416000_007_0000297.pth'
+            frozen_model, frozen_model_metadata = load_checkpoint_as_frozen_model(frozen_model_checkpoint)
+            log.info('Frozen model loaded: {}'.format(frozen_model_metadata))
+            model = unet.Unet2Regressor(out_features=4)
+        else:
+            raise NotImplementedError()
     else:
         raise NotImplementedError()
 
@@ -303,10 +327,10 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     optimizer = optim.Adam(params, lr=learning_rate)
     optimizer.zero_grad()
 
-    return model, optimizer
+    return model, optimizer, frozen_model
 
 
-def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch.Tensor:
+def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_model: nn.Module = None) -> torch.Tensor:
     if experiment_name == 'multi-layer':
         example_name, in_rgb, target = batch
         in_rgb = in_rgb.cuda()
@@ -548,7 +572,7 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch
         loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
     elif experiment_name == 'v8-single_layer_depth':
         in_rgb = batch['rgb'].cuda()
-        target = batch['multi_layer'][:, :1].cuda()  # (B, 1, 240, 320)
+        target = batch['multi_layer_depth'][:, :1].cuda()  # (B, 1, 240, 320)
         pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
         loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
     elif experiment_name == 'v8-two_layer_depth':
@@ -556,13 +580,62 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str) -> torch
         target = batch['multi_layer_depth_aligned_background'][:, (0, 3)].cuda()
         pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
         loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=True)
+    elif experiment_name == 'v8-overhead_camera_pose':
+        assert frozen_model is not None
+        in_rgb = batch['rgb'].cuda()
+        target = batch['overhead_camera_pose_3params'].cuda()
+
+        # (B, 48, 240, 320),  (B, 768, 15, 20)
+        features, encoding = unet.get_feature_map_output_v2(frozen_model, in_rgb)
+
+        pred = pytorch_model((features, encoding))
+        assert target.shape == pred.shape, (target, pred)
+
+        loss_translation = ((target[:, 0] - pred[:, 0]) ** 2 + (target[:, 1] - pred[:, 1]) ** 2).sqrt().mean()  # mean of tensor of shape (B)
+        loss_scale = (target[:, 2] - pred[:, 2]).abs().mean()
+        loss_all = loss_translation + loss_scale
+    elif experiment_name == 'v8-overhead_camera_pose_4params':
+        assert frozen_model is not None
+        in_rgb = batch['rgb'].cuda()
+        target = batch['overhead_camera_pose_4params'].cuda()
+
+        # (B, 48, 240, 320),  (B, 768, 15, 20)
+        features, encoding = unet.get_feature_map_output_v2(frozen_model, in_rgb)
+
+        pred = pytorch_model((features, encoding))
+        assert target.shape == pred.shape, (target, pred)
+
+        loss_translation = ((target[:, 0] - pred[:, 0]) ** 2 + (target[:, 1] - pred[:, 1]) ** 2).sqrt().mean()  # mean of tensor of shape (B)
+        loss_scale = (target[:, 2] - pred[:, 2]).abs().mean()
+        loss_theta = (target[:, 3] - pred[:, 3]).abs().mean()
+        loss_all = loss_translation + loss_scale + loss_theta
     else:
         raise NotImplementedError()
 
     return loss_all
 
 
-def load_checkpoint(filename, use_cpu=False) -> typing.Tuple[nn.Module, optim.Optimizer, dict]:
+def get_output_and_target(pytorch_model: nn.Module, batch, experiment_name: str, frozen_model: nn.Module = None) -> dict:
+    if experiment_name == 'v8-overhead_camera_pose':
+        assert frozen_model is not None
+        in_rgb = batch['rgb'].cuda()
+        target = batch['overhead_camera_pose_3params'].cuda()
+
+        # (B, 48, 240, 320),  (B, 768, 15, 20)
+        features, encoding = unet.get_feature_map_output_v2(frozen_model, in_rgb)
+
+        pred = pytorch_model((features, encoding))
+
+    else:
+        raise NotImplementedError()
+
+    return {
+        'out': pred,
+        'target': target,
+    }
+
+
+def load_checkpoint(filename, use_cpu=False) -> typing.Tuple[nn.Module, optim.Optimizer, dict, nn.Module]:
     """
     :return: A tuple of (pytorch_model, optimizer, metadata_dict)
     `metadata_dict` contains `global_step`, etc.
@@ -577,14 +650,26 @@ def load_checkpoint(filename, use_cpu=False) -> typing.Tuple[nn.Module, optim.Op
         raise RuntimeError()
 
     metadata_dict = loaded_dict['metadata']
-    pytorch_model, optimizer = get_pytorch_model_and_optimizer(
+    pytorch_model, optimizer, frozen_model = get_pytorch_model_and_optimizer(
         model_name=metadata_dict['model_name'],
         experiment_name=metadata_dict['experiment_name'],
     )
     pytorch_model.load_state_dict(loaded_dict['model_state_dict'])
     optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
 
-    return pytorch_model, optimizer, metadata_dict
+    return pytorch_model, optimizer, metadata_dict, frozen_model
+
+
+def load_checkpoint_as_frozen_model(filename, use_cpu=False):
+    pytorch_model, optimizer, metadata_dict, _ = load_checkpoint(filename, use_cpu=use_cpu)
+    del optimizer
+
+    for item in pytorch_model.parameters():
+        item.requires_grad = False
+
+    pytorch_model.eval()
+
+    return pytorch_model, metadata_dict
 
 
 def save_checkpoint(save_dir: str, pytorch_model: nn.Module, optimizer: torch.optim.Optimizer, metadata: dict):
@@ -716,7 +801,7 @@ class Trainer(object):
         self.loaded_metadata = None
 
         if self.load_checkpoint:
-            self.model, self.optimizer, self.loaded_metadata = load_checkpoint(self.load_checkpoint, use_cpu=self.use_cpu)
+            self.model, self.optimizer, self.loaded_metadata, self.frozen_model = load_checkpoint(self.load_checkpoint, use_cpu=self.use_cpu)
             self.logger.info('Loaded metadata from {}:\n{}'.format(self.load_checkpoint, self.loaded_metadata))
 
             assert self.experiment_name == self.loaded_metadata['experiment_name']
@@ -726,7 +811,7 @@ class Trainer(object):
             self.global_step = self.loaded_metadata['global_step']
             # Other attributes are "overwritten" by the values given in `args`.
         else:
-            self.model, self.optimizer = get_pytorch_model_and_optimizer(model_name=self.model_name, experiment_name=self.experiment_name)
+            self.model, self.optimizer, self.frozen_model = get_pytorch_model_and_optimizer(model_name=self.model_name, experiment_name=self.experiment_name)
             # Immediately save a checkpoint at global step 0.
             assert self.try_save_checkpoint()
 
@@ -771,7 +856,7 @@ class Trainer(object):
                 io_bottleneck_detector.toc()
 
                 self.optimizer.zero_grad()
-                loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name)
+                loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=self.frozen_model)
                 loss_all.backward()
                 self.optimizer.step()
 
@@ -787,7 +872,7 @@ def surface_normal_eval(checkpoint_filename, split_name='test', num_examples=100
     dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'normals'))
 
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
-    model, _, loaded_metadata = load_checkpoint(checkpoint_filename, use_cpu=use_cpu)
+    model, _, loaded_metadata, _ = load_checkpoint(checkpoint_filename, use_cpu=use_cpu)
 
     print(loaded_metadata)
 

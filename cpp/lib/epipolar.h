@@ -35,4 +35,20 @@ void EpipolarFeatureTransform(const float *feature_map_data,
                               uint32_t target_width,
                               std::vector<float> *transformed);
 
+// Memory ordering must be (N, H, W).
+void RenderDepthFromAnotherView(const float *depth_data,
+                                uint32_t source_height,
+                                uint32_t source_width,
+                                uint32_t num_images,
+                                const char *camera_filename,
+                                uint32_t target_height,
+                                uint32_t target_width,
+                                float depth_disc_pixels,
+                                std::vector<float> *transformed);
+
+void FrustumVisibilityMapFromOverheadView(const char *camera_filename,
+                                          uint32_t target_height,
+                                          uint32_t target_width,
+                                          std::vector<float> *transformed);
+
 }  // namespace scene3d

@@ -5,7 +5,7 @@ import argparse
 
 parser = argparse.ArgumentParser(description='training')
 parser.add_argument('--batch_size', type=int, default=3)
-parser.add_argument('--num_data_workers', type=int, default=4)
+parser.add_argument('--num_data_workers', type=int, default=5)
 parser.add_argument('--save_dir', type=str, default='/data2/out/scene3d/v1/default')
 parser.add_argument('--experiment', type=str, default='multi-layer')
 parser.add_argument('--max_epochs', type=int, default=500)

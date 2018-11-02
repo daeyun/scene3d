@@ -50,6 +50,30 @@ if lib:
         ctypes.c_uint32,
         ndpointer(ctypes.c_float, flags="C_CONTIGUOUS"),
     ]
+
+    c_func3 = getattr(lib, 'render_depth_from_another_view')
+    c_func3.restype = None
+    c_func3.argtypes = [
+        ndpointer(ctypes.c_float, flags="C_CONTIGUOUS"),  # (N, H, W)
+        ctypes.c_uint32,  # H
+        ctypes.c_uint32,  # W
+        ctypes.c_uint32,  # N
+        ctypes.c_char_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ctypes.c_float,
+        ndpointer(ctypes.c_float, flags="C_CONTIGUOUS"),
+    ]
+    log.info('Loaded shared library %s', lib._name)
+
+    c_func4 = getattr(lib, 'frustum_visibility_map_from_overhead_view')
+    c_func4.restype = None
+    c_func4.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_uint32,
+        ctypes.c_uint32,
+        ndpointer(ctypes.c_float, flags="C_CONTIGUOUS"),
+    ]
     log.info('Loaded shared library %s', lib._name)
 
 
@@ -151,5 +175,72 @@ def feature_transform_parallel(
         target_height,
         target_width,
         out_data)
+
+    return out_data
+
+
+def render_depth_from_another_view(
+        depth: np.ndarray,
+        camera_filename: str,
+        target_height: int,
+        target_width: int,
+        depth_disc_pixels=5.0):
+    c_func_name = 'render_depth_from_another_view'
+
+    assert depth.ndim == 3 or depth.ndim == 2
+    assert depth.dtype == np.float32
+
+    if depth.ndim == 3:
+        source_num_images = depth.shape[0]
+        source_height = depth.shape[1]
+        source_width = depth.shape[2]
+    else:
+        source_num_images = 1
+        source_height = depth.shape[0]
+        source_width = depth.shape[1]
+
+    out_data = np.empty((source_num_images, target_height, target_width), dtype=np.float32)
+    assert out_data.flags['C_CONTIGUOUS']
+
+    assert depth.flags['C_CONTIGUOUS']
+
+    c_func = getattr(lib, c_func_name)
+
+    # Releases GIL.
+    c_func(
+        depth,
+        source_height,
+        source_width,
+        source_num_images,
+        ctypes.c_char_p(camera_filename.encode()),
+        target_height,
+        target_width,
+        depth_disc_pixels,
+        out_data
+    )
+
+    if depth.ndim == 2:
+        out_data = np.squeeze(out_data)
+
+    return out_data
+
+
+def frustum_visibility_map_from_overhead_view(
+        camera_filename: str,
+        target_height: int,
+        target_width: int):
+    c_func_name = 'frustum_visibility_map_from_overhead_view'
+
+    out_data = np.empty((target_height, target_width), dtype=np.float32)
+    assert out_data.flags['C_CONTIGUOUS']
+
+    c_func = getattr(lib, c_func_name)
+
+    c_func(
+        ctypes.c_char_p(camera_filename.encode()),
+        target_height,
+        target_width,
+        out_data
+    )
 
     return out_data

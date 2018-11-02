@@ -31,6 +31,21 @@ void epipolar_feature_transform_parallel(const float *feature_map_data,
                                          uint32_t target_height,
                                          uint32_t target_width,
                                          float *out);
+
+void render_depth_from_another_view(const float *depth_data,
+                                    uint32_t source_height,
+                                    uint32_t source_width,
+                                    uint32_t num_images,
+                                    const char *camera_filename,
+                                    uint32_t target_height,
+                                    uint32_t target_width,
+                                    float depth_disc_pixels,
+                                    float *transformed);
+
+void frustum_visibility_map_from_overhead_view(const char *camera_filename,
+                                               uint32_t target_height,
+                                               uint32_t target_width,
+                                               float *transformed);
 }
 
 void epipolar_feature_transform(
@@ -119,4 +134,37 @@ void epipolar_feature_transform_parallel(const float *feature_map_data,
   }
   LOGGER->info("Elapsed (memcpy): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
+}
+
+void render_depth_from_another_view(const float *depth_data,
+                                    uint32_t source_height,
+                                    uint32_t source_width,
+                                    uint32_t num_images,
+                                    const char *camera_filename,
+                                    uint32_t target_height,
+                                    uint32_t target_width,
+                                    float depth_disc_pixels,
+                                    float *out) {
+  auto start_time = scene3d::TimeSinceEpoch<std::milli>();
+
+  std::vector<float> transformed;
+  scene3d::RenderDepthFromAnotherView(depth_data, source_height, source_width, num_images, camera_filename, target_height, target_width, depth_disc_pixels, &transformed);
+  size_t size_bytes = transformed.size() * sizeof(float);
+  memcpy(out, transformed.data(), size_bytes);
+
+  LOGGER->info("Elapsed: {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
+}
+
+void frustum_visibility_map_from_overhead_view(const char *camera_filename,
+                                               uint32_t target_height,
+                                               uint32_t target_width,
+                                               float *out) {
+  auto start_time = scene3d::TimeSinceEpoch<std::milli>();
+
+  std::vector<float> transformed;
+  scene3d::FrustumVisibilityMapFromOverheadView(camera_filename, target_height, target_width, &transformed);
+  size_t size_bytes = transformed.size() * sizeof(float);
+  memcpy(out, transformed.data(), size_bytes);
+
+  LOGGER->info("Elapsed: {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 }

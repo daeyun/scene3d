@@ -431,6 +431,6 @@ void WritePly(const string &filename, const vector<array<unsigned int, 3>> &face
   LOGGER->info("Writing {}", filename);
 
   // Write a binary file
-  ply_file.write(outstream, true);
+  ply_file.write(outstream, is_binary);
 }
 }

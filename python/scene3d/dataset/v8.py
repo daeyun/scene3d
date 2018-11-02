@@ -1,7 +1,9 @@
+import math
 from os import path
 
 import cv2
 import numpy as np
+import numpy.linalg as la
 from torch.utils import data
 
 from scene3d import config
@@ -85,6 +87,8 @@ class MultiLayerDepth(data.Dataset):
             'category_nyu40_merged_background_replicated',
             'overhead_category_nyu40',
             'overhead_category_nyu40_merged_background',
+            'overhead_camera_pose_3params',
+            'overhead_camera_pose_4params',
         )
 
         assert isinstance(fields, (tuple, list))
@@ -387,6 +391,96 @@ class MultiLayerDepth(data.Dataset):
         d = dataset_utils.force_contiguous(d)
         ret[field_name] = d.astype(np.int)
 
+    def get_overhead_camera_pose_3params(self, example_name, ret):
+        field_name = 'overhead_camera_pose_3params'
+        if field_name not in self.fields or field_name in ret:
+            return
+
+        with open(ret['camera_filename'], 'r') as f:
+            content = f.readlines()
+
+        cam_p = content[0].strip().split()
+        assert cam_p[0] == 'P'
+        cam_o = content[1].strip().split()
+        assert cam_o[0] == 'O'
+
+        campos = np.array([float(item) for item in cam_p[1:4]])
+        viewdir = np.array([float(item) for item in cam_p[4:7]])
+        up = np.array([float(item) for item in cam_p[7:10]])
+        right = np.cross(viewdir, up)
+        assert np.abs(right[1]) < 1e-5
+
+        # Convert to 2d unit vectors, assuming gravity direction is in the y axis.
+        right[1] = 0
+        right = right / la.norm(right)
+        viewdir[1] = 0
+        viewdir = viewdir / la.norm(viewdir)
+
+        campos_o = np.array([float(item) for item in cam_o[1:4]])
+
+        # up_o = np.array([float(item) for item in cam_o[7:10]])
+        # assert np.allclose(up_o, viewdir, atol=1e-5, rtol=1e-3)
+
+        dpos = campos_o - campos
+        x = np.inner(dpos, right)
+        y = np.inner(dpos, viewdir)
+
+        lrbt = [float(item) for item in cam_o[-6:-2]]
+
+        # assert abs(lrbt[0] + lrbt[1]) < 1e-7
+        # assert abs(lrbt[2] + lrbt[3]) < 1e-7
+
+        scale = math.hypot(lrbt[1], lrbt[3])
+
+        ret[field_name] = np.array((x, y, scale), dtype=np.float32)
+
+    def get_overhead_camera_pose_4params(self, example_name, ret):
+        field_name = 'overhead_camera_pose_4params'
+        if field_name not in self.fields or field_name in ret:
+            return
+
+        with open(ret['camera_filename'], 'r') as f:
+            content = f.readlines()
+
+        cam_p = content[0].strip().split()
+        assert cam_p[0] == 'P'
+        cam_o = content[1].strip().split()
+        assert cam_o[0] == 'O'
+
+        campos = np.array([float(item) for item in cam_p[1:4]])
+        viewdir = np.array([float(item) for item in cam_p[4:7]])
+        up = np.array([float(item) for item in cam_p[7:10]])
+        right = np.cross(viewdir, up)
+        assert np.abs(right[1]) < 1e-5
+
+        # Convert to 2d unit vectors, assuming gravity direction is in the y axis.
+        right[1] = 0
+        right = right / la.norm(right)
+        viewdir[1] = 0
+        viewdir = viewdir / la.norm(viewdir)
+
+        campos_o = np.array([float(item) for item in cam_o[1:4]])
+
+        # up_o = np.array([float(item) for item in cam_o[7:10]])
+        # assert np.allclose(up_o, viewdir, atol=1e-5, rtol=1e-3)
+
+        dpos = campos_o - campos
+        x = np.inner(dpos, right)
+        y = np.inner(dpos, viewdir)
+
+        lrbt = [float(item) for item in cam_o[-6:-2]]
+
+        # assert abs(lrbt[0] + lrbt[1]) < 1e-7
+        # assert abs(lrbt[2] + lrbt[3]) < 1e-7
+
+        scale = math.hypot(lrbt[1], lrbt[3])
+
+        viewdir3d = np.array([float(item) for item in cam_p[4:7]])
+        gravity_direction = np.array([0, -1, 0], dtype=np.float64)
+        theta = np.arccos(np.inner(viewdir3d, gravity_direction))
+
+        ret[field_name] = np.array((x, y, scale, theta), dtype=np.float32)
+
     def __getitem__(self, index):
         example_name = self.filename_prefixes[index]
         camera_filename = path.join(config.scene3d_root, 'v8/renderings', example_name + '_cam.txt')
@@ -415,5 +509,7 @@ class MultiLayerDepth(data.Dataset):
         self.get_category_nyu40_merged_background_replicated(example_name, ret)
         self.get_overhead_category_nyu40(example_name, ret)
         self.get_overhead_category_nyu40_merged_background(example_name, ret)
+        self.get_overhead_camera_pose_3params(example_name, ret)
+        self.get_overhead_camera_pose_4params(example_name, ret)
 
         return ret

@@ -220,4 +220,212 @@ void EpipolarFeatureTransform(const float *feature_map_data,
     }
   }
 }
+
+uint64_t PackXY(uint32_t x, uint32_t y) {
+  return static_cast<uint64_t>(x) << 32 | static_cast<uint64_t>(y);
+};
+
+void RenderDepthFromAnotherView(const float *depth_data,
+                                uint32_t source_height,
+                                uint32_t source_width,
+                                uint32_t num_images,
+                                const char *camera_filename,
+                                uint32_t target_height,
+                                uint32_t target_width,
+                                float depth_disc_pixels,
+                                std::vector<float> *transformed) {
+  const string camera_filename_str(camera_filename);
+  LOGGER->debug("Camera filename: {}", camera_filename_str);
+  LOGGER->debug("source dimension: ({}, {}, {})", num_images, source_height, source_width);
+  LOGGER->debug("target dimension: ({}, {}, {})", num_images, target_height, target_width);
+
+  Expects(source_height < 4096);
+  Expects(source_width < 4096);
+  Expects(num_images < 409600);
+  Expects(target_height < 4096);
+  Expects(target_width < 4096);
+
+  vector<unique_ptr<scene3d::Camera>> cameras;
+  ReadCameras(camera_filename_str, &cameras);
+  Expects(cameras.size() == 2);
+  Expects(cameras[0] && cameras[1]);
+  Expects(cameras[0]->is_perspective());  // Sanity check. This is not a strict requirement.
+  Expects(!cameras[1]->is_perspective());
+
+  for (int i = 0; i < num_images; ++i) {
+    const float *data = depth_data + (i * source_height * source_width);
+    Image<float> depth(data, source_height, source_width, NAN);
+
+    Points2i xy;
+    Points3d out;
+    PclFromDepthInWorldCoords(depth, *cameras[0], &xy, &out);
+    Expects(xy.cols() == out.cols());
+
+    Points2i image_xy;
+    Points1d cam_depth_value;
+    cameras[1]->WorldToImage(out, target_height, target_width, &image_xy, &cam_depth_value);
+    Expects(xy.cols() == image_xy.cols());
+    Expects(out.cols() == cam_depth_value.cols());
+
+    Image<float> out_depth(target_height, target_width, NAN);
+    out_depth.Fill(NAN);
+
+    auto assign_depth_value = [&](unsigned int x, unsigned int y, float value) {
+      if ((x >= 0 && x < out_depth.width()) && (y >= 0 && y < out_depth.height())) {
+        if (!std::isfinite(out_depth.at(y, x)) || out_depth.at(y, x) > value) {
+          out_depth.at(y, x) = value;
+        }
+      }
+    };
+
+    std::unordered_map<uint64_t, size_t> indices;
+
+    for (int j = 0; j < image_xy.cols(); ++j) {
+      const unsigned int x = image_xy.col(j)[0];
+      const unsigned int y = image_xy.col(j)[1];
+      assign_depth_value(x, y, cam_depth_value[j]);
+
+      const unsigned int x2 = xy.col(j)[0];
+      const unsigned int y2 = xy.col(j)[1];
+      indices[PackXY(x2, y2)] = static_cast<size_t>(j);
+    }
+
+    for (uint32_t y = 0; y < depth.height() - 1; ++y) {
+      for (uint32_t x = 0; x < depth.width() - 1; ++x) {
+        if (!std::isfinite(depth.at(y, x))) {
+          continue;
+        }
+        const size_t start_index = indices[PackXY(x, y)];
+
+        if (std::isfinite(depth.at(y, x + 1))) {
+          const size_t end_index = indices[PackXY(x + 1, y)];
+          unsigned int start_x = image_xy.col(start_index)[0];
+          unsigned int start_y = image_xy.col(start_index)[1];
+          float start_value = cam_depth_value.col(start_index)[1];
+          unsigned int end_x = image_xy.col(end_index)[0];
+          unsigned int end_y = image_xy.col(end_index)[1];
+          float end_value = cam_depth_value.col(end_index)[1];
+
+          if (std::hypot((float) start_x - (float) end_x, (float) start_y - (float) end_y) > depth_disc_pixels) {
+            continue;
+          }
+
+          vector<array<int, 2>> line_xy;
+          LineCoordinates(start_x, start_y, end_x, end_y, &line_xy);
+          auto j_max = static_cast<const int>(line_xy.size() - 1);
+          for (int j = 0; j <= j_max; ++j) {  // End is inclusive.
+            float a = static_cast<float>(j) / static_cast<float>(j_max);
+            auto lx = static_cast<unsigned int>(line_xy[j][0]);
+            auto ly = static_cast<unsigned int>(line_xy[j][1]);
+            float interpolated_value = start_value * (1 - a) + end_value * a;
+            assign_depth_value(lx, ly, interpolated_value);
+          }
+        }
+        if (std::isfinite(depth.at(y + 1, x))) {
+          const size_t end_index = indices[PackXY(x, y + 1)];
+          unsigned int start_x = image_xy.col(start_index)[0];
+          unsigned int start_y = image_xy.col(start_index)[1];
+          float start_value = cam_depth_value.col(start_index)[1];
+          unsigned int end_x = image_xy.col(end_index)[0];
+          unsigned int end_y = image_xy.col(end_index)[1];
+          float end_value = cam_depth_value.col(end_index)[1];
+
+          if (std::hypot((float) start_x - (float) end_x, (float) start_y - (float) end_y) > depth_disc_pixels) {
+            continue;
+          }
+
+          vector<array<int, 2>> line_xy;
+          LineCoordinates(start_x, start_y, end_x, end_y, &line_xy);
+          auto j_max = static_cast<const int>(line_xy.size() - 1);
+          for (int j = 0; j <= j_max; ++j) {  // End is inclusive.
+            float a = static_cast<float>(j) / static_cast<float>(j_max);
+            auto lx = static_cast<unsigned int>(line_xy[j][0]);
+            auto ly = static_cast<unsigned int>(line_xy[j][1]);
+            float interpolated_value = start_value * (1 - a) + end_value * a;
+            assign_depth_value(lx, ly, interpolated_value);
+          }
+        }
+      }
+    }
+
+    transformed->insert(transformed->end(), out_depth.data(), out_depth.data() + out_depth.size());
+  }
+
+}
+void FrustumVisibilityMapFromOverheadView(const char *camera_filename,
+                                          uint32_t target_height,
+                                          uint32_t target_width,
+                                          std::vector<float> *transformed) {
+  const string camera_filename_str(camera_filename);
+  LOGGER->debug("Camera filename: {}", camera_filename_str);
+
+  vector<unique_ptr<scene3d::Camera>> cameras;
+  ReadCameras(camera_filename_str, &cameras);
+  Expects(cameras.size() == 2);
+  Expects(cameras[0] && cameras[1]);
+  Expects(cameras[0]->is_perspective());
+  Expects(!cameras[1]->is_perspective()); // The second camera needs to be an overhead camera.
+
+
+  Image<float> out_image(target_height, target_width, 0);
+  out_image.Fill(0);
+
+  Points2i xy(2, 4);
+  xy(0, 0) = 0;
+  xy(1, 0) = 120;
+  xy(0, 1) = 0;
+  xy(1, 1) = 120;
+  xy(0, 2) = 319;
+  xy(1, 2) = 120;
+  xy(0, 3) = 319;
+  xy(1, 3) = 120;
+
+  Points1d values(1, 4);
+  values(0, 0) = 0.02;
+  values(0, 1) = 25;
+  values(0, 2) = 0.02;
+  values(0, 3) = 25;
+
+  Points3d out;
+  cameras[0]->ImageToWorld(xy, values, 240, 320, &out);
+
+  Points2i image_xy;
+  Points1d cam_depth_value;
+  cameras[1]->WorldToImage(out, target_height, target_width, &image_xy, &cam_depth_value);
+
+  vector<array<int, 2>> line_xy_left;
+  {
+    unsigned int start_x = image_xy.col(0)[0];
+    unsigned int start_y = image_xy.col(0)[1];
+    unsigned int end_x = image_xy.col(1)[0];
+    unsigned int end_y = image_xy.col(1)[1];
+    LineCoordinates(start_x, start_y, end_x, end_y, &line_xy_left);
+  }
+  vector<array<int, 2>> line_xy_right;
+  {
+    unsigned int start_x = image_xy.col(2)[0];
+    unsigned int start_y = image_xy.col(2)[1];
+    unsigned int end_x = image_xy.col(3)[0];
+    unsigned int end_y = image_xy.col(3)[1];
+    LineCoordinates(start_x, start_y, end_x, end_y, &line_xy_right);
+  }
+
+  Ensures(line_xy_left.size() == line_xy_right.size());
+
+  for (int j = 0; j < line_xy_left.size(); ++j) {
+    int ly = line_xy_left[j][1];
+
+    if (ly >= 0 && ly < out_image.height()) {
+      int lx_start = std::max(line_xy_left[j][0], 0);
+      int lx_end = std::min(static_cast<int>(line_xy_right[j][0]), static_cast<int>(target_width) - 1);
+      for (int lx = lx_start; lx <= lx_end; ++lx) {
+        if (lx >= 0 && lx < out_image.width()) {
+          out_image.at(ly, lx) = 1.0;
+        }
+      }
+    }
+  }
+
+  transformed->insert(transformed->end(), out_image.data(), out_image.data() + out_image.size());
+}
 }

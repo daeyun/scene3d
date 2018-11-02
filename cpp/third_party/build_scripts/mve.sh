@@ -17,7 +17,7 @@ set +e
 mv util/endian.h util/mve-endian.h
 mv util/string.h util/mve-string.h
 
-cd ..
+#cd ..
 grep -Rl 'util/endian.' . | xargs sed -i 's/util\/endian./util\/mve-endian./g'
 grep -Rl 'util/string.' . | xargs sed -i 's/util\/string./util\/mve-string./g'
 set -e

@@ -38,6 +38,10 @@ class Image {
     }
   }
 
+  void Fill(const T value) {
+    std::fill(data_.begin(), data_.end(), value);
+  }
+
   inline T &at(unsigned int index) {
     return data_[index];
   }

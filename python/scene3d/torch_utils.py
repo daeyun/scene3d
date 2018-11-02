@@ -1,6 +1,7 @@
 import torch
 import torch._C
 import numpy as np
+import torch.utils.data
 
 
 def recursive_module_apply(models, func):
@@ -73,3 +74,16 @@ def load_torch_model(filename, use_cpu=True) -> dict:
     model = recursive_module_apply(model, func=set_device)
 
     return model
+
+
+class SeededRandomSampler(torch.utils.data.Sampler):
+    def __init__(self, data_source, seed=0):
+        self.data_source = data_source
+        self.seed = seed
+
+    def __iter__(self):
+        inds = np.random.RandomState(seed=self.seed).permutation(len(self.data_source)).tolist()
+        return iter(inds)
+
+    def __len__(self):
+        return len(self.data_source)

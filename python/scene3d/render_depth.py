@@ -53,3 +53,29 @@ def run_render(obj_filename, json_filename, camera_filename, out_dir, hw=(480, 6
         assert item, item
 
     return output_files
+
+
+def run_floor_height(obj_filename, json_filename, camera_filename):
+    _renderer_executable = path.abspath(path.join(path.dirname(__file__), '../../cpp/cmake-build-release/apps/find_floor_height'))
+
+    assert obj_filename.endswith('.obj'), obj_filename
+    assert camera_filename.endswith('.txt'), camera_filename
+    io_utils.assert_file_exists(_renderer_executable)
+    io_utils.assert_file_exists(obj_filename)
+    io_utils.assert_file_exists(camera_filename)
+
+    _, stdout, stderr = exec_utils.run_command([
+        _renderer_executable,
+        '--obj={}'.format(obj_filename),
+        '--json={}'.format(json_filename),
+        '--cameras={}'.format(camera_filename),
+        '--category={}'.format(category_mapping_file),  # TODO(daeyun): make sure this is compatible with the github release.
+    ])
+
+    floor_heights = sorted(re.findall(r'Floor height: (\S+?)\s', stdout))
+    floor_heights = [item.strip() for item in floor_heights]
+
+    # Sanity check
+    assert len(floor_heights) > 0
+
+    return floor_heights

@@ -16,6 +16,8 @@ scene3d:
 hostname = socket.gethostname()
 
 if path.isfile(path.expanduser('~/.is_chase_ci')):
+    default_out_root = '/home/daeyuns/scene3d_out/out/scene3d'
+
     if hostname == 'daeyun-01':
         # suncg_root = '/data/daeyun-data-02/suncg_data'
         # pbrs_root = '/data/daeyun-data-02/data2/pbrs'
@@ -59,16 +61,19 @@ elif hostname == 'ren-ubuntu':
     suncg_root = '/media/ren/devRen4T/research/datasets/suncg'
     pbrs_root = '/media/ren/devRen4T/research/datasets/pbrs'
     scene3d_root = '/media/ren/devRen4T/research/datasets/scene3d'
+    default_out_root = '/media/ren/devRen4T/research/datasets/out/scene3d'  # This should be the directory containing checkpoint files.
 
 elif hostname == 'daeyun-vision-lab':
     suncg_root = '/data2/suncg_data'
     pbrs_root = '/data2/pbrs'
     scene3d_root = '/data2/scene3d'
+    default_out_root = '/data3/out/scene3d'
 
 elif path.isfile(path.expanduser('~/.is_uci_vision_cluster')):
     suncg_root = '/home/daeyuns/data2/suncg_data'
     pbrs_root = '/home/daeyuns/data2/pbrs'
     scene3d_root = '/home/daeyuns/data2/scene3d'
+    default_out_root = '/home/daeyuns/data3/out/scene3d'
 
 else:
     raise RuntimeError('Unknown hostname: {}'.format(hostname))
