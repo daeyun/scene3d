@@ -26,7 +26,7 @@ from scene3d.dataset import v8
 
 model_filename1 = '/data3/out/scene3d/v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00600000_003_0014413.pth'
 model_filename2 = '/data3/out/scene3d/v8/v8-category_nyu40_merged_background-2l/0/00600000_013_0019123.pth'
-batch_size = 12
+batch_size = 4
 num_data_workers = 8
 
 out_dir = '/data3/scene3d/v8/overhead/v2'

@@ -145,6 +145,10 @@ void render_depth_from_another_view(const float *depth_data,
                                     uint32_t target_width,
                                     float depth_disc_pixels,
                                     float *out) {
+  if (spdlog::get("console") == nullptr) {
+    spdlog::stdout_color_mt("console");
+  }
+
   auto start_time = scene3d::TimeSinceEpoch<std::milli>();
 
   std::vector<float> transformed;
@@ -159,6 +163,10 @@ void frustum_visibility_map_from_overhead_view(const char *camera_filename,
                                                uint32_t target_height,
                                                uint32_t target_width,
                                                float *out) {
+  if (spdlog::get("console") == nullptr) {
+    spdlog::stdout_color_mt("console");
+  }
+
   auto start_time = scene3d::TimeSinceEpoch<std::milli>();
 
   std::vector<float> transformed;

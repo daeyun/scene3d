@@ -41,6 +41,9 @@ add_library(meshdist meshdist.h meshdist.cc)
 target_link_libraries(meshdist PUBLIC common camera depth benchmark CGAL mesh)
 target_compile_options(meshdist BEFORE PUBLIC "-lCGAL")
 
+add_library(depth_mesh_utils depth_mesh_utils.h depth_mesh_utils.cc)
+target_link_libraries(depth_mesh_utils PUBLIC common camera depth benchmark mesh meshdist pcl)
+
 add_library(vectorization_utils vectorization_utils.h)
 target_link_libraries(vectorization_utils PUBLIC common)
 

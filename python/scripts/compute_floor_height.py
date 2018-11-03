@@ -91,8 +91,6 @@ def compute_floor_height(thread_id, house_id):
         f.write('\n'.join(heights))
 
 
-
-
 def thread_worker(thread_id):
     global house_ids
     global global_lock

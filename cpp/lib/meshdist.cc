@@ -142,7 +142,7 @@ void SamplePointsOnTriangles(const std::vector<Triangle> &triangles, float densi
 float MeshToMeshDistanceOneDirection(const std::vector<Triangle> &from,
                                      const std::vector<Triangle> &to,
                                      float sampling_density,
-                                     std::vector<float> *distances) {
+                                     std::vector<float> *distances) {  // squared distances
 
   Points3d points;
 
