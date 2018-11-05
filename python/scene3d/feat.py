@@ -373,3 +373,5 @@ def make_overhead_camera_file(out_filename, x, y, scale, theta):
 
     with open(out_filename, 'w') as f:
         f.write(out_camera_file_content)
+
+    return ref_cam, target_cam

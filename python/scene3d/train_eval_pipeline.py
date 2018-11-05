@@ -49,6 +49,7 @@ available_experiments = [
     'multi-layer-3',
     'overhead-features-01-log-l1-loss',
     'overhead-features-01-l1-loss',
+    'overhead_features_02_all',
     'v8-multi_layer_depth',
     'v8-multi_layer_depth_aligned_background',
     'v8-multi_layer_depth_replicated_background',
@@ -85,6 +86,7 @@ available_models = [
     'unet_v0',
     'unet_v0_no_bn',
     'unet_v0_overhead',
+    'unet_v1_overhead',
     'unet_v1',
     'unet_v2',
     'unet_v2_regression',
@@ -127,6 +129,8 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
 
     elif experiment_name.startswith('overhead-features-01'):
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('overhead_features', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'overhead_features_02_all':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('overhead_features_v2', 'multi_layer_overhead_depth'))
     elif experiment_name.startswith('overhead-features-eval-01'):
         """This is not actually one of the available experiments, but this has RGB images for evaluation or visualization mode. This can be deleted later. This is a preliminary experiment anyway.
         """
@@ -240,6 +244,11 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     elif model_name == 'unet_v0_overhead':
         if experiment_name.startswith('overhead-features-01'):
             model = unet_overhead.Unet0(out_channels=1)
+        else:
+            raise NotImplementedError()
+    elif model_name == 'unet_v1_overhead':
+        if experiment_name == 'overhead_features_02_all':
+            model = unet_overhead.Unet1(in_channels=117, out_channels=1)
         else:
             raise NotImplementedError()
     elif model_name == 'unet_v1':
@@ -396,6 +405,14 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         target_depth = batch['multi_layer_overhead_depth'][:, :1].cuda()
         pred = pytorch_model(input_features)
         loss_all = loss_fn.loss_calc_overhead_single_log(pred, target_depth)
+
+    elif experiment_name == 'overhead_features_02_all':
+        example_name = batch['name']
+        # 117 channels
+        input_features = batch['overhead_features_v2'].cuda()
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].cuda()
+        pred = pytorch_model(input_features)
+        loss_all = loss_fn.loss_calc_overhead_single_raw(pred, target_depth)
 
     # v8
     elif experiment_name == 'v8-multi_layer_depth':

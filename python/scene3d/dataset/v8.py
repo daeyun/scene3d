@@ -89,6 +89,7 @@ class MultiLayerDepth(data.Dataset):
             'multi_layer_depth_replicated_background',
             'multi_layer_overhead_depth',
             'overhead_features',
+            'overhead_features_v2',
             'name',
             'camera_filename',
             'normals',
@@ -278,12 +279,29 @@ class MultiLayerDepth(data.Dataset):
         ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
         ret[field_name] = ldi_overhead
 
-    def get_overhead_features(self, example_name, ret, version='v1'):
+    def get_overhead_features(self, example_name, ret):
         field_name = 'overhead_features'
         if field_name not in self.fields or field_name in ret:
             return
-        bin_filename = path.join(config.scene3d_root, 'v8/overhead/{}/features'.format(version), example_name + '.bin')
+        bin_filename = path.join(config.scene3d_root, 'v8/overhead/v1/features', example_name + '.bin')
         ldi_overhead = io_utils.read_array_compressed(bin_filename, dtype=np.float16).astype(np.float32)
+
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v2(self, example_name, ret):
+        field_name = 'overhead_features_v2'
+        if field_name not in self.fields or field_name in ret:
+            return
+        bin_filename1 = path.join(config.scene3d_root, 'v8/overhead/v2/features', example_name + '_b.bin')
+        bin_filename2 = path.join(config.scene3d_root, 'v8/overhead/v2/features', example_name + '.bin')
+
+        # 2 + 115 channels
+        ldi_overhead = np.concatenate([
+            io_utils.read_array_compressed(bin_filename1, dtype=np.float32),
+            io_utils.read_array_compressed(bin_filename2, dtype=np.float16).astype(np.float32),
+        ], axis=0)
+
         ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
         ret[field_name] = ldi_overhead
 
@@ -513,6 +531,7 @@ class MultiLayerDepth(data.Dataset):
         self.get_multi_layer_depth_replicated_background(example_name, ret)
         self.get_multi_layer_overhead_depth(example_name, ret)
         self.get_overhead_features(example_name, ret)
+        self.get_overhead_features_v2(example_name, ret)
         self.get_normals(example_name, ret)
         self.get_normal_direction_volume(example_name, ret)
         self.get_model_id(example_name, ret)
