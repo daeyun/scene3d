@@ -23,6 +23,7 @@ from scene3d.net import unet
 from scene3d.net import unet_overhead
 from scene3d.net import unet_no_bn
 from scene3d import log
+from scene3d import transforms
 from scene3d import loss_fn
 from scene3d import torch_utils
 from torch import optim

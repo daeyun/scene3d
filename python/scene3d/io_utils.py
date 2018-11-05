@@ -630,3 +630,14 @@ def get_column_from_csv(filename, column_name, delimiter=','):
         for row in reader:
             ret.append(row[column_index])
     return ret
+
+
+def block_until_file_exists(filename, sleep_seconds=0.05):
+    i = 0
+    assert sleep_seconds > 0
+    while not path.exists(filename):
+        if i * sleep_seconds > 2:
+            log.info('Waiting for file: {}'.format(filename))
+            i = 0
+        time.sleep(sleep_seconds)
+        i += 1

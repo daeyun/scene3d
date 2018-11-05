@@ -1,4 +1,5 @@
 import math
+import re
 from os import path
 
 import cv2
@@ -34,6 +35,10 @@ def undo_rgb_whitening(rgb):
     return np.minimum(ret, 1.0)  # force <=1.0
 
 
+def is_filename_prefix_valid(value):
+    return re.match(r'^[a-z0-9]{32}/\d{6}$', value) is not None
+
+
 class MultiLayerDepth(data.Dataset):
     """
     Includes multi-layer segmentation.
@@ -44,16 +49,23 @@ class MultiLayerDepth(data.Dataset):
     def __init__(self, split='train', first_n=None, start_index=None, rgb_scale=1.0, subtract_mean=True, image_hw=(240, 320),
                  fields=('name', 'camera_filename', 'rgb')):
         if split == 'train':
-            split_filename = path.join(config.scene3d_root, 'v8/train.txt')
+            split_filename = path.join(config.scene3d_root, 'v8/train_v2.txt')
         elif split == 'test':
             # split_filename = path.join(config.scene3d_root, 'v8/validation.txt')
-            split_filename = path.join(config.scene3d_root, 'v8/test.txt')
+            split_filename = path.join(config.scene3d_root, 'v8/test_v2.txt')
         elif split == 'all':
-            split_filename = path.join(config.scene3d_root, 'v8/all.txt')
+            split_filename = path.join(config.scene3d_root, 'v8/all_v2.txt')
+        elif split.startswith('/') and split.endswith('.txt') and path.isfile(split):
+            split_filename = split
         else:
             raise RuntimeError('Invalid split name: {}'.format(split))
 
+        log.info('Loading examples from file {}'.format(split_filename))
+
         self.filename_prefixes = io_utils.read_lines_and_strip(split_filename)
+
+        # Make sure the text file contains valid example names.
+        assert is_filename_prefix_valid(self.filename_prefixes[0]) and is_filename_prefix_valid(self.filename_prefixes[-1])
 
         if first_n is not None and first_n > 0:
             assert start_index is None

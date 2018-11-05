@@ -3,11 +3,13 @@ import numpy.linalg as la
 import time
 import matplotlib.pyplot as pt
 import torch
+from os import path
 
 from scene3d import transforms
 from scene3d.net import unet
 from scene3d import camera
 from scene3d import geom2d
+from scene3d import io_utils
 from scene3d import epipolar
 from scene3d import torch_utils
 
@@ -292,3 +294,82 @@ def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ld
     if return_output:
         return errors, out_np
     return errors
+
+
+def compute_overhead_camera(ref_position, ref_viewdir, ref_up, x, y, scale, theta):
+    """
+    :param ref_position: Position of the reference camera
+    :param ref_viewdir:  Viewing direction of the reference camera. Must be a unit vector.
+    :param ref_up: Up direction of the reference camera. Must be a unit vector.
+    :param x:
+    :param y:
+    :param scale: Radius of square image frame.
+    :param theta: Angle between viewing direction and gravity direction in radians.
+    :return:
+    """
+    assert np.isclose(la.norm(ref_viewdir), 1.0)
+    assert np.isclose(la.norm(ref_up), 1.0)
+
+    ref_right = np.cross(ref_viewdir, ref_up)  # x axis
+    xrot = transforms.rotation_matrix(angle=-theta, direction=ref_right, deg=False)[:3, :3]
+
+    view_dir = xrot.dot(ref_viewdir)
+    right = xrot.dot(ref_right)  # x axis
+    up = xrot.dot(ref_up)  # y axis
+    cam_pos = ref_position + right * x + up * y
+
+    w = scale / np.sqrt(2.0)
+
+    # Assume square frame. Constant near and far values.
+    frustum = [-w, w, -w, w, 0.005, 50]  # left, right, bottom, top, near, far
+
+    return ['O'] + cam_pos.tolist() + view_dir.tolist() + up.tolist() + frustum
+
+
+def best_guess_depth_and_frustum_mask(frontal_depth_3layers, camera_filename):
+    assert frontal_depth_3layers.shape[0] == 3
+    assert frontal_depth_3layers.ndim == 3
+
+    height = 300
+    width = 300
+
+    best_guess_ml = epipolar.render_depth_from_another_view(frontal_depth_3layers, camera_filename, target_height=height, target_width=width)
+
+    fill_value = 0
+
+    best_guess = best_guess_ml.copy()
+    best_guess[best_guess < 0] = np.inf
+    mask = ~np.isfinite(best_guess)
+    best_guess[mask] = np.inf
+    best_guess = np.min(best_guess, axis=0)
+    mask = ~np.isfinite(best_guess)
+    best_guess[mask] = fill_value
+
+    frustum_mask = epipolar.frustum_visibility_map_from_overhead_view(camera_filename, 300, 300)
+
+    ret = np.stack([best_guess, frustum_mask])
+
+    return ret
+
+
+def make_overhead_camera_file(out_filename, x, y, scale, theta):
+    ref_cam = [
+        'P',
+        0.0, 0.0, 0.0,  # position
+        0.0, 0.0, -1.0,  # viewing dir
+        0.0, 1.0, 0.0,  # up
+        -0.00617793056641, 0.00617793056641, -0.00463344946349, 0.00463344946349, 0.01, 100  # intrinsics
+    ]
+
+    ref_pos = np.array(ref_cam[1:4], dtype=np.float64)
+    ref_viewdir = np.array(ref_cam[4:7], dtype=np.float64)  # -z axis
+    ref_up = np.array(ref_cam[7:10], dtype=np.float64)  # y axis
+
+    target_cam = compute_overhead_camera(ref_pos, ref_viewdir, ref_up, x=x, y=y, scale=scale, theta=theta)
+
+    out_camera_file_content = '\n'.join([' '.join([str(item) for item in ref_cam]), ' '.join([str(item) for item in target_cam])])
+
+    io_utils.ensure_dir_exists(path.dirname(out_filename))
+
+    with open(out_filename, 'w') as f:
+        f.write(out_camera_file_content)

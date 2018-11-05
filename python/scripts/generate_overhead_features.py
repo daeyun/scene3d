@@ -26,7 +26,7 @@ from scene3d.dataset import v8
 
 model_filename1 = '/data3/out/scene3d/v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00600000_003_0014413.pth'
 model_filename2 = '/data3/out/scene3d/v8/v8-category_nyu40_merged_background-2l/0/00600000_013_0019123.pth'
-batch_size = 4
+batch_size = 12
 num_data_workers = 8
 
 out_dir = '/data3/scene3d/v8/overhead/v2'
@@ -59,8 +59,6 @@ def make_dataset_object():
     if filename_index_offset > 0:
         dataset_all = v8.MultiLayerDepth(split='all', subtract_mean=True, start_index=filename_index_offset, image_hw=(240, 320), rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
     log.info('filename_index_offset: {}'.format(filename_index_offset))
-
-    dataset_all = v8.MultiLayerDepth(split='train', subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth'))
 
     return dataset_all
 
