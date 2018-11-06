@@ -8,14 +8,12 @@ Before rendering, prepare the `.obj` mesh and a `.txt` file containing camera pa
 
 #### Cameras
 
-There should be one line for each camera (same format as [pbrs](https://github.com/yindaz/pbrs)):
-
 ```
-[camera position x] [camera position y] [camera position z] [view direction x] [view direction y] [view direction z] [up x] [up y] [up z] [x fov] [y fov] [score]
+[camera position x] [camera position y] [camera position z] [view direction x] [view direction y] [view direction z] [up x] [up y] [up z] [fx] [fy] [cx] [cy]
 ```
 
-- `fov` is the field-of-view angle measured from the principal-axis, so it should be half of the end-to-end angle, in radians. 
-- `score` is not used, so it can be any value.
+- `fx` and `fy` are focal lengths from intrinsic camera matrix K.
+- `cx` and `cy` are optical center offsets from K.
 
 #### Mesh
 
