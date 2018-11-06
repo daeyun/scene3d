@@ -16,9 +16,7 @@ struct CameraParams {
   Vec3 cam_eye;
   Vec3 cam_view_dir;
   Vec3 cam_up;
-  double x_fov;
-  double y_fov;
-  double score;  // scene coverage score. not used at the moment.
+  Mat33 K;
 };
 
 const std::vector<string> background_name_substrings{"Floor", "Wall", "Ceiling", "Room", "Level", "floor", "background"};
@@ -74,7 +72,7 @@ int main(int argc, const char **argv) {
     throw std::runtime_error("Can't open file.");
   }
 
-  std::vector<CameraParams> suncg_cameras;
+  std::vector<CameraParams> cam_params;
   for (std::string line; std::getline(source, line);) {
     if (line.empty()) {
       continue;
@@ -86,13 +84,24 @@ int main(int argc, const char **argv) {
     in >> cam.cam_eye[0] >> cam.cam_eye[1] >> cam.cam_eye[2];
     in >> cam.cam_view_dir[0] >> cam.cam_view_dir[1] >> cam.cam_view_dir[2];
     in >> cam.cam_up[0] >> cam.cam_up[1] >> cam.cam_up[2];
-    in >> cam.x_fov >> cam.y_fov >> cam.score;
 
-    LOGGER->info("camera {}, eye {}, {}, {}, fov {}, {}", suncg_cameras.size(), cam.cam_eye[0], cam.cam_eye[1], cam.cam_eye[2], cam.x_fov, cam.y_fov);
+    double fx, fy, cx, cy;
+    in >> fx >> fy >> cx >> cy;
+
+    cam.K.setIdentity();
+    cam.K(0, 0) = fx;
+    cam.K(1, 1) = fy;
+    cam.K(0, 2) = cx;
+    cam.K(1, 2) = cy;
+
+    std::stringstream Ks;
+    Ks << cam.K;
+
+    LOGGER->info("camera {}, eye {}, {}, {}, K:\n{}", cam_params.size(), cam.cam_eye[0], cam.cam_eye[1], cam.cam_eye[2], Ks.str());
 
     cam.cam_view_dir.normalize();
 
-    suncg_cameras.push_back(cam);
+    cam_params.push_back(cam);
   }
 
   LOGGER->info("Reading file {}", obj_filename);
@@ -130,16 +139,14 @@ int main(int argc, const char **argv) {
     return ret;
   };
 
-  for (int camera_i = 0; camera_i < suncg_cameras.size(); ++camera_i) {
-    CameraParams suncg_cam = suncg_cameras[camera_i];
+  for (int camera_i = 0; camera_i < cam_params.size(); ++camera_i) {
+    CameraParams cam_params_i = cam_params[camera_i];
     LOGGER->info("Rendering camera {}", camera_i);
 
-    Vec3 cam_eye = suncg_cam.cam_eye;
-    Vec3 cam_view_dir = suncg_cam.cam_view_dir;
-    Vec3 cam_up = suncg_cam.cam_up;
-
-    double xf = suncg_cam.x_fov;
-    double yf = suncg_cam.y_fov;
+    Vec3 cam_eye = cam_params_i.cam_eye;
+    Vec3 cam_view_dir = cam_params_i.cam_view_dir;
+    Vec3 cam_up = cam_params_i.cam_up;
+    Mat33 K_inv = cam_params_i.K.inverse();
 
     scenecompletion::FrustumParams frustum;
     frustum.far = 10000;
@@ -149,24 +156,6 @@ int main(int argc, const char **argv) {
 
     const size_t image_width = static_cast<size_t>(flags["width"].as<int>());
     const size_t image_height = static_cast<size_t>(flags["height"].as<int>());
-
-    // Distance to the image plane according to the x fov.
-    double xl = 0.5 * image_width / std::tan(xf);
-    // Distance to the image plane according to the y fov.
-    double yl = 0.5 * image_height / std::tan(yf);
-
-    // For now, we assume the aspect ratio is always 1.0. So the distance to image plane should end up being the same according to both x and y.
-    // Otherwise the image size or focal length is wrong. This can also happen because of precision error.
-    // 0.01 is an arbitrary threshold.
-    if (std::abs(xl - yl) > 0.01) {
-      LOGGER->warn("xf: {}, yf: {}, width: {}, height: {}, xl: {}, yl: {}", xf, yf, image_width, image_height, xl, yl);
-      throw std::runtime_error("Inconsistent distance to image plane.");
-    }
-
-    // Compute the average of the two distances. There are probably other, better ways to do this.
-    double image_focal_length = (xl + yl) * 0.5;
-
-    Vec3 image_optical_center{image_width * 0.5, image_height * 0.5, 0};
 
     const Vec3 cam_ray_origin{0, 0, 0};
 
@@ -186,8 +175,8 @@ int main(int argc, const char **argv) {
 
     for (int y = 0; y < image_height; y++) {
       for (int x = 0; x < image_width; x++) {
-        Vec3 image_plane_coord{static_cast<double>(x) + 0.5, image_height - (static_cast<double>(y) + 0.5), -image_focal_length};
-        Vec3 cam_ray_direction = (image_plane_coord - image_optical_center).normalized();
+        Vec3 cam_ray_direction = K_inv * Vec3(x + 0.5, y + 0.5, 1);
+        cam_ray_direction.normalize();
 
         Vec3 ray_direction;
         camera.CamToWorldNormal(cam_ray_direction, &ray_direction);
