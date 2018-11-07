@@ -30,6 +30,7 @@ from torch import optim
 from torch import nn
 from torch import autograd
 import argparse
+from scene3d import feat
 
 """
 When you add a new experiment, give it a unique experiment name in `available_experiments`.
@@ -80,6 +81,7 @@ available_experiments = [
     'v8-two_layer_depth',
     'v8-overhead_camera_pose',
     'v8-overhead_camera_pose_4params',
+    'OVERHEAD_OTF_01',  # all features, predicted geometry only.
 ]
 
 available_models = [
@@ -131,6 +133,8 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('overhead_features', 'multi_layer_overhead_depth'))
     elif experiment_name == 'overhead_features_02_all':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('overhead_features_v2', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'OVERHEAD_OTF_01':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_camera_pose_4params', 'camera_filename', 'multi_layer_overhead_depth'))
     elif experiment_name.startswith('overhead-features-eval-01'):
         """This is not actually one of the available experiments, but this has RGB images for evaluation or visualization mode. This can be deleted later. This is a preliminary experiment anyway.
         """
@@ -249,6 +253,13 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     elif model_name == 'unet_v1_overhead':
         if experiment_name == 'overhead_features_02_all':
             model = unet_overhead.Unet1(in_channels=117, out_channels=1)
+        elif experiment_name == 'OVERHEAD_OTF_01':
+            frozen_model = feat.Transformer(
+                depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
+                segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
+                device_id=0,
+            )
+            model = unet_overhead.Unet1(in_channels=117, out_channels=1)
         else:
             raise NotImplementedError()
     elif model_name == 'unet_v1':
@@ -340,7 +351,7 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     return model, optimizer, frozen_model
 
 
-def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_model: nn.Module = None) -> torch.Tensor:
+def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_model: typing.Union[nn.Module, feat.FeatureGenerator] = None) -> torch.Tensor:
     if experiment_name == 'multi-layer':
         example_name, in_rgb, target = batch
         in_rgb = in_rgb.cuda()
@@ -411,6 +422,15 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         # 117 channels
         input_features = batch['overhead_features_v2'].cuda()
         target_depth = batch['multi_layer_overhead_depth'][:, :1].cuda()
+        pred = pytorch_model(input_features)
+        loss_all = loss_fn.loss_calc_overhead_single_raw(pred, target_depth)
+
+    elif experiment_name == 'OVERHEAD_OTF_01':
+        assert 'from_prev_stage' in batch
+        example_name = batch['name']
+
+        input_features = batch['from_prev_stage']['overhead_features']
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].cuda()  # check how long this takes.
         pred = pytorch_model(input_features)
         loss_all = loss_fn.loss_calc_overhead_single_raw(pred, target_depth)
 
@@ -841,6 +861,11 @@ class Trainer(object):
 
         self.logger.info('Initialized model. Current global step: {}'.format(self.global_step))
 
+        if 'OVERHEAD_OTF' in self.experiment_name:
+            self.training_mode = 'multi_stage'
+        else:
+            self.training_mode = 'end_to_end'
+
     def metadata(self) -> dict:
         return {
             'experiment_name': self.experiment_name,
@@ -870,20 +895,57 @@ class Trainer(object):
             self.epoch = i_epoch
 
             io_bottleneck_detector = BottleneckDetector(name='IO', logger=self.logger, check_every=20, threshold_seconds=0.15)
-            for i_iter, batch in enumerate(self.data_loader):
-                io_bottleneck_detector.toc()
 
-                self.optimizer.zero_grad()
-                loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=self.frozen_model)
-                loss_all.backward()
-                self.optimizer.step()
+            if self.training_mode == 'end_to_end':
+                for i_iter, batch in enumerate(self.data_loader):
+                    io_bottleneck_detector.toc()
 
-                self.global_step += 1
-                self.iter = i_iter + 1
-                self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all)
+                    self.optimizer.zero_grad()
+                    loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=self.frozen_model)
+                    loss_all.backward()
+                    self.optimizer.step()
 
-                self.try_save_checkpoint()
-                io_bottleneck_detector.tic()
+                    self.global_step += 1
+                    self.iter = i_iter + 1
+                    self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all)
+
+                    self.try_save_checkpoint()
+                    io_bottleneck_detector.tic()
+            elif self.training_mode == 'multi_stage':
+                it = enumerate(self.data_loader)
+                assert isinstance(self.frozen_model, feat.Transformer)
+                i_iter, batch = next(it)
+                self.frozen_model.prefetch_batch_async(batch, target_device_id=1)
+
+                for next_i_iter, next_batch in enumerate(self.data_loader):
+                    io_bottleneck_detector.toc()
+                    # Current iteration: i_iter, batch
+
+                    # `batch` is the current batch.
+                    assert 'from_prev_stage' not in batch
+                    batch['from_prev_stage'] = {
+                        'overhead_features': self.frozen_model.pop_batch(target_device_id=1)  # blocks until available.
+                    }
+                    self.frozen_model.prefetch_batch_async(next_batch, target_device_id=1)  # prefetch for next iteration.
+
+                    self.optimizer.zero_grad()
+                    loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=None)
+                    loss_all.backward()
+                    self.optimizer.step()
+
+                    self.global_step += 1
+                    self.iter = i_iter + 1
+                    self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all)
+
+                    self.try_save_checkpoint()
+
+                    i_iter = next_i_iter
+                    batch = next_batch
+                    io_bottleneck_detector.tic()
+
+
+            else:
+                raise RuntimeError('Unrecognized training mode: {}'.format(self.training_mode))
 
 
 def surface_normal_eval(checkpoint_filename, split_name='test', num_examples=1000, random_seed=0, use_cpu=False, visualize=False):
@@ -950,3 +1012,39 @@ def surface_normal_eval(checkpoint_filename, split_name='test', num_examples=100
 
     # 1-d array of all error values. Can contain nan values.
     return error
+
+
+def semantic_segmentation_from_raw_prediction(pred):
+    pred_np = torch_utils.recursive_torch_to_numpy(pred)  # (B, 40, h, w)
+    pred_np_argmax = np.argmax(pred_np, axis=1).astype(np.uint8)
+    return pred_np_argmax
+
+
+def segment_predicted_depth(pred_depth, pred_nyu40):
+    """
+    TODO: use last-exit segmentation.
+    :param pred_depth: Background must be aligned.
+    :param pred_nyu40: np.ndarray of shape (B, H, W) and type np.uint8
+    :return:
+    """
+    assert pred_depth.ndim == 4
+    assert pred_nyu40.ndim == 3
+    assert pred_depth.shape[1] == 4
+    assert pred_nyu40.dtype == np.uint8
+
+    ret = pred_depth.copy()
+    ret.transpose(1, 0, 2, 3)[:3, pred_nyu40 == 34] = np.nan
+
+    return ret
+
+
+def traditional_depth_from_aligned_multi_layer_depth(aligned_and_segmented_depth):
+    assert aligned_and_segmented_depth.ndim == 4
+    assert aligned_and_segmented_depth.shape[1] == 4
+
+    ret = aligned_and_segmented_depth.copy()
+
+    mask = ~np.isfinite(aligned_and_segmented_depth[:, 0])
+    ret[:, 0][mask] = ret[:, 3][mask]
+
+    return ret[:, 0]

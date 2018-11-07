@@ -18,7 +18,7 @@ from scene3d.dataset import dataset_utils
 
 def undo_rgb_whitening(rgb):
     rgb_mean = np.array([178.1781, 158.5039, 142.5141], dtype=np.float32)
-    scale = scale = 1.0 / 255
+    scale = 1.0 / 255
 
     rgb = torch_utils.recursive_torch_to_numpy(rgb).copy()
     assert rgb.dtype == np.float32
@@ -32,7 +32,7 @@ def undo_rgb_whitening(rgb):
 
     # [0, 1]
     ret = rgb / 255.
-    return np.minimum(ret, 1.0)  # force <=1.0
+    return np.clip(ret, 0.0, 1.0)  # force 0 <= x <=1.0
 
 
 def is_filename_prefix_valid(value):

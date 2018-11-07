@@ -4,6 +4,10 @@ import torch.nn.functional as F
 import numpy as np
 
 
+def undo_log_depth(d):
+    return (2.0 ** d) - 0.5
+
+
 def loss_calc(pred, target):
     assert pred.shape[1] > 1
     mask = ~torch.isnan(target)

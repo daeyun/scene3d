@@ -70,7 +70,7 @@ void SaveCameras(const string &txt_filename, const vector<scene3d::Camera *> &ca
 }
 
 void ReadCameras(const string &txt_filename, vector<unique_ptr<Camera>> *cameras) {
-  LOGGER->info("Reading file {}", txt_filename);
+  LOGGER->debug("Reading file {}", txt_filename);
 
   std::ifstream source;
   source.open(txt_filename, std::ios_base::in);

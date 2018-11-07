@@ -107,10 +107,10 @@ void epipolar_feature_transform_parallel(const float *feature_map_data,
     transformed_batch.push_back(std::make_unique<vector<float>>());
   }
 
-#pragma omp parallel for schedule(dynamic) num_threads(12)
+#pragma omp parallel for schedule(dynamic) num_threads(20)
   for (int i = 0; i < batch_size; ++i) {
     const size_t read_offset = i * source_height * source_width;
-    LOGGER->info("[thread {}] {}: {}", omp_get_thread_num(), i, filenames_vector[i]);
+    LOGGER->debug("[thread {}] {}: {}", omp_get_thread_num(), i, filenames_vector[i]);
     auto start_time = scene3d::TimeSinceEpoch<std::milli>();
     scene3d::EpipolarFeatureTransform(feature_map_data + read_offset * source_channels,
                                       front_depth_data + read_offset,
@@ -122,17 +122,17 @@ void epipolar_feature_transform_parallel(const float *feature_map_data,
                                       target_height,
                                       target_width,
                                       transformed_batch[i].get());
-    LOGGER->info("[thread {}] {}: Elapsed: {} ms", omp_get_thread_num(), i, scene3d::TimeSinceEpoch<std::milli>() - start_time);
+    LOGGER->debug("[thread {}] {}: Elapsed: {} ms", omp_get_thread_num(), i, scene3d::TimeSinceEpoch<std::milli>() - start_time);
   }
 
   auto start_time = scene3d::TimeSinceEpoch<std::milli>();
-#pragma omp parallel for schedule(dynamic) num_threads(6)
+#pragma omp parallel for schedule(dynamic) num_threads(8)
   for (int i = 0; i < batch_size; ++i) {
     size_t item_count = transformed_batch[i]->size();
     size_t out_offset = i * item_count;  // `item_count` needs to be H*W*C.
     memcpy(out + out_offset, transformed_batch[i]->data(), item_count * sizeof(float));
   }
-  LOGGER->info("Elapsed (memcpy): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
+  LOGGER->debug("Elapsed (memcpy): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
 }
 
@@ -156,7 +156,7 @@ void render_depth_from_another_view(const float *depth_data,
   size_t size_bytes = transformed.size() * sizeof(float);
   memcpy(out, transformed.data(), size_bytes);
 
-  LOGGER->info("Elapsed: {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
+  LOGGER->debug("Elapsed: {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 }
 
 void frustum_visibility_map_from_overhead_view(const char *camera_filename,
@@ -174,5 +174,5 @@ void frustum_visibility_map_from_overhead_view(const char *camera_filename,
   size_t size_bytes = transformed.size() * sizeof(float);
   memcpy(out, transformed.data(), size_bytes);
 
-  LOGGER->info("Elapsed: {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
+  LOGGER->debug("Elapsed: {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 }

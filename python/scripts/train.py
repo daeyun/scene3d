@@ -2,6 +2,7 @@ import multiprocessing
 
 from scene3d import train_eval_pipeline
 import argparse
+import torch
 
 parser = argparse.ArgumentParser(description='training')
 parser.add_argument('--batch_size', type=int, default=3)
@@ -24,4 +25,5 @@ def main():
 
 if __name__ == '__main__':
     # multiprocessing.set_start_method('spawn')
-    main()
+    with torch.cuda.device(1):
+        main()

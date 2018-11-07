@@ -75,3 +75,14 @@ def force_contiguous(arr: np.ndarray):
         arr = np.ascontiguousarray(arr, dtype=arr.dtype)
     assert arr.flags['C_CONTIGUOUS']
     return arr
+
+
+def divide_start_end_indices(size, num_chunks):
+    assert num_chunks <= size, (size, num_chunks)
+    indices = np.array_split(np.arange(size), num_chunks)
+    ret = [(ind[0], ind[-1] + 1) for ind in indices]
+
+    for start, end in ret:
+        assert start < end
+
+    return ret

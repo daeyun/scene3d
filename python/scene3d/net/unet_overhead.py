@@ -5,13 +5,15 @@ import torch.nn.functional
 from third_party.inplace_abn.modules import InPlaceABN
 
 
+# Overhead models have higher BN momentum.
+
 def conv_0(in_ch, out_ch):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        nn.BatchNorm2d(out_ch, momentum=0.002),
+        nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
         nn.Conv2d(out_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        nn.BatchNorm2d(out_ch, momentum=0.002),
+        nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
     )
 
@@ -19,22 +21,22 @@ def conv_0(in_ch, out_ch):
 def conv_0_ip(in_ch, out_ch):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
         nn.Conv2d(out_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
     )
 
 
 def conv_1(in_ch, out_ch):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=2, dilation=2),
-        nn.BatchNorm2d(out_ch, momentum=0.002),
+        nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
         nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        nn.BatchNorm2d(out_ch, momentum=0.002),
+        nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
         nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        nn.BatchNorm2d(out_ch, momentum=0.002),
+        nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
     )
 
@@ -42,18 +44,18 @@ def conv_1(in_ch, out_ch):
 def conv_1_ip(in_ch, out_ch):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=2, dilation=2),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
         nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
         nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
     )
 
 
 def up(in_ch, out_ch):
     return nn.Sequential(
         nn.ConvTranspose2d(in_ch, out_ch, kernel_size=2, stride=2),
-        nn.BatchNorm2d(out_ch, momentum=0.005),
+        nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
     )
 

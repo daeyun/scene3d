@@ -251,10 +251,8 @@ def get_feature_map_output(model: Unet0, x):
     return out
 
 
-def get_feature_map_output_v1(model: Unet1, x):
+def get_feature_map_output_v1(model: Unet1, x, return_final_output=False):
     assert str(model.__class__) == str(Unet1)
-
-    unpool = lambda x: nn.functional.interpolate(x, scale_factor=2, mode='bilinear', align_corners=False)
 
     x1 = model.enc1(x)  # (240, 320)
     x2 = model.enc2(model.pool(x1))  # (120, 160)
@@ -267,12 +265,21 @@ def get_feature_map_output_v1(model: Unet1, x):
     out = model.dec3(torch.cat([x2, model.unpool(out)], dim=1))  # (120, 160)
 
     # (240, 320)
-    out = model.dec4[:3](torch.cat([x1, model.unpool(out)], dim=1))
+    out = model.dec4[:2](torch.cat([x1, model.unpool(out)], dim=1))
 
-    return out
+    feat_out = out
+
+    if not return_final_output:
+        return feat_out
+
+    out = model.dec4[2:](out)
+    out = model.dec5(out)  # (240, 320)
+    final_out = out
+
+    return feat_out, final_out
 
 
-def get_feature_map_output_v2(model: Unet2, x):
+def get_feature_map_output_v2(model: Unet2, x, return_encoding=True, return_final_output=False):
     assert str(model.__class__) == str(Unet2)
 
     x1 = model.enc1(x)  # (240, 320)
@@ -281,7 +288,8 @@ def get_feature_map_output_v2(model: Unet2, x):
     x4 = model.enc4(model.pool(x3))  # (30, 40)
     out = model.enc5(model.pool(x4))  # (15, 20)
 
-    encoding = out
+    if return_encoding:
+        encoding = out
 
     out = model.dec1(torch.cat([x4, model.unpool(out)], dim=1))  # (30, 40)
     out = model.dec2(torch.cat([x3, model.unpool(out)], dim=1))  # (60, 80)
@@ -290,4 +298,23 @@ def get_feature_map_output_v2(model: Unet2, x):
     # (240, 320)
     out = model.dec4(torch.cat([x1, model.unpool(out)], dim=1))
 
-    return out, encoding
+    if not return_final_output:
+        if return_encoding:
+            return out, encoding
+        else:
+            return out
+
+    out_branched = []
+    for i in range(len(model.dec5_branched)):
+        out_i = out
+        out_i = model.dec5_branched[i](out_i)  # (B, 32, 240, 320)
+        out_i = model.dec6_branched[i](out_i)  # (B, 1, 240, 320)
+        out_branched.append(out_i)
+
+    final_out = torch.cat(out_branched, dim=1)  # (B, C, 240, 320)
+    del out_branched
+
+    if return_encoding:
+        return out, encoding, final_out
+    else:
+        return out, final_out
