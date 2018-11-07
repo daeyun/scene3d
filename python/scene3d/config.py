@@ -75,6 +75,12 @@ elif path.isfile(path.expanduser('~/.is_uci_vision_cluster')):
     scene3d_root = '/home/daeyuns/data2/scene3d'
     default_out_root = '/home/daeyuns/data3/out/scene3d'
 
+elif hostname == 'aleph0':
+    suncg_root = '/mnt/scratch1/daeyuns/data/suncg_data'
+    pbrs_root = '/mnt/scratch1/daeyuns/data/pbrs'
+    scene3d_root = '/mnt/scratch1/daeyuns/data/scene3d'
+    default_out_root = '/mnt/scratch1/daeyuns/data/out/scene3d'
+
 else:
     raise RuntimeError('Unknown hostname: {}'.format(hostname))
 

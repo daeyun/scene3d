@@ -252,7 +252,7 @@ def get_feature_map_output(model: Unet0, x):
 
 
 def get_feature_map_output_v1(model: Unet1, x, return_final_output=False):
-    assert str(model.__class__) == str(Unet1)
+    # assert str(model.__class__) == str(Unet1)
 
     x1 = model.enc1(x)  # (240, 320)
     x2 = model.enc2(model.pool(x1))  # (120, 160)
@@ -280,7 +280,7 @@ def get_feature_map_output_v1(model: Unet1, x, return_final_output=False):
 
 
 def get_feature_map_output_v2(model: Unet2, x, return_encoding=True, return_final_output=False):
-    assert str(model.__class__) == str(Unet2)
+    # assert str(model.__class__) == str(Unet2)
 
     x1 = model.enc1(x)  # (240, 320)
     x2 = model.enc2(model.pool(x1))  # (120, 160)

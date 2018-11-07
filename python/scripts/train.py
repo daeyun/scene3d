@@ -25,5 +25,4 @@ def main():
 
 if __name__ == '__main__':
     # multiprocessing.set_start_method('spawn')
-    with torch.cuda.device(1):
-        main()
+    main()

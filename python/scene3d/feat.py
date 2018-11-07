@@ -5,16 +5,15 @@ import string
 import uuid
 import threading
 import time
-import matplotlib.pyplot as pt
 import torch
 from os import path
+from torch import nn
 import os
 from multiprocessing.pool import ThreadPool
 
 from scene3d import transforms
 from scene3d.net import unet
 from scene3d import camera
-from scene3d import geom2d
 from scene3d import io_utils
 from scene3d import epipolar
 from scene3d import log
@@ -73,6 +72,7 @@ def epipolar_line(xy, cam_params, td_cam_params, depth_image, back_depth_image, 
     xy2, _ = cam2.world_to_image(p[None])
 
     if plot:
+        import matplotlib.pyplot as pt
         pt.figure(figsize=(11, 10))
         pt.subplot(1, 2, 1)
         pt.imshow(depth_image)
@@ -89,6 +89,7 @@ def epipolar_line(xy, cam_params, td_cam_params, depth_image, back_depth_image, 
     coords = coords[inds]
 
     if plot:
+        import matplotlib.pyplot as pt
         pt.subplot(1, 2, 2)
         pt.scatter(coords[:, 0], coords[:, 1], c='lime', s=1)
         # pt.plot([xy1[0, 0], xy2[0, 0]], [xy1[0, 1], xy2[0, 1]], color='red')
@@ -170,6 +171,7 @@ def finite_mean(arr):
 
 
 def tight_ax():
+    import matplotlib.pyplot as pt
     ax = pt.gca()
     ax.set_xticklabels([])
     ax.set_yticklabels([])
@@ -193,6 +195,7 @@ def compute_error(overhead_pred, overhead_gt, overhead_features, plot=True):
     error3 = finite_mean(l1_copy2)
 
     if plot:
+        import matplotlib.pyplot as pt
         pt.figure(figsize=(19, 4))
         pt.subplot(1, 3, 1)
 
@@ -240,6 +243,8 @@ def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ld
     rgb_nosub = (example['rgb'] / dataset.rgb_scale + dataset.rgb_mean[:, None, None]) * dataset.rgb_scale  # (3, 240, 320)
 
     if plot:
+        import matplotlib.pyplot as pt
+        from scene3d import geom2d
         pt.figure(figsize=(18, 10))
         pt.subplot(1, 3, 1)
         pt.title('A\nInput RGB')
@@ -425,7 +430,7 @@ class FeatureGenerator(object):
         pass
         self.batches = {}  # stores prefetched batches, by target_device_id.
 
-    def prefetch_batch_async(self, value, target_device_id):
+    def prefetch_batch_async(self, value, target_device_id, options):
         raise NotImplementedError('Abstract method.')
 
     def pop_batch(self, target_device_id):
@@ -435,10 +440,13 @@ class FeatureGenerator(object):
 class Transformer(FeatureGenerator):
     def __init__(self, depth_checkpoint_filename, segmentation_checkpoint_filename, device_id):
         super().__init__()
-        self.device_id = device_id
+        if isinstance(device_id, (tuple, list)):
+            self.device_id = device_id
+        else:
+            self.device_id = [device_id]
         log.info('[Transformer] Device id: {}'.format(self.device_id))
 
-        with torch.cuda.device(self.device_id):
+        with torch.cuda.device(self.device_id[0]):
             log.info('Loading model {}'.format(depth_checkpoint_filename))
             self.depth_model, _ = train_eval_pipeline.load_checkpoint_as_frozen_model(depth_checkpoint_filename, use_cpu=False)
             self.depth_model.cuda()
@@ -462,7 +470,9 @@ class Transformer(FeatureGenerator):
 
         # NOTE: `batch` should not be accessed directly. call self._get_batch_subset.
 
-        with torch.cuda.device(self.device_id):
+        stime0 = time.time()
+        with torch.cuda.device(self.device_id[0]):
+            stime = time.time()
             assert isinstance(batch, dict)
             if use_gt_geometry:
                 required_fields = ['rgb', 'multi_layer_depth', 'multi_layer_depth_aligned_background', 'overhead_camera_pose_4params', 'camera_filename']
@@ -476,6 +486,7 @@ class Transformer(FeatureGenerator):
             in_rgb = in_rgb_np.cuda()
 
             batch_size = len(in_rgb_np)
+            log.info('reading input rgb took {}'.format(time.time() - stime))
 
             if use_gt_geometry:
                 # (B, 48, 240, 320)
@@ -498,6 +509,7 @@ class Transformer(FeatureGenerator):
                 depth_aligned = batch['multi_layer_depth_aligned_background']
             else:
                 # (B, 48, 240, 320)
+                stime = time.time()
                 feature_map1, predicted_depth = unet.get_feature_map_output_v2(self.depth_model, in_rgb, return_encoding=False, return_final_output=True)
                 predicted_depth = torch_utils.recursive_torch_to_numpy(loss_fn.undo_log_depth(predicted_depth))
                 feature_map1_np = torch_utils.recursive_torch_to_numpy(feature_map1)
@@ -511,7 +523,9 @@ class Transformer(FeatureGenerator):
                 feature_map2_np = torch_utils.recursive_torch_to_numpy(feature_map2)
                 del feature_map2
                 assert feature_map2_np.shape[1] == 64
+                log.info('feature map output took {}'.format(time.time() - stime))
 
+                stime = time.time()
                 predicted_depth_segmented = train_eval_pipeline.segment_predicted_depth(predicted_depth, predicted_ss)
                 depth_aligned = predicted_depth_segmented
 
@@ -519,37 +533,46 @@ class Transformer(FeatureGenerator):
 
                 front = dataset_utils.force_contiguous(train_eval_pipeline.traditional_depth_from_aligned_multi_layer_depth(predicted_depth_segmented))  # (B, H, W)
                 back = dataset_utils.force_contiguous(predicted_depth_segmented[:, 1])  # (B, H, W)
+                log.info('memory stuff took {}'.format(time.time() - stime))
 
             # (B, 300, 300, 115)
             camera_filenames = batch['camera_filename']
+
+            stime = time.time()
             tranformed_batch = epipolar.feature_transform_parallel(feat, front_depth_data=front, back_depth_data=back, camera_filenames=camera_filenames, target_height=300, target_width=300)
 
             ret = np.empty((batch_size, 117, 300, 300), dtype=np.float32)
 
             # (B, 115, 300, 300)
             ret[:, 2:] = tranformed_batch.transpose(0, 3, 1, 2)
+            log.info('feature_transform_parallel took {}'.format(time.time() - stime))
 
             # (B, 2, 300, 300)
 
+            stime = time.time()
             ret[:, :2] = make_extra_features_batch(depth_aligned, batch['overhead_camera_pose_4params'], self.tmp_out_root)
+            log.info('make_extra_features_batch took {}'.format(time.time() - stime))
+            log.info('TOTAL prep took {}'.format(time.time() - stime0))
 
             return ret
 
-    def _prefetch_worker(self, batch, target_device_id, out_dict):
+    def _prefetch_worker(self, batch, target_device_id, use_gt_geometry, out_dict):
         assert out_dict[target_device_id] is None
-        f = self.get_transformed_features(batch, use_gt_geometry=False)
+        f = self.get_transformed_features(batch, use_gt_geometry=use_gt_geometry)
         with torch.cuda.device(target_device_id):
             out_dict[target_device_id] = torch.Tensor(f).cuda()
 
-    def prefetch_batch_async(self, batch, target_device_id):
+    def prefetch_batch_async(self, batch, target_device_id, options=None):
         assert target_device_id not in self.batches
         self.batches[target_device_id] = None
-        thread = threading.Thread(target=self._prefetch_worker, args=(batch, target_device_id, self.batches), kwargs={})
+        use_gt_geometry = options['use_gt_geometry']
+        thread = threading.Thread(target=self._prefetch_worker, args=(batch, target_device_id, use_gt_geometry, self.batches), kwargs={})
         thread.start()
 
     def pop_batch(self, target_device_id):
         stime = time.time()
         while target_device_id not in self.batches or self.batches[target_device_id] is None:
+            print('.', end='', flush=True)
             time.sleep(0.05)
         print('Waited {:.2f} seconds for feature transformation.'.format(time.time() - stime))
         batch = self.batches.pop(target_device_id)

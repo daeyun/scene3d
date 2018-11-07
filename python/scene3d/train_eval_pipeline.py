@@ -209,6 +209,8 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
 def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> typing.Tuple[nn.Module, optim.Optimizer, nn.Module]:
     frozen_model = None
 
+    learning_rate = 0.0005
+
     if model_name == 'deeplab':
         raise NotImplementedError()
     elif model_name == 'unet_v0':
@@ -257,9 +259,10 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             frozen_model = feat.Transformer(
                 depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
                 segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
-                device_id=0,
+                device_id=torch.cuda.device_count() - 1,  # use last gpu
             )
             model = unet_overhead.Unet1(in_channels=117, out_channels=1)
+            learning_rate = 0.001
         else:
             raise NotImplementedError()
     elif model_name == 'unet_v1':
@@ -344,7 +347,6 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
 
     params = list(filter(lambda p: p.requires_grad, model.parameters()))
     log.info('Number of pytorch parameter tensors %d', len(params))
-    learning_rate = 0.0005
     optimizer = optim.Adam(params, lr=learning_rate)
     optimizer.zero_grad()
 
@@ -891,6 +893,10 @@ class Trainer(object):
         else:
             max_epochs = self.max_epochs
 
+        if self.training_mode == 'multi_stage':
+            device_count = list(range(torch.cuda.device_count()))
+            self.model = nn.DataParallel(self.model, device_ids=device_count[:-1])  # all except last gpu
+
         for i_epoch in range(max_epochs):
             self.epoch = i_epoch
 
@@ -915,7 +921,7 @@ class Trainer(object):
                 it = enumerate(self.data_loader)
                 assert isinstance(self.frozen_model, feat.Transformer)
                 i_iter, batch = next(it)
-                self.frozen_model.prefetch_batch_async(batch, target_device_id=1)
+                self.frozen_model.prefetch_batch_async(batch, target_device_id=0, options={'use_gt_geometry': False})
 
                 for next_i_iter, next_batch in enumerate(self.data_loader):
                     io_bottleneck_detector.toc()
@@ -924,9 +930,9 @@ class Trainer(object):
                     # `batch` is the current batch.
                     assert 'from_prev_stage' not in batch
                     batch['from_prev_stage'] = {
-                        'overhead_features': self.frozen_model.pop_batch(target_device_id=1)  # blocks until available.
+                        'overhead_features': self.frozen_model.pop_batch(target_device_id=0)  # blocks until available.
                     }
-                    self.frozen_model.prefetch_batch_async(next_batch, target_device_id=1)  # prefetch for next iteration.
+                    self.frozen_model.prefetch_batch_async(batch, target_device_id=0, options={'use_gt_geometry': False})  # prefetch for next iteration.
 
                     self.optimizer.zero_grad()
                     loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=None)
