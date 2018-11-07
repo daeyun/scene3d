@@ -7,7 +7,6 @@ import threading
 import time
 import torch
 from os import path
-from torch import nn
 import os
 from multiprocessing.pool import ThreadPool
 
@@ -430,7 +429,7 @@ class FeatureGenerator(object):
         pass
         self.batches = {}  # stores prefetched batches, by target_device_id.
 
-    def prefetch_batch_async(self, value, target_device_id, options):
+    def prefetch_batch_async(self, value, start_end_indices, target_device_id, options):
         raise NotImplementedError('Abstract method.')
 
     def pop_batch(self, target_device_id):
@@ -440,13 +439,10 @@ class FeatureGenerator(object):
 class Transformer(FeatureGenerator):
     def __init__(self, depth_checkpoint_filename, segmentation_checkpoint_filename, device_id):
         super().__init__()
-        if isinstance(device_id, (tuple, list)):
-            self.device_id = device_id
-        else:
-            self.device_id = [device_id]
+        self.device_id = device_id
         log.info('[Transformer] Device id: {}'.format(self.device_id))
 
-        with torch.cuda.device(self.device_id[0]):
+        with torch.cuda.device(self.device_id):
             log.info('Loading model {}'.format(depth_checkpoint_filename))
             self.depth_model, _ = train_eval_pipeline.load_checkpoint_as_frozen_model(depth_checkpoint_filename, use_cpu=False)
             self.depth_model.cuda()
@@ -460,8 +456,20 @@ class Transformer(FeatureGenerator):
         else:
             self.tmp_out_root = '/tmp/scene3d_transformer_cam'
         io_utils.ensure_dir_exists(self.tmp_out_root)
+        self.num_workers = 5
+        self.pool = ThreadPool(self.num_workers)
 
-    def get_transformed_features(self, batch, use_gt_geometry=True) -> np.ndarray:
+    @staticmethod
+    def _get_batch_subset(batch, key, start_end):
+        item = batch[key]
+        if start_end is None:
+            return item
+        assert 0 <= start_end[0]
+        assert start_end[0] < start_end[1]
+        assert start_end[1] <= len(item)
+        return item[start_end[0]:start_end[1]]
+
+    def _get_transformed_features(self, batch, start_end_indices, use_gt_geometry=True) -> (np.ndarray, list):
         """
         :param batch:
         :param use_gt_geometry:
@@ -471,7 +479,7 @@ class Transformer(FeatureGenerator):
         # NOTE: `batch` should not be accessed directly. call self._get_batch_subset.
 
         stime0 = time.time()
-        with torch.cuda.device(self.device_id[0]):
+        with torch.cuda.device(self.device_id):
             stime = time.time()
             assert isinstance(batch, dict)
             if use_gt_geometry:
@@ -482,11 +490,11 @@ class Transformer(FeatureGenerator):
             for field in required_fields:
                 assert field in batch, field
 
-            in_rgb_np = batch['rgb']
+            in_rgb_np = self._get_batch_subset(batch, 'rgb', start_end_indices)
             in_rgb = in_rgb_np.cuda()
 
             batch_size = len(in_rgb_np)
-            log.info('reading input rgb took {}'.format(time.time() - stime))
+            # log.info('reading input rgb took {}'.format(time.time() - stime))
 
             if use_gt_geometry:
                 # (B, 48, 240, 320)
@@ -501,12 +509,12 @@ class Transformer(FeatureGenerator):
                 del feature_map2
                 assert feature_map2_np.shape[1] == 64
 
-                multi_layer_depth = torch_utils.recursive_torch_to_numpy(batch['multi_layer_depth'][:, :2])
+                multi_layer_depth = torch_utils.recursive_torch_to_numpy(self._get_batch_subset(batch, 'multi_layer_depth', start_end_indices)[:, :2])
                 feat = dataset_utils.force_contiguous(np.concatenate([in_rgb_np, feature_map1_np, feature_map2_np], axis=1).transpose(0, 2, 3, 1))  # (B, H, W, C)
                 front = dataset_utils.force_contiguous(multi_layer_depth[:, 0])  # (B, H, W)
                 back = dataset_utils.force_contiguous(multi_layer_depth[:, 1])  # (B, H, W)
 
-                depth_aligned = batch['multi_layer_depth_aligned_background']
+                depth_aligned = self._get_batch_subset(batch, 'multi_layer_depth_aligned_background', start_end_indices)
             else:
                 # (B, 48, 240, 320)
                 stime = time.time()
@@ -523,7 +531,7 @@ class Transformer(FeatureGenerator):
                 feature_map2_np = torch_utils.recursive_torch_to_numpy(feature_map2)
                 del feature_map2
                 assert feature_map2_np.shape[1] == 64
-                log.info('feature map output took {}'.format(time.time() - stime))
+                # log.info('feature map output took {}'.format(time.time() - stime))
 
                 stime = time.time()
                 predicted_depth_segmented = train_eval_pipeline.segment_predicted_depth(predicted_depth, predicted_ss)
@@ -533,10 +541,10 @@ class Transformer(FeatureGenerator):
 
                 front = dataset_utils.force_contiguous(train_eval_pipeline.traditional_depth_from_aligned_multi_layer_depth(predicted_depth_segmented))  # (B, H, W)
                 back = dataset_utils.force_contiguous(predicted_depth_segmented[:, 1])  # (B, H, W)
-                log.info('memory stuff took {}'.format(time.time() - stime))
+                # log.info('memory stuff took {}'.format(time.time() - stime))
 
             # (B, 300, 300, 115)
-            camera_filenames = batch['camera_filename']
+            camera_filenames = self._get_batch_subset(batch, 'camera_filename', start_end_indices)
 
             stime = time.time()
             tranformed_batch = epipolar.feature_transform_parallel(feat, front_depth_data=front, back_depth_data=back, camera_filenames=camera_filenames, target_height=300, target_width=300)
@@ -545,34 +553,59 @@ class Transformer(FeatureGenerator):
 
             # (B, 115, 300, 300)
             ret[:, 2:] = tranformed_batch.transpose(0, 3, 1, 2)
-            log.info('feature_transform_parallel took {}'.format(time.time() - stime))
+            # log.info('feature_transform_parallel took {}'.format(time.time() - stime))
 
             # (B, 2, 300, 300)
 
             stime = time.time()
-            ret[:, :2] = make_extra_features_batch(depth_aligned, batch['overhead_camera_pose_4params'], self.tmp_out_root)
-            log.info('make_extra_features_batch took {}'.format(time.time() - stime))
-            log.info('TOTAL prep took {}'.format(time.time() - stime0))
+            camparams = self._get_batch_subset(batch, 'overhead_camera_pose_4params', start_end_indices)
+            ret[:, :2] = make_extra_features_batch(depth_aligned, camparams, self.tmp_out_root)
+            # log.info('make_extra_features_batch took {}'.format(time.time() - stime))
+            # log.info('TOTAL prep took {}'.format(time.time() - stime0))
 
-            return ret
+            return ret, self._get_batch_subset(batch, 'name', start_end_indices)
 
-    def _prefetch_worker(self, batch, target_device_id, use_gt_geometry, out_dict):
+    def get_transformed_features(self, batch, start_end_indices, use_gt_geometry=True) -> (np.ndarray, list):
+        start, end = start_end_indices
+        size = end - start
+        assert size > 0
+        all_indices = dataset_utils.divide_start_end_indices(size, num_chunks=self.num_workers, offset=start)
+
+        args = []
+        for item in all_indices:
+            args.append([
+                batch, item, use_gt_geometry
+            ])
+
+        out = self.pool.starmap(self._get_transformed_features, args)
+
+        out_feat = []
+        out_names = []
+        for f, names in out:
+            out_feat.append(f)
+            out_names.extend(names)
+
+        return np.concatenate(out_feat, axis=0), out_names
+
+    def _prefetch_worker(self, batch, start_end_indices, target_device_id, use_gt_geometry, out_dict):
         assert out_dict[target_device_id] is None
-        f = self.get_transformed_features(batch, use_gt_geometry=use_gt_geometry)
-        with torch.cuda.device(target_device_id):
-            out_dict[target_device_id] = torch.Tensor(f).cuda()
+        out_feat, out_names = self.get_transformed_features(batch, start_end_indices, use_gt_geometry=use_gt_geometry)
+        out_dict[target_device_id] = (torch.Tensor(out_feat), out_names)
 
-    def prefetch_batch_async(self, batch, target_device_id, options=None):
+    def prefetch_batch_async(self, batch, start_end_indices, target_device_id, options=None):
         assert target_device_id not in self.batches
         self.batches[target_device_id] = None
         use_gt_geometry = options['use_gt_geometry']
-        thread = threading.Thread(target=self._prefetch_worker, args=(batch, target_device_id, use_gt_geometry, self.batches), kwargs={})
+        thread = threading.Thread(target=self._prefetch_worker, args=(batch, start_end_indices, target_device_id, use_gt_geometry, self.batches), kwargs={})
         thread.start()
 
     def pop_batch(self, target_device_id):
         stime = time.time()
+        print_time = time.time()
         while target_device_id not in self.batches or self.batches[target_device_id] is None:
-            print('.', end='', flush=True)
+            if time.time() - print_time > 3:
+                print('.', end='', flush=True)
+                print_time = time.time()
             time.sleep(0.05)
         print('Waited {:.2f} seconds for feature transformation.'.format(time.time() - stime))
         batch = self.batches.pop(target_device_id)

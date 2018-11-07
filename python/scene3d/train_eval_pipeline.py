@@ -1,4 +1,5 @@
 import multiprocessing
+from multiprocessing.pool import ThreadPool
 
 import glob
 import torch
@@ -25,6 +26,7 @@ from scene3d.net import unet_no_bn
 from scene3d import log
 from scene3d import transforms
 from scene3d import loss_fn
+from scene3d.dataset import dataset_utils
 from scene3d import torch_utils
 from torch import optim
 from torch import nn
@@ -256,13 +258,20 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
         if experiment_name == 'overhead_features_02_all':
             model = unet_overhead.Unet1(in_channels=117, out_channels=1)
         elif experiment_name == 'OVERHEAD_OTF_01':
-            frozen_model = feat.Transformer(
-                depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
-                segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
-                device_id=torch.cuda.device_count() - 1,  # use last gpu
-            )
+            frozen_model = [
+                feat.Transformer(
+                    depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
+                    segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
+                    device_id=list(range(torch.cuda.device_count()))[-1],  # use last n gpus
+                ),
+                # feat.Transformer(
+                #     depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
+                #     segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
+                #     device_id=list(range(torch.cuda.device_count()))[-2],  # use last n gpus
+                # ),
+            ]
             model = unet_overhead.Unet1(in_channels=117, out_channels=1)
-            learning_rate = 0.001
+            learning_rate = 0.002
         else:
             raise NotImplementedError()
     elif model_name == 'unet_v1':
@@ -432,9 +441,9 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         example_name = batch['name']
 
         input_features = batch['from_prev_stage']['overhead_features']
-        target_depth = batch['multi_layer_overhead_depth'][:, :1].cuda()  # check how long this takes.
-        pred = pytorch_model(input_features)
-        loss_all = loss_fn.loss_calc_overhead_single_raw(pred, target_depth)
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_per_gpu = pytorch_model([input_features, target_depth])
+        loss_all = loss_per_gpu
 
     # v8
     elif experiment_name == 'v8-multi_layer_depth':
@@ -727,8 +736,13 @@ def save_checkpoint(save_dir: str, pytorch_model: nn.Module, optimizer: torch.op
     save_filename = path.join(save_dir, '{:08d}_{:03d}_{:07d}.pth'.format(metadata['global_step'], metadata['epoch'], metadata['iter']))
     log.info('Saving %s', save_filename)
 
+    if isinstance(pytorch_model, nn.DataParallel):
+        model_state_dict = pytorch_model.module.state_dict()
+    else:
+        model_state_dict = pytorch_model.state_dict()
+
     saved_dict = {
-        'model_state_dict': pytorch_model.state_dict(),
+        'model_state_dict': model_state_dict,
         'optimizer_state_dict': optimizer.state_dict(),
         'metadata': metadata,
     }
@@ -840,6 +854,11 @@ class Trainer(object):
         self.iter = 0  # Step within the current epoch.
         self.loaded_metadata = None
 
+        if 'OVERHEAD_OTF' in self.experiment_name:
+            self.training_mode = 'multi_stage'
+        else:
+            self.training_mode = 'end_to_end'
+
         if self.load_checkpoint:
             self.model, self.optimizer, self.loaded_metadata, self.frozen_model = load_checkpoint(self.load_checkpoint, use_cpu=self.use_cpu)
             self.logger.info('Loaded metadata from {}:\n{}'.format(self.load_checkpoint, self.loaded_metadata))
@@ -853,20 +872,18 @@ class Trainer(object):
         else:
             self.model, self.optimizer, self.frozen_model = get_pytorch_model_and_optimizer(model_name=self.model_name, experiment_name=self.experiment_name)
             # Immediately save a checkpoint at global step 0.
-            assert self.try_save_checkpoint()
-
-        self.model.train()
-
+        if self.training_mode == 'multi_stage':
+            # TODO: refactor device ids.
+            self.model = nn.DataParallel(self.model, device_ids=unet_overhead.device_ids).cuda()  # all except last n gpus
         if not self.use_cpu:
             self.model.cuda()
             torch.set_default_tensor_type('torch.FloatTensor')  # Back to defaults.
+        self.model.train()
+
+        if not self.load_checkpoint:
+            assert self.try_save_checkpoint()
 
         self.logger.info('Initialized model. Current global step: {}'.format(self.global_step))
-
-        if 'OVERHEAD_OTF' in self.experiment_name:
-            self.training_mode = 'multi_stage'
-        else:
-            self.training_mode = 'end_to_end'
 
     def metadata(self) -> dict:
         return {
@@ -893,9 +910,13 @@ class Trainer(object):
         else:
             max_epochs = self.max_epochs
 
-        if self.training_mode == 'multi_stage':
-            device_count = list(range(torch.cuda.device_count()))
-            self.model = nn.DataParallel(self.model, device_ids=device_count[:-1])  # all except last gpu
+        # pool = ThreadPool(20)
+        # def save_example(overhead_features, i, name):
+        #     ##### TODO
+        #     out_filename = '/mnt/scratch2/daeyuns/overhead_features/pred/{}.bin'.format(name)
+        #     io_utils.ensure_dir_exists(path.dirname(out_filename))
+        #     out_arr = torch_utils.recursive_torch_to_numpy(overhead_features[i]).astype(np.float16)
+        #     io_utils.save_array_compressed(out_filename, out_arr)
 
         for i_epoch in range(max_epochs):
             self.epoch = i_epoch
@@ -919,35 +940,66 @@ class Trainer(object):
                     io_bottleneck_detector.tic()
             elif self.training_mode == 'multi_stage':
                 it = enumerate(self.data_loader)
-                assert isinstance(self.frozen_model, feat.Transformer)
+                assert isinstance(self.frozen_model[0], feat.Transformer)
                 i_iter, batch = next(it)
-                self.frozen_model.prefetch_batch_async(batch, target_device_id=0, options={'use_gt_geometry': False})
 
-                for next_i_iter, next_batch in enumerate(self.data_loader):
-                    io_bottleneck_detector.toc()
-                    # Current iteration: i_iter, batch
+                with torch.cuda.device(unet_overhead.device_ids[0]):
+                    start_end_indices = dataset_utils.divide_start_end_indices(self.batch_size, num_chunks=len(self.frozen_model))
 
-                    # `batch` is the current batch.
-                    assert 'from_prev_stage' not in batch
-                    batch['from_prev_stage'] = {
-                        'overhead_features': self.frozen_model.pop_batch(target_device_id=0)  # blocks until available.
-                    }
-                    self.frozen_model.prefetch_batch_async(batch, target_device_id=0, options={'use_gt_geometry': False})  # prefetch for next iteration.
+                    for item_i, item in enumerate(self.frozen_model):
+                        item.prefetch_batch_async(batch, start_end_indices=start_end_indices[item_i], target_device_id=unet_overhead.device_ids[0], options={'use_gt_geometry': False})
 
-                    self.optimizer.zero_grad()
-                    loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=None)
-                    loss_all.backward()
-                    self.optimizer.step()
+                    for next_i_iter, next_batch in enumerate(self.data_loader):
+                        io_bottleneck_detector.toc()
+                        # Current iteration: i_iter, batch
 
-                    self.global_step += 1
-                    self.iter = i_iter + 1
-                    self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all)
+                        # `batch` is the current batch.
+                        assert 'from_prev_stage' not in batch
+                        # log.info('popping')
+                        transformer_feat_list = []
+                        transformer_name_list = []
+                        for item in self.frozen_model:
+                            transformer_feat, transformer_names = item.pop_batch(target_device_id=unet_overhead.device_ids[0])
+                            transformer_feat_list.append(transformer_feat)
+                            transformer_name_list.extend(transformer_names)
 
-                    self.try_save_checkpoint()
+                        overhead_features = torch.cat(transformer_feat_list, dim=0)
+                        batch['from_prev_stage'] = {
+                            'overhead_features': overhead_features.cuda(async=True)  # blocks until available.
+                        }
 
-                    i_iter = next_i_iter
-                    batch = next_batch
-                    io_bottleneck_detector.tic()
+                        assert len(transformer_name_list) == len(batch['name'])
+                        assert len(overhead_features) == len(batch['name'])
+                        assert self.batch_size == len(batch['name'])
+                        for bi in range(self.batch_size):
+                            name0 = transformer_name_list[bi]
+                            name1 = batch['name'][bi]
+                            assert name0 == name1, (name0, name1)
+
+                        # log.info('request async')
+                        for item_i, item in enumerate(self.frozen_model):
+                            item.prefetch_batch_async(next_batch, start_end_indices=start_end_indices[item_i], target_device_id=unet_overhead.device_ids[0], options={'use_gt_geometry': False})
+
+                        # log.info('zero grad')
+                        self.optimizer.zero_grad()
+                        # log.info('computing loss')
+                        loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=None)
+                        # log.info('computing backward')
+                        loss_all.backward(torch.ones_like(loss_all).cuda(unet_overhead.device_ids[-1]))
+                        # log.info('computing step')
+                        self.optimizer.step()
+
+                        self.global_step += 1
+                        self.iter = i_iter + 1
+                        self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, torch_utils.recursive_torch_to_numpy(loss_all).mean())
+
+                        # log.info('try save')
+                        self.try_save_checkpoint()
+
+                        i_iter = next_i_iter
+                        batch = next_batch
+                        io_bottleneck_detector.tic()
+                        # log.info('end of iteration')
 
 
             else:

@@ -125,6 +125,7 @@ class MultiLayerDepth(data.Dataset):
         if field_name not in self.fields or field_name in ret:
             return
         png_filename = path.join(config.pbrs_root, 'mlt_v2', example_name + '_mlt.png')
+        cv2.setNumThreads(0)
         in_rgb = cv2.cvtColor(cv2.imread(png_filename, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
         h, w, ch = in_rgb.shape
         assert ch == 3

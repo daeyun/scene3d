@@ -2,7 +2,11 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional
-from third_party.inplace_abn.modules import InPlaceABN
+from third_party.inplace_abn.modules import InPlaceABN, InPlaceABNSync
+from scene3d import loss_fn
+
+device_count = list(range(torch.cuda.device_count()))
+device_ids = device_count[:-1]
 
 
 # Overhead models have higher BN momentum.
@@ -21,9 +25,9 @@ def conv_0(in_ch, out_ch):
 def conv_0_ip(in_ch, out_ch):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
         nn.Conv2d(out_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
     )
 
 
@@ -44,11 +48,11 @@ def conv_1(in_ch, out_ch):
 def conv_1_ip(in_ch, out_ch):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=2, dilation=2),
-        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
         nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
         nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        InPlaceABN(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
     )
 
 
@@ -130,7 +134,9 @@ class Unet1(nn.Module):
         return nn.functional.interpolate(value, scale_factor=2, mode='bilinear', align_corners=False)
 
     def forward(self, x):
-        padded_x = self.pad(x)
+        assert isinstance(x, (list, tuple))
+        in_rgb, target = x
+        padded_x = self.pad(in_rgb)
 
         x1 = self.enc1(padded_x)  # (304, 304)
         x2 = self.enc2(self.pool(x1))  # (152, 152)
@@ -145,4 +151,6 @@ class Unet1(nn.Module):
         out = self.dec5(out)  # (304, 304)
         out = self.unpad(out)  # (300, 300)
 
+        # wrapping loss in forward so we can do it in parallel.
+        out = loss_fn.loss_calc_overhead_single_raw(out, target)
         return out

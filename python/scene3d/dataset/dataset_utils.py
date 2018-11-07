@@ -77,9 +77,9 @@ def force_contiguous(arr: np.ndarray):
     return arr
 
 
-def divide_start_end_indices(size, num_chunks):
+def divide_start_end_indices(size, num_chunks, offset=0):
     assert num_chunks <= size, (size, num_chunks)
-    indices = np.array_split(np.arange(size), num_chunks)
+    indices = np.array_split(np.arange(size)+offset, num_chunks)
     ret = [(ind[0], ind[-1] + 1) for ind in indices]
 
     for start, end in ret:
