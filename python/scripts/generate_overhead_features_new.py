@@ -1,27 +1,24 @@
 import time
-import os
-from multiprocessing.dummy import Pool as ThreadPool
-
-import cv2
-import numpy as np
 from os import path
+
+from multiprocessing.dummy import Pool as ThreadPool
+import numpy as np
 import torch.utils.data
 from torch.backends import cudnn
 
-from scene3d import pbrs_utils
-from scene3d import suncg_utils
-from scene3d import render_depth
-from scene3d import io_utils
 from scene3d import config
-from scene3d import camera
 from scene3d import train_eval_pipeline
-from scene3d import epipolar
-from scene3d.net import unet
+from scene3d import feat
+from scene3d import io_utils
 from scene3d import log
 from scene3d import torch_utils
-from scene3d.dataset import dataset_utils
 from scene3d.dataset import v8
-from scene3d import feat
+
+batch_size = 50
+num_data_workers = 4
+pool = ThreadPool(20)
+
+_num_processed = 0
 
 
 def print_eta(start_time, num_processed, num_total):
@@ -40,114 +37,53 @@ def save_example(overhead_features, i, name):
     print(out_filename)
 
 
+def process_batch(i_iter, batch, overhead_features, transformer_names):
+    assert len(transformer_names) == len(batch['name'])
+    assert len(overhead_features) == len(batch['name'])
+    for bi in range(len(transformer_names)):
+        name0 = transformer_names[bi]
+        name1 = batch['name'][bi]
+        assert name0 == name1, (name0, name1)
+
+    pool.starmap_async(save_example, [[overhead_features, i, name] for i, name in enumerate(batch['name'])])
+
+    global _num_processed
+    _num_processed += len(transformer_names)
+
+
 def main():
-    with torch.cuda.device(1):
-        cudnn.enabled = True
-        cudnn.benchmark = True
-        pool = ThreadPool(20)
+    dataset_all = v8.MultiLayerDepth(
+        # split='all',
+        split='/mnt/ramdisk/remaining_features.txt',
+        subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255,
+        fields=('rgb', 'overhead_camera_pose_4params', 'camera_filename', 'multi_layer_overhead_depth'))
 
+    transformer = feat.Transformer(
+        depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
+        segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
+        device_id=1,
+        num_workers=5,
+    )
 
-        transformer = feat.Transformer(
-            depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
-            segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
-            device_id=1,
-        )
+    loader = torch.utils.data.DataLoader(dataset_all, batch_size=batch_size, num_workers=num_data_workers, shuffle=False, drop_last=False, pin_memory=True)
+    it = enumerate(loader)
+    i_iter, batch = next(it)
 
-        batch_size = 50
-        num_data_workers = 5
-        dataset_all = v8.MultiLayerDepth(split='all', subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255,
-                                         fields=('rgb', 'overhead_camera_pose_4params', 'camera_filename', 'multi_layer_overhead_depth'))
-        loader = torch.utils.data.DataLoader(dataset_all, batch_size=batch_size, num_workers=num_data_workers, shuffle=False, drop_last=False, pin_memory=True)
+    transformer.prefetch_batch_async(batch, start_end_indices=None, target_device_id=1, options={'use_gt_geometry': False})
 
-        it = enumerate(loader)
-        
-        for i_iter, batch in it:
-            bs = len(batch['name'])
-            overhead_features, name = transformer._get_transformed_features(batch, start_end_indices=None, use_gt_geometry=False)
-            print(overhead_features.shape)
+    start_time = time.time()
 
-            pool.starmap_async(save_example, [[overhead_features, i, name] for i, name in enumerate(batch['name'])])
-
-        # for next_i_iter, next_batch in it:
-        #     print(i_iter)
-        #     overhead_features = torch.cat(transformer.pop_batch(target_device_id=1), dim=0)
-        #     transformer.prefetch_batch_async(next_batch, start_end_indices=[0, len(batch['name'])], target_device_id=1, options={'use_gt_geometry': False})
-        #
-        #
-        #     i_iter = next_i_iter
-        #     batch = next_batch
-
-    # log.info('Loading model {}'.format(model_filename1))
-    # model1, _, _, _ = train_eval_pipeline.load_checkpoint(model_filename1, use_cpu=False)
-    # model1.train(False)
-    # model1.cuda()
-    #
-    # log.info('Loading model {}'.format(model_filename2))
-    # model2, _, _, _ = train_eval_pipeline.load_checkpoint(model_filename2, use_cpu=False)
-    # model2.train(False)
-    # model2.cuda()
-    #
-    # # in_rgb = torch.Tensor(in_rgb_np[None]).cuda()
-    #
-    # loader = torch.utils.data.DataLoader(dataset_all, batch_size=batch_size, num_workers=num_data_workers, shuffle=False, drop_last=False, pin_memory=True)
-    #
-    # start_time = time.time()
-    # num_processed = 0
-    # num_total = len(dataset_all)
-    #
-    # for i_iter, batch in enumerate(loader):
-    #     log.info(i_iter)
-    #
-    #     # (B, 48, 240, 320)
-    #     feature_map1, _ = unet.get_feature_map_output_v2(model1, batch['rgb'].cuda())
-    #     feature_map1_np = torch_utils.recursive_torch_to_numpy(feature_map1)
-    #     assert feature_map1_np.shape[1] == 48
-    #
-    #     # (B, 64, 240, 320)
-    #     feature_map2 = unet.get_feature_map_output_v1(model2, batch['rgb'].cuda())
-    #     feature_map2_np = torch_utils.recursive_torch_to_numpy(feature_map2)
-    #     assert feature_map2_np.shape[1] == 64
-    #
-    #     rgb_np = v8.undo_rgb_whitening(batch['rgb'])
-    #
-    #     concatenated_features = np.concatenate([rgb_np, feature_map1_np, feature_map2_np], axis=1)
-    #
-    #     num_examples = len(concatenated_features)
-    #     assert num_examples == len(batch['camera_filename'])
-    #
-    #     feat = dataset_utils.force_contiguous(concatenated_features.transpose(0, 2, 3, 1))  # (B, H, W, C)
-    #     front = dataset_utils.force_contiguous(torch_utils.recursive_torch_to_numpy(batch['multi_layer_depth'][:, 0]))  # (B, H, W)
-    #     back = dataset_utils.force_contiguous(torch_utils.recursive_torch_to_numpy(batch['multi_layer_depth'][:, 1]))  # (B, H, W)
-    #     camera_filenames = batch['camera_filename']
-    #
-    #     # (B, 300, 300, 67)
-    #     tranformed_batch = epipolar.feature_transform_parallel(feat, front_depth_data=front, back_depth_data=back, camera_filenames=camera_filenames, target_height=300, target_width=300)
-    #
-    #     # (B, 67, 300, 300)
-    #     tranformed_batch = tranformed_batch.transpose(0, 3, 1, 2)
-    #     tranformed_batch = tranformed_batch.astype(np.float16)
-    #     tranformed_batch = dataset_utils.force_contiguous(tranformed_batch)
-    #
-    #     out_filenames = []
-    #     out_transformed_batch_list = []
-    #     for j in range(num_examples):
-    #         example_name = batch['name'][j]
-    #         assert example_name in camera_filenames[j], (example_name, camera_filenames[j])
-    #         out_filename = make_output_filename(example_name)
-    #         io_utils.ensure_dir_exists(path.dirname(out_filename))
-    #         out_filenames.append(out_filename)
-    #         out_transformed_batch_list.append(tranformed_batch[j])
-    #
-    #     pool.starmap_async(io_utils.save_array_compressed, zip(out_filenames, out_transformed_batch_list))
-    #     # for out_filename, out_transformed_batch in zip(out_filenames, out_transformed_batch_list):
-    #     #     io_utils.save_array_compressed(out_filename, out_transformed_batch)
-    #
-    #     log.info(out_filenames)
-    #     num_processed += num_examples
-    #     print_eta(start_time, num_processed, num_total)
-    #
-    # print('DONE')
+    for next_i_iter, next_batch in it:
+        overhead_features, transformer_names = transformer.pop_batch(target_device_id=1)
+        transformer.prefetch_batch_async(next_batch, start_end_indices=None, target_device_id=1, options={'use_gt_geometry': False})
+        process_batch(i_iter, batch, overhead_features, transformer_names)
+        i_iter = next_i_iter
+        batch = next_batch
+        print_eta(start_time, _num_processed, len(dataset_all))
+    overhead_features, transformer_names = transformer.pop_batch(target_device_id=1)
+    process_batch(i_iter, batch, overhead_features, transformer_names)
 
 
 if __name__ == '__main__':
-    main()
+    with torch.cuda.device(1):
+        main()
