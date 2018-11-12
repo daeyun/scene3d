@@ -1,25 +1,24 @@
-import numpy as np
-import numpy.linalg as la
-import random
-import string
-import uuid
+import os
 import threading
 import time
-import torch
-from os import path
-import os
+import uuid
 from multiprocessing.pool import ThreadPool
+from os import path
 
-from scene3d import transforms
-from scene3d.net import unet
+import numpy as np
+import numpy.linalg as la
+import torch
+
 from scene3d import camera
-from scene3d import io_utils
 from scene3d import epipolar
+from scene3d import io_utils
 from scene3d import log
 from scene3d import loss_fn
 from scene3d import torch_utils
 from scene3d import train_eval_pipeline
+from scene3d import transforms
 from scene3d.dataset import dataset_utils
+from scene3d.net import unet
 
 
 def epipolar_line(xy, cam_params, td_cam_params, depth_image, back_depth_image, td_depth_image, plot=True):
@@ -437,7 +436,7 @@ class FeatureGenerator(object):
 
 
 class Transformer(FeatureGenerator):
-    def __init__(self, depth_checkpoint_filename, segmentation_checkpoint_filename, device_id):
+    def __init__(self, depth_checkpoint_filename, segmentation_checkpoint_filename, device_id, num_workers=5):
         super().__init__()
         self.device_id = device_id
         log.info('[Transformer] Device id: {}'.format(self.device_id))
@@ -456,7 +455,7 @@ class Transformer(FeatureGenerator):
         else:
             self.tmp_out_root = '/tmp/scene3d_transformer_cam'
         io_utils.ensure_dir_exists(self.tmp_out_root)
-        self.num_workers = 5
+        self.num_workers = num_workers
         self.pool = ThreadPool(self.num_workers)
 
     @staticmethod
@@ -566,6 +565,8 @@ class Transformer(FeatureGenerator):
             return ret, self._get_batch_subset(batch, 'name', start_end_indices)
 
     def get_transformed_features(self, batch, start_end_indices, use_gt_geometry=True) -> (np.ndarray, list):
+        if start_end_indices is None:
+            start_end_indices = [0, len(batch['name'])]
         start, end = start_end_indices
         size = end - start
         assert size > 0

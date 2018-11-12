@@ -5,8 +5,10 @@ import torch.nn.functional
 from third_party.inplace_abn.modules import InPlaceABN, InPlaceABNSync
 from scene3d import loss_fn
 
+# TODO
 device_count = list(range(torch.cuda.device_count()))
-device_ids = device_count[:-1]
+# device_ids = device_count[:-1]
+device_ids = device_count
 
 
 # Overhead models have higher BN momentum.

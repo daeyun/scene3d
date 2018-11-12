@@ -28,6 +28,7 @@
 
 #include "lib/common.h"
 #include "lib/string_utils.h"
+#include "lib/benchmark.h"
 
 namespace scene3d {
 namespace fs = boost::filesystem;
@@ -45,7 +46,11 @@ bool ReadTriangles(const std::string &filename,
 
   // List of post-processing flags can be found here:
   // http://sir-kimmi.de/assimp/lib_html/postprocess_8h.html#a64795260b95f5a4b3f3dc1be4f52e410
-  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
+  importer.SetPropertyInteger(AI_CONFIG_PP_FD_REMOVE, 1);  // Remove degenerate triangles.
+
+  double start_time = scene3d::TimeSinceEpoch<std::milli>();
+  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
+  LOGGER->debug("Elapsed (importer.ReadFile): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
   if (!scene) {
     LOGGER->error("ERROR in {}: {}", filename, importer.GetErrorString());
@@ -68,9 +73,20 @@ bool ReadTriangles(const std::string &filename,
           continue;
         }
       }
+
       auto a = mesh->mVertices[face.mIndices[0]];
       auto b = mesh->mVertices[face.mIndices[1]];
       auto c = mesh->mVertices[face.mIndices[2]];
+
+      Vec3 a_{a.x, a.y, a.z};
+      Vec3 b_{b.x, b.y, b.z};
+      Vec3 c_{c.x, c.y, c.z};
+      double area = (b_ - a_).cross(c_ - a_).norm() * 0.5f;
+      if (area < 1e-9) {
+        LOGGER->warn("Triangle area too small: {:.20g}. Removed", area);
+        continue;
+      }
+
       if (std::abs(a.x) > kMaxVertexValue || std::abs(a.y) > kMaxVertexValue || std::abs(a.z) > kMaxVertexValue) {
         LOGGER->error("vertex value above threshold: {}, {}, {}", a.x, a.y, a.z);
         throw std::runtime_error("");
@@ -432,5 +448,27 @@ void WritePly(const string &filename, const vector<array<unsigned int, 3>> &face
 
   // Write a binary file
   ply_file.write(outstream, is_binary);
+}
+
+void WriteObj(const string &filename, const vector<array<unsigned int, 3>> &faces, const vector<array<float, 3>> &vertices) {
+  Expects(EndsWith(filename, ".obj"));
+  std::ofstream file;
+  file.open(filename);
+
+  for (const auto &v : vertices) {
+    file << "v ";
+    file << v[0] << " ";
+    file << v[1] << " ";
+    file << v[2] << "\n";
+  }
+
+  for (const auto &f : faces) {
+    file << "f ";
+    file << f[0] + 1 << " ";
+    file << f[1] + 1 << " ";
+    file << f[2] + 1 << "\n";
+  }
+
+  file.close();
 }
 }

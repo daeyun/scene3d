@@ -54,7 +54,7 @@ def process_batch(i_iter, batch, overhead_features, transformer_names):
 def main():
     dataset_all = v8.MultiLayerDepth(
         # split='all',
-        split='/mnt/ramdisk/remaining_features.txt',
+        split='/mnt/ramdisk/remaining_features2.txt',
         subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255,
         fields=('rgb', 'overhead_camera_pose_4params', 'camera_filename', 'multi_layer_overhead_depth'))
 

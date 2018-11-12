@@ -47,7 +47,7 @@ if path.isfile(path.expanduser('~/.is_chase_ci')):
 
     elif hostname == 'daeyun-06':
         suncg_root = '/data/daeyun-data-06/suncg_data'
-        pbrs_root = '/data/daeyun-data-06/data2/pbrs'
+        pbrs_root = '/data/daeyun-data-06/pbrs'
         scene3d_root = '/data/daeyun-data-06/scene3d'
 
     elif hostname == 'daeyun-07':
@@ -68,6 +68,7 @@ elif hostname == 'daeyun-vision-lab':
     pbrs_root = '/data2/pbrs'
     scene3d_root = '/data2/scene3d'
     default_out_root = '/data3/out/scene3d'
+    etn_features_root = '/data3/out/scene3d/overhead_pred'
 
 elif path.isfile(path.expanduser('~/.is_uci_vision_cluster')):
     suncg_root = '/home/daeyuns/data2/suncg_data'
@@ -80,6 +81,7 @@ elif hostname == 'aleph0':
     pbrs_root = '/mnt/scratch1/daeyuns/data/pbrs'
     scene3d_root = '/mnt/scratch1/daeyuns/data/scene3d'
     default_out_root = '/mnt/scratch1/daeyuns/data/out/scene3d'
+    etn_features_root = '/home/daeyuns/overhead_data'
 
 else:
     raise RuntimeError('Unknown hostname: {}'.format(hostname))

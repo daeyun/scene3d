@@ -3,6 +3,7 @@
 """
 
 import matplotlib.pyplot as pt
+import PIL
 import matplotlib.ticker as pt_ticker
 import numpy as np
 from matplotlib.patches import Polygon
@@ -202,3 +203,14 @@ def draw_rectangles(rects: np.ndarray, ax=None, **kargs):
     ax.axis('equal')
 
     return ax
+
+
+def plot_with_std(x, y_all, std=1, band_color='#FF9848', label=None):
+    assert x.ndim == 1
+    assert y_all.ndim == 2
+
+    y_mean = y_all.mean(axis=0)
+    y_std = y_all.std(axis=0) * std
+
+    pt.plot(x, y_mean, label=label)
+    pt.fill_between(x, y_mean - y_std, y_mean + y_std, alpha=0.5, facecolor=band_color, linewidth=0, antialiased=True)

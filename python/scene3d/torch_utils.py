@@ -76,6 +76,15 @@ def load_torch_model(filename, use_cpu=True) -> dict:
     return model
 
 
+def set_optimizer_learning_rate(optimizer: torch.optim.Optimizer, learning_rate: float):
+    assert isinstance(optimizer, torch.optim.Optimizer)
+    assert isinstance(learning_rate, float)
+    assert learning_rate > 0
+    assert learning_rate < 1
+    for param_group in optimizer.param_groups:
+        param_group['lr'] = learning_rate
+
+
 class SeededRandomSampler(torch.utils.data.Sampler):
     def __init__(self, data_source, seed=0):
         self.data_source = data_source

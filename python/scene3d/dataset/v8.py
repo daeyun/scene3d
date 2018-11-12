@@ -39,6 +39,23 @@ def is_filename_prefix_valid(value):
     return re.match(r'^[a-z0-9]{32}/\d{6}$', value) is not None
 
 
+def find_etn_filename(example_name):
+    if config.hostname == 'aleph0':
+        shards = ['02', '01', '03', '04']  # sorted by decreasing size. This is specific to aleph0.ics machine.
+        filename = ''
+        for item in shards:
+            filename_candidate = path.join(config.etn_features_root, item, '{}.bin'.format(example_name))
+            if path.exists(filename_candidate):
+                filename = filename_candidate
+                break
+        if not filename:
+            raise RuntimeError('File not found: {}'.format(example_name))
+    else:
+        filename = path.join(config.etn_features_root, '{}.bin'.format(example_name))
+        assert path.exists(filename), filename
+    return filename
+
+
 class MultiLayerDepth(data.Dataset):
     """
     Includes multi-layer segmentation.
@@ -90,6 +107,7 @@ class MultiLayerDepth(data.Dataset):
             'multi_layer_overhead_depth',
             'overhead_features',
             'overhead_features_v2',
+            'overhead_features_v3',
             'name',
             'camera_filename',
             'normals',
@@ -303,6 +321,17 @@ class MultiLayerDepth(data.Dataset):
             io_utils.read_array_compressed(bin_filename2, dtype=np.float16).astype(np.float32),
         ], axis=0)
 
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v3(self, example_name, ret):
+        field_name = 'overhead_features_v3'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_filename(example_name)
+
+        # 117 channels
+        ldi_overhead = io_utils.read_array_compressed(filename, dtype=np.float16).astype(np.float32)
         ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
         ret[field_name] = ldi_overhead
 
@@ -533,6 +562,7 @@ class MultiLayerDepth(data.Dataset):
         self.get_multi_layer_overhead_depth(example_name, ret)
         self.get_overhead_features(example_name, ret)
         self.get_overhead_features_v2(example_name, ret)
+        self.get_overhead_features_v3(example_name, ret)
         self.get_normals(example_name, ret)
         self.get_normal_direction_volume(example_name, ret)
         self.get_model_id(example_name, ret)

@@ -11,7 +11,7 @@ add_library(string_utils string_utils.h string_utils.cc)
 target_link_libraries(string_utils PUBLIC common)
 
 add_library(file_io file_io.cc file_io.h)
-target_link_libraries(file_io spdlog assimp common cpp_gsl Boost::filesystem blosc tinyply string_utils)
+target_link_libraries(file_io spdlog assimp common cpp_gsl Boost::filesystem blosc tinyply string_utils benchmark)
 
 add_library(camera camera.cc camera.h)
 target_link_libraries(camera common cpp_gsl file_io)
@@ -42,7 +42,7 @@ target_link_libraries(meshdist PUBLIC common camera depth benchmark CGAL mesh)
 target_compile_options(meshdist BEFORE PUBLIC "-lCGAL")
 
 add_library(depth_mesh_utils depth_mesh_utils.h depth_mesh_utils.cc)
-target_link_libraries(depth_mesh_utils PUBLIC common camera depth benchmark mesh meshdist pcl)
+target_link_libraries(depth_mesh_utils PUBLIC common camera depth benchmark mesh meshdist pcl string_utils)
 
 add_library(vectorization_utils vectorization_utils.h)
 target_link_libraries(vectorization_utils PUBLIC common)

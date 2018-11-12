@@ -15,6 +15,7 @@ parser.add_argument('--first_n', type=int, default=0)
 parser.add_argument('--model', type=str, default='unet_v0')
 parser.add_argument('--load_checkpoint', type=str, default='')
 parser.add_argument('--use_cpu', type=bool, default=False)
+parser.add_argument('--learning_rate', type=float, default=0)  # 0 means use defaults.
 args = parser.parse_args()
 
 

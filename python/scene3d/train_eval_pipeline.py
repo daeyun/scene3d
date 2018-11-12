@@ -1,38 +1,32 @@
-import multiprocessing
-from multiprocessing.pool import ThreadPool
-
+import argparse
 import glob
-import torch
-import numpy as np
-from scene3d import config
-import copy
-from scene3d import io_utils
-from os import path
-import itertools
-import cv2
 import time
 import typing
-import re
+from scene3d import depth_mesh_utils_cpp
+import collections
+from os import path
+
+import numpy as np
+import torch
+import torch.utils.data
+from torch import nn
+from torch import optim
+from torch.backends import cudnn
+
+from scene3d import config
+from scene3d import feat
+from scene3d import io_utils
+from scene3d import log
+from scene3d import loss_fn
+from scene3d import torch_utils
+from scene3d.dataset import dataset_utils
 from scene3d.dataset import v1
 from scene3d.dataset import v2
 from scene3d.dataset import v8
-import torch.utils.data
-import time
-from torch.backends import cudnn
-from scene3d.net import deeplab
 from scene3d.net import unet
-from scene3d.net import unet_overhead
 from scene3d.net import unet_no_bn
-from scene3d import log
-from scene3d import transforms
-from scene3d import loss_fn
-from scene3d.dataset import dataset_utils
-from scene3d import torch_utils
-from torch import optim
-from torch import nn
-from torch import autograd
-import argparse
-from scene3d import feat
+from scene3d.net import unet_overhead
+from multiprocessing.pool import ThreadPool
 
 """
 When you add a new experiment, give it a unique experiment name in `available_experiments`.
@@ -84,6 +78,7 @@ available_experiments = [
     'v8-overhead_camera_pose',
     'v8-overhead_camera_pose_4params',
     'OVERHEAD_OTF_01',  # all features, predicted geometry only.
+    'OVERHEAD_offline_01',  # all features, predicted geometry only.
 ]
 
 available_models = [
@@ -137,6 +132,8 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('overhead_features_v2', 'multi_layer_overhead_depth'))
     elif experiment_name == 'OVERHEAD_OTF_01':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_camera_pose_4params', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'OVERHEAD_offline_01':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v3', 'camera_filename', 'multi_layer_overhead_depth'))
     elif experiment_name.startswith('overhead-features-eval-01'):
         """This is not actually one of the available experiments, but this has RGB images for evaluation or visualization mode. This can be deleted later. This is a preliminary experiment anyway.
         """
@@ -211,6 +208,7 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
 def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> typing.Tuple[nn.Module, optim.Optimizer, nn.Module]:
     frozen_model = None
 
+    # This is just a default learning rate. It will be overridden by --learning_rate.
     learning_rate = 0.0005
 
     if model_name == 'deeplab':
@@ -270,6 +268,9 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
                 #     device_id=list(range(torch.cuda.device_count()))[-2],  # use last n gpus
                 # ),
             ]
+            model = unet_overhead.Unet1(in_channels=117, out_channels=1)
+            learning_rate = 0.002
+        elif experiment_name == 'OVERHEAD_offline_01':
             model = unet_overhead.Unet1(in_channels=117, out_channels=1)
             learning_rate = 0.002
         else:
@@ -444,6 +445,13 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
         loss_per_gpu = pytorch_model([input_features, target_depth])
         loss_all = loss_per_gpu
+
+    elif experiment_name == 'OVERHEAD_offline_01':
+        example_name = batch['name']
+
+        input_features = batch['overhead_features_v3'].cuda()
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features, target_depth])
 
     # v8
     elif experiment_name == 'v8-multi_layer_depth':
@@ -856,6 +864,7 @@ class Trainer(object):
 
         if 'OVERHEAD_OTF' in self.experiment_name:
             self.training_mode = 'multi_stage'
+            raise RuntimeError('This script is not ready for this yet.')  # TODO
         else:
             self.training_mode = 'end_to_end'
 
@@ -872,11 +881,17 @@ class Trainer(object):
         else:
             self.model, self.optimizer, self.frozen_model = get_pytorch_model_and_optimizer(model_name=self.model_name, experiment_name=self.experiment_name)
             # Immediately save a checkpoint at global step 0.
-        if self.training_mode == 'multi_stage':
-            # TODO: refactor device ids.
-            self.model = nn.DataParallel(self.model, device_ids=unet_overhead.device_ids).cuda()  # all except last n gpus
+
+        if args.learning_rate > 0:
+            torch_utils.set_optimizer_learning_rate(self.optimizer, learning_rate=args.learning_rate)
+            self.logger.info('Set learning rate to {}'.format(args.learning_rate))
+
+        device_ids = list(range(torch.cuda.device_count()))
+        self.logger.info('device_ids: {}'.format(device_ids))
+        self.model = nn.DataParallel(self.model, device_ids=device_ids)
+
         if not self.use_cpu:
-            self.model.cuda()
+            self.model = self.model.cuda()
             torch.set_default_tensor_type('torch.FloatTensor')  # Back to defaults.
         self.model.train()
 
@@ -918,6 +933,8 @@ class Trainer(object):
         #     out_arr = torch_utils.recursive_torch_to_numpy(overhead_features[i]).astype(np.float16)
         #     io_utils.save_array_compressed(out_filename, out_arr)
 
+        self.logger.info('Training mode: {}'.format(self.training_mode))
+
         for i_epoch in range(max_epochs):
             self.epoch = i_epoch
 
@@ -929,12 +946,19 @@ class Trainer(object):
 
                     self.optimizer.zero_grad()
                     loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=self.frozen_model)
-                    loss_all.backward()
+
+                    if len(loss_all) > 1:
+                        # https://discuss.pytorch.org/t/loss-backward-raises-error-grad-can-be-implicitly-created-only-for-scalar-outputs/12152/2
+                        # Has the same effect as sum.
+                        loss_all.backward(torch.ones_like(loss_all))
+                    else:
+                        loss_all.backward()
+
                     self.optimizer.step()
 
                     self.global_step += 1
                     self.iter = i_iter + 1
-                    self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all)
+                    self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all.mean().item())
 
                     self.try_save_checkpoint()
                     io_bottleneck_detector.tic()
@@ -949,7 +973,7 @@ class Trainer(object):
                     for item_i, item in enumerate(self.frozen_model):
                         item.prefetch_batch_async(batch, start_end_indices=start_end_indices[item_i], target_device_id=unet_overhead.device_ids[0], options={'use_gt_geometry': False})
 
-                    for next_i_iter, next_batch in enumerate(self.data_loader):
+                    for next_i_iter, next_batch in it:
                         io_bottleneck_detector.toc()
                         # Current iteration: i_iter, batch
 
@@ -991,7 +1015,7 @@ class Trainer(object):
 
                         self.global_step += 1
                         self.iter = i_iter + 1
-                        self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, torch_utils.recursive_torch_to_numpy(loss_all).mean())
+                        self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all.mean().item())
 
                         # log.info('try save')
                         self.try_save_checkpoint()
@@ -1038,7 +1062,6 @@ def surface_normal_eval(checkpoint_filename, split_name='test', num_examples=100
 
         if visualize:
             import matplotlib.pyplot as pt
-            import matplotlib.cm
             pt.figure(figsize=(18, 3))
 
             pt.subplot(1, 4, 1)
@@ -1106,3 +1129,126 @@ def traditional_depth_from_aligned_multi_layer_depth(aligned_and_segmented_depth
     ret[:, 0][mask] = ret[:, 3][mask]
 
     return ret[:, 0]
+
+
+def reduce_list_of_dicts_of_lists(ld):
+    keys = list(ld[0].keys())
+    ret = collections.defaultdict(list)
+    for item in ld:
+        for k in keys:
+            ret[k].extend(item[k])
+    ret = dict(ret)
+    return ret
+
+
+class Evaluation():
+    def __init__(self, model_metadata):
+        self.pred = None
+        self.target = None
+        self.model_metadata = model_metadata
+
+    def set_input(self, pred, batch):
+        self.pred = pred
+        self.batch = batch
+
+    @staticmethod
+    def _mean_of_finite_per_example(arr):
+        """
+        :param arr: (B, .., ...)
+        :return: list of size B.
+        """
+        arr_2d = arr.reshape(arr.shape[0], -1)
+        mask = torch.isfinite(arr_2d)
+        ret = (arr_2d.masked_fill(~mask, 0).sum(dim=1) / mask.sum(dim=1, dtype=torch.float32)).tolist()
+        return ret
+
+    @staticmethod
+    def _masked_iou_per_example(a, b, ignore_mask):
+        """
+        :param a: (B, .., ...)
+        :param b: same as a
+        :return: list of size B.
+        """
+        assert a.shape == b.shape
+        assert ignore_mask.shape == b.shape
+        a_2d = torch_utils.recursive_torch_to_numpy(a.reshape(a.shape[0], -1)).astype(np.bool)
+        b_2d = torch_utils.recursive_torch_to_numpy(b.reshape(b.shape[0], -1)).astype(np.bool)
+        mask_2d = torch_utils.recursive_torch_to_numpy(ignore_mask.reshape(ignore_mask.shape[0], -1)).astype(np.bool)
+
+        intersection = a_2d & b_2d
+        union = a_2d | b_2d
+        intersection[mask_2d] = 0
+        union[mask_2d] = 0
+
+        return (intersection.sum(axis=1) / union.sum(axis=1)).tolist()
+
+    def multi_layer_depth_aligned_background_l1(self):
+        target = self.batch['multi_layer_depth_aligned_background'].cuda()
+        l1_with_nan = (target - loss_fn.undo_log_depth(self.pred)).abs()
+        overall = self._mean_of_finite_per_example(l1_with_nan)
+        first_three = self._mean_of_finite_per_example(l1_with_nan[:, :3])
+        background = self._mean_of_finite_per_example(l1_with_nan[:, 3])
+
+        return {
+            'overall': overall,
+            'first_three': first_three,
+            'background': background,
+            'visible_objects': self._mean_of_finite_per_example(l1_with_nan[:, 0]),
+            'invisible_objects': self._mean_of_finite_per_example(l1_with_nan[:, (1, 2)]),
+        }
+
+    def category_nyu40_merged_background_l2(self):
+        assert self.pred.shape[1] == 80
+        assert 'category' in self.model_metadata['experiment_name']
+        argmax_l1 = semantic_segmentation_from_raw_prediction(self.pred[:, :40])
+        # argmax_l2 = semantic_segmentation_from_raw_prediction(self.pred[:, 40:])
+
+        target = self.batch['category_nyu40_merged_background']
+        target_l1 = torch_utils.recursive_torch_to_numpy(target[:, 2])
+
+        ignored = (target_l1 == 65535) | (target_l1 == 33)  # (B, H, W)
+        correct = (target_l1 == argmax_l1).astype(np.float32)
+        correct[ignored] = np.nan
+
+        accuracy = self._mean_of_finite_per_example(torch_utils.recursive_numpy_to_torch(correct))
+
+        pred_foreground = argmax_l1 != 34
+        target_foreground = target_l1 != 34
+
+        foreground_iou = self._masked_iou_per_example(pred_foreground, target_foreground, ignore_mask=ignored)
+
+        return {
+            'layer1_accuracy': accuracy,
+            'layer1_foreground_iou': foreground_iou,
+        }
+
+
+def save_mldepth_as_meshes(pred_segmented_depth, example):
+    assert pred_segmented_depth.ndim == 3
+    out_pred_filenames = []
+    # out_gt_filenames = []
+    for i in range(4):
+        out_filename = '/data3/out/scene3d/v8_pred_depth_mesh/{}/pred_{}.ply'.format(example['name'], i)  # TODO
+        if not path.isfile(out_filename):
+            depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        out_pred_filenames.append(out_filename)
+
+        # out_filename = '/data3/out/scene3d/v8_depth_mesh/{}_gt_{}.ply'.format(example['name'], i)
+        # if not path.isfile(out_filename):
+        #     depth_mesh_utils_cpp.depth_to_mesh(example['multi_layer_depth_aligned_background'][i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        # out_gt_filenames.append(out_filename)
+
+    return {
+        'pred': out_pred_filenames,
+        # 'gt': out_gt_filenames,
+    }
+
+
+def mesh_precision_recall_parallel(gt_pred_filename_pairs, sampling_density, thresholds):
+    pool = ThreadPool(5)
+
+    params = []
+    for gt_filenames, pred_filenames in gt_pred_filename_pairs:
+        params.append([gt_filenames, pred_filenames, sampling_density, thresholds])
+
+    return pool.starmap(depth_mesh_utils_cpp.mesh_precision_recall, params)

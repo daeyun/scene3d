@@ -641,3 +641,8 @@ def block_until_file_exists(filename, sleep_seconds=0.05):
             i = 0
         time.sleep(sleep_seconds)
         i += 1
+
+
+def write_lines(filename, lines):
+    with open(filename, 'w') as f:
+        f.write('\n'.join(lines))

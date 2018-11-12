@@ -170,18 +170,46 @@ float MeshToMeshDistanceOneDirection(const std::vector<Triangle> &from,
   tree.accelerate_distance_queries();
   LOGGER->debug("Time elapsed for building tree (CGAL): {}", scene3d::TimeSinceEpoch<std::milli>() - start);
 
-  float distance_sum = 0;
+  size_t num_items_before;
+  if (distances != nullptr) {
+    num_items_before = distances->size();
+  }
 
-#pragma omp parallel for if(USE_OMP) reduction(+:distance_sum) schedule(static)
-  for (int i = 0; i < point_list.size(); ++i) {
-    float dist = tree.squared_distance(point_list[i]);
-    distance_sum += dist;
-
-// TODO: needs refactoring
-    if (distances) {
-#pragma omp critical
-      distances->push_back(dist);
+  double distance_sum = 0;
+#pragma omp parallel if(USE_OMP)
+  {
+#pragma omp single
+    {
+      LOGGER->debug("omp_get_num_threads: {}", omp_get_num_threads());
     }
+
+    std::vector<float> distances_private;
+    double distance_sum_private = 0;
+
+#pragma omp for
+    for (int i = 0; i < point_list.size(); ++i) {
+      float dist = tree.squared_distance(point_list[i]);
+      if (!std::isfinite(dist)) {
+        // This can happen if there is a degenerate triangle.
+        LOGGER->error("Invalid squared distance value found: {}", dist);
+        throw std::runtime_error("Invalid squared distance value found");
+      }
+      distance_sum_private += dist;
+      distances_private.push_back(dist);
+    }
+
+#pragma omp critical
+    {
+      if (distances != nullptr) {
+        distances->insert(distances->begin(), distances_private.begin(), distances_private.end());
+        distance_sum += distance_sum_private;
+      }
+    }
+  }
+
+  if (distances != nullptr) {
+    const size_t num_added = distances->size() - num_items_before;
+    Expects(num_added == point_list.size());
   }
 
   LOGGER->debug("distance: {}", distance_sum);

@@ -15,6 +15,7 @@
 #include "lib/depth.h"
 #include "lib/meshdist.h"
 #include "lib/pcl.h"
+#include "lib/string_utils.h"
 
 namespace scene3d {
 void DepthToMesh(const float *depth_data, uint32_t source_height, uint32_t source_width, const char *camera_filename, uint32_t camera_index, float dd_factor, const char *out_filename) {
@@ -38,6 +39,13 @@ void DepthToMesh(const float *depth_data, uint32_t source_height, uint32_t sourc
   const string out_filename_str(out_filename);
   PrepareDirForFile(out_filename_str);
   WritePly(out_filename_str, mesh.faces, mesh.vertices, true);
+  if (scene3d::EndsWith(out_filename_str, ".ply")) {
+    WritePly(out_filename_str, mesh.faces, mesh.vertices, true);
+  } else if (scene3d::EndsWith(out_filename_str, ".obj")) {
+    WriteObj(out_filename_str, mesh.faces, mesh.vertices);
+  } else {
+    throw std::runtime_error("Invalid output file format.");
+  }
   LOGGER->info("Wrote {}", out_filename_str);
 }
 
@@ -88,6 +96,9 @@ void MeshPrecisionRecall(const char **gt_mesh_filenames,
     }
   };
 
+  const auto prev_log_level = LOGGER->level();
+  LOGGER->set_level(spdlog::level::debug);  // MeshToMeshDistanceOneDirection will log elapsed times.
+
   double start_time;
   start_time = scene3d::TimeSinceEpoch<std::milli>();
   vector<meshdist_cgal::Triangle> gt_triangles;
@@ -98,9 +109,6 @@ void MeshPrecisionRecall(const char **gt_mesh_filenames,
   vector<meshdist_cgal::Triangle> pred_triangles;  // Polygon soup.
   load_and_merge_meshes(pred_mesh_filenames_vector, &pred_triangles);
   LOGGER->info("Elapsed (ReadTriangles, Pred): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
-
-  const auto prev_log_level = LOGGER->level();
-  LOGGER->set_level(spdlog::level::debug);  // MeshToMeshDistanceOneDirection will log elapsed times.
 
   std::vector<float> recall_squared_distances;
   meshdist_cgal::MeshToMeshDistanceOneDirection(

@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional
-from third_party.inplace_abn.modules import InPlaceABN
+from third_party.inplace_abn.modules import InPlaceABN, InPlaceABNSync
 
 
 def conv_0(in_ch, out_ch):
@@ -19,9 +19,9 @@ def conv_0(in_ch, out_ch):
 def conv_0_ip(in_ch, out_ch):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
         nn.Conv2d(out_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
     )
 
 
@@ -42,11 +42,11 @@ def conv_1(in_ch, out_ch):
 def conv_1_ip(in_ch, out_ch):
     return nn.Sequential(
         nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=2, dilation=2),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
         nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
         nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        InPlaceABN(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
+        InPlaceABNSync(out_ch, momentum=0.005, activation="leaky_relu", slope=0.01),
     )
 
 

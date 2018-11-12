@@ -46,3 +46,6 @@
 [submodule "cpp/third_party/repos/tinyply"]
 	path = cpp/third_party/repos/tinyply
 	url = https://github.com/ddiakopoulos/tinyply.git
+[submodule "cpp/third_party/repos/simplify_mesh"]
+	path = cpp/third_party/repos/simplify_mesh
+	url = https://github.com/sp4cerat/Fast-Quadric-Mesh-Simplification.git

@@ -8,22 +8,20 @@ from scene3d.dataset import v8
 
 
 def main():
-    dataset = v8.MultiLayerDepth(split='test', subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
+    dataset = v8.MultiLayerDepth(
+        # split='test',
+        split='/data2/scene3d/v8/validation_s168.txt',
+        subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
     indices = np.arange(len(dataset))
 
-    # TODO(daeyun): read this from a text file.
-    np.random.seed(42)
-    np.random.shuffle(indices)
-
-    for j in range(500):
-        i = indices[j]
+    for i in indices:
         example = dataset[i]
 
         house_id, camera_id = example['name'].split('/')
         camera_filename = example['camera_filename']
         out_dir = '/data3/out/scene3d/v8_gt_mesh/{}/{}'.format(house_id, camera_id)
 
-        print(j, i, example['name'])
+        print(i, example['name'])
 
         out_filenames = generate_gt_mesh.generate_gt_mesh(house_id, [camera_filename], out_dir=out_dir)
 

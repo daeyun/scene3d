@@ -14,6 +14,7 @@
 #include "lib/depth_render_utils.h"
 #include "lib/common.h"
 #include "lib/meshdist.h"
+#include "lib/string_utils.h"
 
 using namespace scene3d;
 
@@ -23,15 +24,15 @@ int main(int argc, const char **argv) {
   options.add_options()
       ("camera_filename", "File containing camera parameters, one per line.", cxxopts::value<string>())
       ("out_dir", "Path to save ply files.", cxxopts::value<string>())
-      ("obj", "Path to obj mesh file.", cxxopts::value<string>())
+      ("obj", "Path to source obj mesh file.", cxxopts::value<string>())
       ("json", "Path to house json file.", cxxopts::value<string>())
       ("dd_factor", "Depth discontinuity factor", cxxopts::value<float>()->default_value("10.0"))
       ("resample_height", "Rendered image height for background extraction", cxxopts::value<unsigned int>()->default_value("480"))
       ("resample_width", "Rendered image width for background extraction", cxxopts::value<unsigned int>()->default_value("640"))
       ("category", "Path to category mapping file. e.g. ModelCategoryMapping.csv", cxxopts::value<string>())
-      ("save_objects", "Save the objects in the scene as a ply file.", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("save_background", "Save background as a ply file.", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
-      ("save_both", "Save a ply file containing both objects and background.", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("save_objects", "Save the objects in the scene as a ply or obj file.", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("save_background", "Save background as a ply or obj file.", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
+      ("save_both", "Save a ply or obj file containing both objects and background.", cxxopts::value<bool>()->default_value("false")->implicit_value("true"))
       ("help", "Display help.", cxxopts::value<bool>()->default_value("false")->implicit_value("true"));
   auto flags = options.parse(argc, argv);
 
@@ -106,7 +107,13 @@ int main(int argc, const char **argv) {
 
     auto save_mesh = [&](const string &suffix, const TriMesh &mesh) {
       const string out_filename = generate_filename(camera_i, suffix);
-      WritePly(out_filename, mesh.faces, mesh.vertices, true);
+      if (scene3d::EndsWith(out_filename, ".ply")) {
+        WritePly(out_filename, mesh.faces, mesh.vertices, true);
+      } else if (scene3d::EndsWith(out_filename, ".obj")) {
+        WriteObj(out_filename, mesh.faces, mesh.vertices);
+      } else {
+        throw std::runtime_error("Invalid output file format.");
+      }
       // NOTE: This line is important. The python script parses this line to determine which files were generated. Must start with "Output file: "
       std::cout << "Output file: " << out_filename << std::endl;
     };
