@@ -13,6 +13,11 @@ from matplotlib.patches import Rectangle
 cmap_viridis = cm.get_cmap('viridis')
 cmap_viridis_array = np.array([cmap_viridis(item)[:3] for item in np.arange(0, 1, 1.0 / 256)]).astype(np.float32)
 
+# https://matplotlib.org/users/dflt_style_changes.html
+line_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728',
+               '#9467bd', '#8c564b', '#e377c2', '#7f7f7f',
+               '#bcbd22', '#17becf']
+
 
 def draw_triangles(triangles, ax=None, facecolor='blue', alpha=1):
     """

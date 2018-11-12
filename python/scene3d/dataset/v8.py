@@ -255,7 +255,7 @@ class MultiLayerDepth(data.Dataset):
         depth[np.isnan(depth)] = 0  # NOTE: This is used as input. So nan values are zeroed.
 
         # Swap visible background in channels 0 and 3.
-        bg_mask = np.isnan(ldi[3])
+        bg_mask = np.isnan(ldi[1])
         ldi[0][bg_mask], ldi[3][bg_mask] = ldi[3][bg_mask], ldi[0][bg_mask]
 
         # fix bug in last-exit layer

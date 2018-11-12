@@ -79,6 +79,7 @@ available_experiments = [
     'v8-overhead_camera_pose_4params',
     'OVERHEAD_OTF_01',  # all features, predicted geometry only.
     'OVERHEAD_offline_01',  # all features, predicted geometry only.
+    'OVERHEAD_offline_02',  # no semantics, predicted geometry only.
 ]
 
 available_models = [
@@ -133,6 +134,8 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
     elif experiment_name == 'OVERHEAD_OTF_01':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_camera_pose_4params', 'camera_filename', 'multi_layer_overhead_depth'))
     elif experiment_name == 'OVERHEAD_offline_01':
+        dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v3', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'OVERHEAD_offline_02':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v3', 'camera_filename', 'multi_layer_overhead_depth'))
     elif experiment_name.startswith('overhead-features-eval-01'):
         """This is not actually one of the available experiments, but this has RGB images for evaluation or visualization mode. This can be deleted later. This is a preliminary experiment anyway.
@@ -272,6 +275,10 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             learning_rate = 0.002
         elif experiment_name == 'OVERHEAD_offline_01':
             model = unet_overhead.Unet1(in_channels=117, out_channels=1)
+            learning_rate = 0.002
+        elif experiment_name == 'OVERHEAD_offline_02':
+            # exclude semantic segmentation features
+            model = unet_overhead.Unet1(in_channels=117 - 64, out_channels=1)
             learning_rate = 0.002
         else:
             raise NotImplementedError()
@@ -450,6 +457,25 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         example_name = batch['name']
 
         input_features = batch['overhead_features_v3'].cuda()
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features, target_depth])
+
+    elif experiment_name == 'OVERHEAD_offline_02':
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v3']
+        assert input_features_all.shape[1] == 117
+        assert input_features_all.dim() == 4
+
+        # 0: best guess depth
+        # 1: frustum visibility map
+        # 2-5: rgb features
+        # 5-53 depth features
+        # 53-117 semantic segmentation features
+
+        # exclude the last 64 channels
+        input_features = input_features_all[:, :-64].cuda()
+        assert input_features.shape[1] == 117 - 64, input_features.shape[1]
         target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
         loss_all = pytorch_model([input_features, target_depth])
 
@@ -947,7 +973,7 @@ class Trainer(object):
                     self.optimizer.zero_grad()
                     loss_all = compute_loss(pytorch_model=self.model, batch=batch, experiment_name=self.experiment_name, frozen_model=self.frozen_model)
 
-                    if len(loss_all) > 1:
+                    if loss_all.dim() > 0:
                         # https://discuss.pytorch.org/t/loss-backward-raises-error-grad-can-be-implicitly-created-only-for-scalar-outputs/12152/2
                         # Has the same effect as sum.
                         loss_all.backward(torch.ones_like(loss_all))
@@ -1183,21 +1209,109 @@ class Evaluation():
         return (intersection.sum(axis=1) / union.sum(axis=1)).tolist()
 
     def multi_layer_depth_aligned_background_l1(self):
+        # l1 here means L1 error
+        assert 'aligned_background' in self.model_metadata['experiment_name']
         target = self.batch['multi_layer_depth_aligned_background'].cuda()
-        l1_with_nan = (target - loss_fn.undo_log_depth(self.pred)).abs()
+
+        if 'nolog' in self.model_metadata['experiment_name']:
+            l1_with_nan = (target - self.pred).abs()
+        else:
+            l1_with_nan = (target - loss_fn.undo_log_depth(self.pred)).abs()
+
+        mask_visible_bg = torch.isnan(target[:, 1])  # (B, H, W)
+
         overall = self._mean_of_finite_per_example(l1_with_nan)
-        first_three = self._mean_of_finite_per_example(l1_with_nan[:, :3])
+        objects = self._mean_of_finite_per_example(l1_with_nan[:, :3])
         background = self._mean_of_finite_per_example(l1_with_nan[:, 3])
+        visible_objects = self._mean_of_finite_per_example(l1_with_nan[:, 0])
+        invisible_objects = self._mean_of_finite_per_example(l1_with_nan[:, (1, 2)])
+        instance_exit = self._mean_of_finite_per_example(l1_with_nan[:, 1])
+        last_exit = self._mean_of_finite_per_example(l1_with_nan[:, 2])
+
+        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
+        background_l1_with_nan[mask_visible_bg] = np.nan  # ignore visible background error
+        invisible_background = self._mean_of_finite_per_example(background_l1_with_nan)
+
+        # overwrite and reuse same variable name
+        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
+        background_l1_with_nan[~mask_visible_bg] = np.nan  # ignore visible background error
+        visible_background = self._mean_of_finite_per_example(background_l1_with_nan)
+
+        # Swap visible background in channels 0 and 3.
+        l1_with_nan[:, 0][mask_visible_bg], l1_with_nan[:, 3][mask_visible_bg] = l1_with_nan[:, 3][mask_visible_bg], l1_with_nan[:, 0][mask_visible_bg]
+
+        visible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 0])
+        invisible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 1:])
 
         return {
             'overall': overall,
-            'first_three': first_three,
+            'objects': objects,
+            'background': background,
+            'visible_objects': visible_objects,
+            'invisible_objects': invisible_objects,
+            'visible_surfaces': visible_surfaces,
+            'invisible_surfaces': invisible_surfaces,
+            'visible_background': visible_background,
+            'invisible_background': invisible_background,
+            'instance_exit': instance_exit,
+            'last_exit': last_exit,
+        }
+
+    def multi_layer_depth_unaligned_background_l1(self):
+        assert self.model_metadata['experiment_name'] == 'v8-multi_layer_depth'
+        target = self.batch['multi_layer_depth'].cuda()
+
+        if 'nolog' in self.model_metadata['experiment_name']:
+            # This shouldn't happen. we didn't do this experiment for this model.
+            raise RuntimeError()
+            # l1_with_nan = (target - self.pred).abs()
+        else:
+            # (B, 4, H, W)
+            p = loss_fn.undo_log_depth(self.pred)
+            l1_with_nan = (target - p).abs()
+
+        overall = self._mean_of_finite_per_example(l1_with_nan)
+        visible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 0])
+        invisible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 1:])
+
+        # Swap visible background in channels 0 and 3.
+        # TODO: visualize and make sure swap worked.
+        mask_visible_bg = torch.isnan(target[:, 1])
+        l1_with_nan[:, 0][mask_visible_bg], l1_with_nan[:, 3][mask_visible_bg] = l1_with_nan[:, 3][mask_visible_bg], l1_with_nan[:, 0][mask_visible_bg]
+
+        objects = self._mean_of_finite_per_example(l1_with_nan[:, :3])
+        background = self._mean_of_finite_per_example(l1_with_nan[:, 3])
+
+        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
+        background_l1_with_nan[mask_visible_bg] = np.nan  # zero out visible background error
+        invisible_background = self._mean_of_finite_per_example(background_l1_with_nan)
+
+        # overwrite and reuse same variable name
+        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
+        background_l1_with_nan[~mask_visible_bg] = np.nan  # zero out visible background error
+        visible_background = self._mean_of_finite_per_example(background_l1_with_nan)
+
+        invisible_objects = self._mean_of_finite_per_example(l1_with_nan[:, (1, 2)])
+        instance_exit = self._mean_of_finite_per_example(l1_with_nan[:, 1])
+        last_exit = self._mean_of_finite_per_example(l1_with_nan[:, 2])
+
+        return {
+            'overall': overall,
+            'objects': objects,
             'background': background,
             'visible_objects': self._mean_of_finite_per_example(l1_with_nan[:, 0]),
-            'invisible_objects': self._mean_of_finite_per_example(l1_with_nan[:, (1, 2)]),
+            'invisible_objects': invisible_objects,
+            'visible_surfaces': visible_surfaces,
+            'invisible_surfaces': invisible_surfaces,
+            'visible_background': visible_background,
+            'invisible_background': invisible_background,
+            'instance_exit': instance_exit,
+            'last_exit': last_exit,
         }
 
     def category_nyu40_merged_background_l2(self):
+        # l2 here means two layers
+
         assert self.pred.shape[1] == 80
         assert 'category' in self.model_metadata['experiment_name']
         argmax_l1 = semantic_segmentation_from_raw_prediction(self.pred[:, :40])
