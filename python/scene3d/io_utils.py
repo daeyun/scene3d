@@ -41,7 +41,7 @@ def read_mesh(filename):
     if filename.endswith('.off'):
         return read_off(filename)
     if filename.endswith('.ply'):
-        return read_ply(filename)
+        return read_mesh_assimp(filename)
 
 
 def read_off_num_fv(filename: str) -> tuple:
@@ -576,7 +576,7 @@ def save_png(image: np.ndarray, filename: str):
     im.save(filename, optimize=True)
 
 
-def read_obj(filename):
+def read_mesh_assimp(filename):
     scene = pyassimp.load(filename)
 
     vertices = []

@@ -1363,7 +1363,7 @@ def save_mldepth_as_meshes(pred_segmented_depth, example):
 def save_height_prediction_as_meshes(height_map_model_batch_out, hm_model, original_camera_filenames, example_names):
     import uuid
 
-    default_overhead_camera_height = 5
+    default_overhead_camera_height = 7
     out_ply_filenames = []
 
     assert len(original_camera_filenames) == len(height_map_model_batch_out['pred_cam'])
@@ -1383,14 +1383,14 @@ def save_height_prediction_as_meshes(height_map_model_batch_out, hm_model, origi
         house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(example_names[i])
 
         floor_height = find_gt_floor_height(house_id=house_id, camera_id=camera_id)
-        camera_height = default_overhead_camera_height + floor_height - 6.22
+        camera_height = default_overhead_camera_height + floor_height
 
         feat.make_overhead_camera_file(new_cam_filename, x, y, scale, theta, ref_cam=ref_cam_components, camera_height=camera_height)
         assert path.isfile(new_cam_filename)
 
         overhead_depth = default_overhead_camera_height - height_map_model_batch_out['pred_height_map'][i].squeeze()
         out_filename = '/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead.ply'.format(example_names[i])  # TODO
-        depth_mesh_utils_cpp.depth_to_mesh(overhead_depth, camera_filename=new_cam_filename, camera_index=1, dd_factor=7, out_ply_filename=out_filename)
+        depth_mesh_utils_cpp.depth_to_mesh(overhead_depth, camera_filename=new_cam_filename, camera_index=1, dd_factor=6, out_ply_filename=out_filename)
         out_ply_filenames.append(out_filename)
 
         if path.isfile(new_cam_filename):
@@ -1547,8 +1547,7 @@ class HeightMapModel(object):
 
 
 def find_gt_floor_height(house_id, camera_id):
-    camera_filenames = sorted(glob.glob('/data2/scene3d/v8/renderings/{}/*_cam.txt'.format(house_id)))
-    sorted_camera_ids = [pbrs_utils.parse_house_and_camera_ids_from_string(item)[1] for item in camera_filenames]
-    floor_heights = [float(item) for item in io_utils.read_lines_and_strip('/data2/scene3d/v8_re/renderings/{}/floor_heights.txt'.format(house_id))]
-    assert len(floor_heights) == len(sorted_camera_ids)
-    return floor_heights[sorted_camera_ids.index(camera_id)]
+    gt_mesh_filename = '/data3/out/scene3d/v8_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id)
+    fv = io_utils.read_mesh(gt_mesh_filename)
+    ycoords = sorted(fv['v'][:, 1].tolist())
+    return np.median(ycoords[:int(max(len(ycoords) * 0.01, 100))]).item()

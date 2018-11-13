@@ -22,5 +22,8 @@ target_link_libraries(pred_recon common cpp_gsl spdlog assimp cxxopts depth_rend
 add_executable(generate_gt_mesh generate_gt_mesh.cc)
 target_link_libraries(generate_gt_mesh common cpp_gsl spdlog assimp cxxopts depth_render_utils meshdist suncg_utils benchmark string_utils)
 
+add_executable(extract_frustum_mesh extract_frustum_mesh.cc)
+target_link_libraries(extract_frustum_mesh common cpp_gsl spdlog file_io assimp cxxopts depth_render_utils benchmark string_utils)
+
 # Should be uncommented when building release version.
 #set_target_properties(render_suncg PROPERTIES LINK_FLAGS "-static")
