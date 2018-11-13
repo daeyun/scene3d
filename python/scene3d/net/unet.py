@@ -184,7 +184,7 @@ class Unet2(nn.Module):
         return out
 
 
-class Unet2Regressor(nn.Module):
+class Unet2Regression(nn.Module):
     def __init__(self, out_features=3):
         super().__init__()
         self.out_features = out_features

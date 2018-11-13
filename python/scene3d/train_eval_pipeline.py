@@ -4,6 +4,7 @@ import time
 import typing
 from scene3d import depth_mesh_utils_cpp
 import collections
+import os
 from os import path
 
 import numpy as np
@@ -17,6 +18,7 @@ from scene3d import config
 from scene3d import feat
 from scene3d import io_utils
 from scene3d import log
+from scene3d import pbrs_utils
 from scene3d import loss_fn
 from scene3d import torch_utils
 from scene3d.dataset import dataset_utils
@@ -350,13 +352,13 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             # frozen_model_checkpoint = '/home/daeyuns/scene3d_out/out/scene3d/v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00416000_007_0000297.pth'
             frozen_model, frozen_model_metadata = load_checkpoint_as_frozen_model(frozen_model_checkpoint)
             log.info('Frozen model loaded: {}'.format(frozen_model_metadata))
-            model = unet.Unet2Regressor(out_features=3)
+            model = unet.Unet2Regression(out_features=3)
         elif experiment_name == 'v8-overhead_camera_pose_4params':
             frozen_model_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00416000_007_0000297.pth')
             # frozen_model_checkpoint = '/home/daeyuns/scene3d_out/out/scene3d/v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00416000_007_0000297.pth'
             frozen_model, frozen_model_metadata = load_checkpoint_as_frozen_model(frozen_model_checkpoint)
             log.info('Frozen model loaded: {}'.format(frozen_model_metadata))
-            model = unet.Unet2Regressor(out_features=4)
+            model = unet.Unet2Regression(out_features=4)
         else:
             raise NotImplementedError()
     else:
@@ -1009,7 +1011,7 @@ class Trainer(object):
                         transformer_feat_list = []
                         transformer_name_list = []
                         for item in self.frozen_model:
-                            transformer_feat, transformer_names = item.pop_batch(target_device_id=unet_overhead.device_ids[0])
+                            transformer_feat, _, transformer_names = item.pop_batch(target_device_id=unet_overhead.device_ids[0])
                             transformer_feat_list.append(transformer_feat)
                             transformer_name_list.extend(transformer_names)
 
@@ -1358,6 +1360,45 @@ def save_mldepth_as_meshes(pred_segmented_depth, example):
     }
 
 
+def save_height_prediction_as_meshes(height_map_model_batch_out, hm_model, original_camera_filenames, example_names):
+    import uuid
+
+    default_overhead_camera_height = 5
+    out_ply_filenames = []
+
+    assert len(original_camera_filenames) == len(height_map_model_batch_out['pred_cam'])
+    for i, row in enumerate(height_map_model_batch_out['pred_cam']):
+        assert row.shape[0] == 4
+        random_string = uuid.uuid4().hex
+        new_cam_filename = path.join(hm_model.transformer.tmp_out_root, 'eval_world_ortho_cam_{}.txt'.format(random_string))
+        x, y, scale, theta = row.tolist()
+        if path.isfile(new_cam_filename):
+            os.remove(new_cam_filename)
+
+        with open(original_camera_filenames[i], 'r') as f:
+            lines = f.readlines()
+        items = lines[0].strip().split()
+        ref_cam_components = items[:1] + [float(item) for item in items[1:]]
+
+        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(example_names[i])
+
+        floor_height = find_gt_floor_height(house_id=house_id, camera_id=camera_id)
+        camera_height = default_overhead_camera_height + floor_height - 6.22
+
+        feat.make_overhead_camera_file(new_cam_filename, x, y, scale, theta, ref_cam=ref_cam_components, camera_height=camera_height)
+        assert path.isfile(new_cam_filename)
+
+        overhead_depth = default_overhead_camera_height - height_map_model_batch_out['pred_height_map'][i].squeeze()
+        out_filename = '/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead.ply'.format(example_names[i])  # TODO
+        depth_mesh_utils_cpp.depth_to_mesh(overhead_depth, camera_filename=new_cam_filename, camera_index=1, dd_factor=7, out_ply_filename=out_filename)
+        out_ply_filenames.append(out_filename)
+
+        if path.isfile(new_cam_filename):
+            os.remove(new_cam_filename)
+
+    return out_ply_filenames
+
+
 def mesh_precision_recall_parallel(gt_pred_filename_pairs, sampling_density, thresholds):
     pool = ThreadPool(5)
 
@@ -1366,3 +1407,148 @@ def mesh_precision_recall_parallel(gt_pred_filename_pairs, sampling_density, thr
         params.append([gt_filenames, pred_filenames, sampling_density, thresholds])
 
     return pool.starmap(depth_mesh_utils_cpp.mesh_precision_recall, params)
+
+
+def predict_cam_params(regression_model, feature_extrator_model, rgb_batch) -> np.ndarray:
+    assert feature_extrator_model.__class__.__name__ == 'Unet2'
+    assert regression_model.__class__.__name__ == 'Unet2Regression'
+    assert not regression_model.training
+    assert not feature_extrator_model.training
+
+    device = next(feature_extrator_model.parameters()).device
+    assert device == next(regression_model.parameters()).device
+
+    with torch.cuda.device(device.index):
+        in_rgb = rgb_batch.cuda(device)
+        # (B, 48, 240, 320),  (B, 768, 15, 20)
+        features, encoding = unet.get_feature_map_output_v2(feature_extrator_model, in_rgb)
+
+        assert features.device == device
+        assert encoding.device == device
+
+        pred = regression_model((features, encoding))
+        ret = torch_utils.recursive_torch_to_numpy(pred)
+        return ret
+
+
+class HeightMapModel(object):
+    def __init__(self, checkpoint_filenames, device_id=0):
+        self.checkpoint_filenames = checkpoint_filenames
+        self.device_id = device_id
+        assert 'pose_3param' in self.checkpoint_filenames
+        assert 'overhead_height_map_model' in self.checkpoint_filenames
+
+        with torch.cuda.device(self.device_id):
+            torch.set_default_tensor_type('torch.cuda.FloatTensor')
+            self.regression_model, _, loaded_metadata, self.regression_feature_extractor_model = load_checkpoint(self.checkpoint_filenames['pose_3param'], use_cpu=False)
+            for item in self.regression_model.parameters():
+                item.requires_grad = False
+            self.regression_model.eval()
+            print(loaded_metadata)
+            self.regression_model_metadata = loaded_metadata
+
+            self.height_map_model, _, loaded_metadata, _ = load_checkpoint(self.checkpoint_filenames['overhead_height_map_model'], use_cpu=False)
+            for item in self.height_map_model.parameters():
+                item.requires_grad = False
+            self.height_map_model.eval()
+            print(loaded_metadata)
+            self.height_map_model_metadata = loaded_metadata
+
+            assert self.regression_model is not None
+            assert self.regression_feature_extractor_model is not None
+
+            self.transformer = feat.Transformer(
+                depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
+                segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
+                device_id=self.device_id,
+                num_workers=5,
+                cam_param_regression_model=self.regression_model,
+                cam_param_feature_extractor_model=self.regression_feature_extractor_model,
+            )
+
+    def predict_height_map(self, batch, visualize_indices=None):
+        with torch.cuda.device(self.device_id):
+            assert 'camera_filename' not in batch
+
+            self.transformer.prefetch_batch_async(batch, start_end_indices=None, target_device_id=self.device_id, options={'use_gt_geometry': False})
+            overhead_features, predicted_cam, transformer_names = self.transformer.pop_batch(target_device_id=1)
+            assert batch['name'] == transformer_names
+            assert overhead_features.shape[0] == len(batch['name'])
+
+            pred_height_map = self.height_map_model.get_output(overhead_features.cuda())
+
+            if visualize_indices:
+                import matplotlib.pyplot as pt
+                overhead_features_np = torch_utils.recursive_torch_to_numpy(overhead_features)
+
+                for i in visualize_indices:
+                    rgb_features = overhead_features_np[i, 2:5]
+                    print(batch['name'][i])
+
+                    pt.figure()
+                    pt.title('Input RGB')
+                    pt.imshow(v8.undo_rgb_whitening(torch_utils.recursive_torch_to_numpy(batch['rgb'][i])).transpose(1, 2, 0))
+                    pt.axis('off')
+
+                    pt.figure()
+                    pt.title('Transformed RGB')
+                    pt.imshow(v8.undo_rgb_whitening(rgb_features).transpose(1, 2, 0))
+                    pt.colorbar()
+                    pt.axis('off')
+
+                    pt.figure()
+                    pt.title('Best guess depth')
+                    pt.imshow(overhead_features_np[i, 0])
+                    pt.colorbar()
+                    pt.axis('off')
+
+                    # pt.figure()
+                    # pt.imshow(overhead_features_np[i, 1])
+                    # pt.colorbar()
+                    # pt.axis('off')
+
+                    fv = torch_utils.recursive_torch_to_numpy(batch['overhead_features_v3'][i, 1])
+                    pt.figure()
+                    pt.title('Frustum visibility map diff (GT-Pred)')
+                    pt.imshow(fv - overhead_features_np[i, 1])
+                    pt.colorbar()
+                    pt.axis('off')
+
+                    pt.figure(figsize=(14, 4))
+                    pt.subplot(1, 3, 1)
+                    pt.title('Predicted height map')
+                    pred_height_i = pred_height_map[i].squeeze()
+                    pt.imshow(pred_height_i)
+                    pt.colorbar()
+                    pt.axis('off')
+
+                    pt.subplot(1, 3, 2)
+                    pt.title('GT height map')
+                    gt_height_i = torch_utils.recursive_torch_to_numpy(batch['multi_layer_overhead_depth'][i][0]).squeeze()
+                    pt.imshow(gt_height_i)
+                    pt.colorbar()
+                    pt.axis('off')
+
+                    pt.subplot(1, 3, 3)
+                    pt.title('Error map')
+                    pt.imshow(np.abs(gt_height_i - pred_height_i), cmap='Reds')
+                    pt.clim(0, 1.5)
+                    pt.colorbar()
+                    pt.axis('off')
+
+                    pt.show()
+
+            pred_height_map_np = torch_utils.recursive_torch_to_numpy(pred_height_map)
+
+            return {
+                'pred_height_map': pred_height_map_np,
+                'pred_cam': torch_utils.recursive_torch_to_numpy(predicted_cam),
+            }
+
+
+def find_gt_floor_height(house_id, camera_id):
+    camera_filenames = sorted(glob.glob('/data2/scene3d/v8/renderings/{}/*_cam.txt'.format(house_id)))
+    sorted_camera_ids = [pbrs_utils.parse_house_and_camera_ids_from_string(item)[1] for item in camera_filenames]
+    floor_heights = [float(item) for item in io_utils.read_lines_and_strip('/data2/scene3d/v8_re/renderings/{}/floor_heights.txt'.format(house_id))]
+    assert len(floor_heights) == len(sorted_camera_ids)
+    return floor_heights[sorted_camera_ids.index(camera_id)]

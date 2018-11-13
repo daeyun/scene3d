@@ -136,9 +136,13 @@ class Unet1(nn.Module):
         return nn.functional.interpolate(value, scale_factor=2, mode='bilinear', align_corners=False)
 
     def forward(self, x):
+        """
+        :param x: Tuple containing (input, target).
+        :return: Scalar loss.
+        """
         assert isinstance(x, (list, tuple))
-        in_rgb, target = x
-        padded_x = self.pad(in_rgb)
+        in_features, target = x
+        padded_x = self.pad(in_features)
 
         x1 = self.enc1(padded_x)  # (304, 304)
         x2 = self.enc2(self.pool(x1))  # (152, 152)
@@ -155,4 +159,23 @@ class Unet1(nn.Module):
 
         # wrapping loss in forward so we can do it in parallel.
         out = loss_fn.loss_calc_overhead_single_raw(out, target)
+        return out
+
+    def get_output(self, x):
+        assert isinstance(x, torch.Tensor)
+        in_features = x
+        padded_x = self.pad(in_features)
+
+        x1 = self.enc1(padded_x)  # (304, 304)
+        x2 = self.enc2(self.pool(x1))  # (152, 152)
+        x3 = self.enc3(self.pool(x2))  # (76, 76)
+        x4 = self.enc4(self.pool(x3))  # (38, 38)
+        out = self.enc5(self.pool(x4))  # (19, 19)
+
+        out = self.dec1(torch.cat([x4, self.unpool(out)], dim=1))  # (38, 38)
+        out = self.dec2(torch.cat([x3, self.unpool(out)], dim=1))  # (76, 76)
+        out = self.dec3(torch.cat([x2, self.unpool(out)], dim=1))  # (152, 152)
+        out = self.dec4(torch.cat([x1, self.unpool(out)], dim=1))  # (304, 304)
+        out = self.dec5(out)  # (304, 304)
+        out = self.unpad(out)  # (300, 300)
         return out

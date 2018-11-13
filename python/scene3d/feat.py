@@ -364,20 +364,35 @@ def best_guess_depth_and_frustum_mask(frontal_depth_3layers, camera_filename):
     return ret
 
 
-def make_overhead_camera_file(out_filename, x, y, scale, theta):
-    ref_cam = [
-        'P',
-        0.0, 0.0, 0.0,  # position
-        0.0, 0.0, -1.0,  # viewing dir
-        0.0, 1.0, 0.0,  # up
-        -0.00617793056641, 0.00617793056641, -0.00463344946349, 0.00463344946349, 0.01, 100  # intrinsics
-    ]
+def make_overhead_camera_file(out_filename, x, y, scale, theta, ref_cam=None, camera_height=None):
+    """
+
+    :param out_filename:
+    :param x:
+    :param y:
+    :param scale:
+    :param theta:
+    :param ref_cam:
+    :param camera_height: y coordinate value of camera position.
+    :return:
+    """
+    if ref_cam is None:
+        ref_cam = [
+            'P',
+            0.0, 0.0, 0.0,  # position
+            0.0, 0.0, -1.0,  # viewing dir
+            0.0, 1.0, 0.0,  # up
+            -0.00617793056641, 0.00617793056641, -0.00463344946349, 0.00463344946349, 0.01, 100  # intrinsics
+        ]
 
     ref_pos = np.array(ref_cam[1:4], dtype=np.float64)
     ref_viewdir = np.array(ref_cam[4:7], dtype=np.float64)  # -z axis
     ref_up = np.array(ref_cam[7:10], dtype=np.float64)  # y axis
 
     target_cam = compute_overhead_camera(ref_pos, ref_viewdir, ref_up, x=x, y=y, scale=scale, theta=theta)
+
+    if camera_height is not None:
+        target_cam[2] = camera_height
 
     out_camera_file_content = '\n'.join([' '.join([str(item) for item in ref_cam]), ' '.join([str(item) for item in target_cam])])
 
@@ -436,9 +451,20 @@ class FeatureGenerator(object):
 
 
 class Transformer(FeatureGenerator):
-    def __init__(self, depth_checkpoint_filename, segmentation_checkpoint_filename, device_id, num_workers=5):
+    def __init__(self, depth_checkpoint_filename, segmentation_checkpoint_filename, device_id, num_workers=5, cam_param_regression_model=None, cam_param_feature_extractor_model=None):
         super().__init__()
         self.device_id = device_id
+
+        if cam_param_regression_model is not None or cam_param_feature_extractor_model is not None:
+            self.use_gt_cam_params = False
+            assert cam_param_regression_model is not None
+            assert cam_param_feature_extractor_model is not None
+            self.cam_param_regression_model = cam_param_regression_model
+            self.cam_param_feature_extractor_model = cam_param_feature_extractor_model
+        else:
+            self.use_gt_cam_params = True
+            self.cam_param_regression_model = None
+            self.cam_param_feature_extractor_model = None
         log.info('[Transformer] Device id: {}'.format(self.device_id))
 
         with torch.cuda.device(self.device_id):
@@ -483,8 +509,15 @@ class Transformer(FeatureGenerator):
             assert isinstance(batch, dict)
             if use_gt_geometry:
                 required_fields = ['rgb', 'multi_layer_depth', 'multi_layer_depth_aligned_background', 'overhead_camera_pose_4params', 'camera_filename']
+                assert not self.use_gt_cam_params
             else:
-                required_fields = ['rgb', 'overhead_camera_pose_4params', 'camera_filename']
+                if self.use_gt_cam_params:
+                    required_fields = ['rgb', 'overhead_camera_pose_4params', 'camera_filename']
+                else:
+                    required_fields = ['rgb']
+                    assert 'camera_filename' not in batch
+                    assert 'overhead_camera_pose_3params' not in batch
+                    assert 'overhead_camera_pose_4params' not in batch
 
             for field in required_fields:
                 assert field in batch, field
@@ -542,11 +575,40 @@ class Transformer(FeatureGenerator):
                 back = dataset_utils.force_contiguous(predicted_depth_segmented[:, 1])  # (B, H, W)
                 # log.info('memory stuff took {}'.format(time.time() - stime))
 
-            # (B, 300, 300, 115)
-            camera_filenames = self._get_batch_subset(batch, 'camera_filename', start_end_indices)
+            if self.use_gt_cam_params:
+                camera_filenames = self._get_batch_subset(batch, 'camera_filename', start_end_indices)
+                camparams = self._get_batch_subset(batch, 'overhead_camera_pose_4params', start_end_indices)
+            else:
+                # predict camera parameters
+                pred_cam_params = train_eval_pipeline.predict_cam_params(self.cam_param_regression_model, self.cam_param_feature_extractor_model, in_rgb)
+                assert pred_cam_params.shape[0] == batch_size
+                assert pred_cam_params.shape[1] == 3  # could be 4 depending on the model.
+                assert pred_cam_params.ndim == 2
 
+                theta = 1.37340092658996582031  # We can preidct this, but PBRS's cameras have a constant tilt.
+                camera_filenames = []
+                for row in pred_cam_params:
+                    assert row.shape[0] == 3
+                    random_string = uuid.uuid4().hex
+                    new_cam_filename = path.join(self.tmp_out_root, 'feat_ortho_cam_{}.txt'.format(random_string))
+                    x, y, scale = row.tolist()
+                    if path.isfile(new_cam_filename):
+                        os.remove(new_cam_filename)
+                    make_overhead_camera_file(new_cam_filename, x, y, scale, theta)
+                    assert path.isfile(new_cam_filename)
+                    camera_filenames.append(new_cam_filename)
+                camparams = torch_utils.recursive_numpy_to_torch(np.concatenate([pred_cam_params, np.full([batch_size, 1], fill_value=theta)], axis=1))
+                assert camparams.shape[0] == batch_size
+                assert camparams.shape[1] == 4
+
+            # (B, 300, 300, 115)
             stime = time.time()
             tranformed_batch = epipolar.feature_transform_parallel(feat, front_depth_data=front, back_depth_data=back, camera_filenames=camera_filenames, target_height=300, target_width=300)
+
+            if not self.use_gt_cam_params:
+                for fname in camera_filenames:
+                    assert 'feat_ortho_cam_' in fname
+                    os.remove(fname)  # clean up
 
             ret = np.empty((batch_size, 117, 300, 300), dtype=np.float32)
 
@@ -555,14 +617,9 @@ class Transformer(FeatureGenerator):
             # log.info('feature_transform_parallel took {}'.format(time.time() - stime))
 
             # (B, 2, 300, 300)
-
-            stime = time.time()
-            camparams = self._get_batch_subset(batch, 'overhead_camera_pose_4params', start_end_indices)
             ret[:, :2] = make_extra_features_batch(depth_aligned, camparams, self.tmp_out_root)
-            # log.info('make_extra_features_batch took {}'.format(time.time() - stime))
-            # log.info('TOTAL prep took {}'.format(time.time() - stime0))
 
-            return ret, self._get_batch_subset(batch, 'name', start_end_indices)
+            return ret, camparams, self._get_batch_subset(batch, 'name', start_end_indices)
 
     def get_transformed_features(self, batch, start_end_indices, use_gt_geometry=True) -> (np.ndarray, list):
         if start_end_indices is None:
@@ -581,17 +638,19 @@ class Transformer(FeatureGenerator):
         out = self.pool.starmap(self._get_transformed_features, args)
 
         out_feat = []
+        out_cam = []
         out_names = []
-        for f, names in out:
+        for f, cam, names in out:
             out_feat.append(f)
+            out_cam.append(cam)
             out_names.extend(names)
 
-        return np.concatenate(out_feat, axis=0), out_names
+        return np.concatenate(out_feat, axis=0), np.concatenate(out_cam, axis=0), out_names
 
     def _prefetch_worker(self, batch, start_end_indices, target_device_id, use_gt_geometry, out_dict):
         assert out_dict[target_device_id] is None
-        out_feat, out_names = self.get_transformed_features(batch, start_end_indices, use_gt_geometry=use_gt_geometry)
-        out_dict[target_device_id] = (torch.Tensor(out_feat), out_names)
+        out_feat, out_cam, out_names = self.get_transformed_features(batch, start_end_indices, use_gt_geometry=use_gt_geometry)
+        out_dict[target_device_id] = (torch.Tensor(out_feat), out_cam, out_names)
 
     def prefetch_batch_async(self, batch, start_end_indices, target_device_id, options=None):
         assert target_device_id not in self.batches
