@@ -1467,10 +1467,16 @@ class HeightMapModel(object):
             )
 
     def predict_height_map(self, batch, visualize_indices=None):
-        with torch.cuda.device(self.device_id):
-            assert 'camera_filename' not in batch
 
-            self.transformer.prefetch_batch_async(batch, start_end_indices=None, target_device_id=self.device_id, options={'use_gt_geometry': False})
+        input_batch = {
+            'rgb': batch['rgb'],
+            'name': batch['name'],
+        }
+
+        with torch.cuda.device(self.device_id):
+            assert 'camera_filename' not in input_batch
+
+            self.transformer.prefetch_batch_async(input_batch, start_end_indices=None, target_device_id=self.device_id, options={'use_gt_geometry': False})
             overhead_features, predicted_cam, transformer_names = self.transformer.pop_batch(target_device_id=1)
             assert batch['name'] == transformer_names
             assert overhead_features.shape[0] == len(batch['name'])
@@ -1548,6 +1554,21 @@ class HeightMapModel(object):
 
 def find_gt_floor_height(house_id, camera_id):
     gt_mesh_filename = '/data3/out/scene3d/v8_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id)
+    floor_filename = path.join(path.dirname(gt_mesh_filename), 'floor.txt')
+    if path.isfile(floor_filename):
+        with open(floor_filename, 'r') as f:
+            content = f.read()
+            try:
+                height = float(content.strip())
+                return height
+            except ValueError as ex:
+                pass
+
     fv = io_utils.read_mesh(gt_mesh_filename)
     ycoords = sorted(fv['v'][:, 1].tolist())
-    return np.median(ycoords[:int(max(len(ycoords) * 0.01, 100))]).item()
+    ret = np.median(ycoords[:int(max(len(ycoords) * 0.01, 100))]).item()
+
+    with open(path.join(path.dirname(gt_mesh_filename), 'floor.txt'), 'w') as f:
+        f.write('{:.8f}'.format(ret))
+
+    return ret

@@ -494,7 +494,7 @@ class Transformer(FeatureGenerator):
         assert start_end[1] <= len(item)
         return item[start_end[0]:start_end[1]]
 
-    def _get_transformed_features(self, batch, start_end_indices, use_gt_geometry=True) -> (np.ndarray, list):
+    def _get_transformed_features(self, batch, start_end_indices, use_gt_geometry=False) -> (np.ndarray, list):
         """
         :param batch:
         :param use_gt_geometry:
@@ -623,7 +623,7 @@ class Transformer(FeatureGenerator):
 
     def get_transformed_features(self, batch, start_end_indices, use_gt_geometry=True) -> (np.ndarray, list):
         if start_end_indices is None:
-            start_end_indices = [0, len(batch['name'])]
+            start_end_indices = [0, len(batch['rgb'])]
         start, end = start_end_indices
         size = end - start
         assert size > 0
