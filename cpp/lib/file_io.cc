@@ -120,7 +120,7 @@ bool ReadFacesAndVertices(const std::string &filename,
 
   // List of post-processing flags can be found here:
   // http://sir-kimmi.de/assimp/lib_html/postprocess_8h.html#a64795260b95f5a4b3f3dc1be4f52e410
-  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices | aiProcess_SortByPType);
+  const aiScene *scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_JoinIdenticalVertices);
 
   if (!scene) {
     LOGGER->error("ERROR in {}: {}", filename, importer.GetErrorString());
@@ -170,12 +170,29 @@ bool ReadFacesAndVertices(const std::string &filename,
           }
         }
 
+        const auto a = mesh->mVertices[face.mIndices[0]];
+        const auto b = mesh->mVertices[face.mIndices[1]];
+        const auto c = mesh->mVertices[face.mIndices[2]];
+
+        Vec3 a_{a.x, a.y, a.z};
+        Vec3 b_{b.x, b.y, b.z};
+        Vec3 c_{c.x, c.y, c.z};
+        double area = (b_ - a_).cross(c_ - a_).norm() * 0.5f;
+        if (area < 1e-9) {
+          LOGGER->warn("Triangle area too small: {:.20g}. Removed", area);
+          continue;
+        }
+
         faces->push_back({static_cast<unsigned int>(face_offset + face.mIndices[0]),
                           static_cast<unsigned int>(face_offset + face.mIndices[1]),
                           static_cast<unsigned int>(face_offset + face.mIndices[2])});
 
-        node_id_for_each_face->push_back(node_index);
-        node_name_for_each_face->push_back(std::string(node->mName.data));
+        if (node_id_for_each_face != nullptr) {
+          node_id_for_each_face->push_back(node_index);
+        }
+        if (node_name_for_each_face != nullptr) {
+          node_name_for_each_face->push_back(std::string(node->mName.data));
+        }
 
         ++triangle_count;
       }
@@ -450,16 +467,27 @@ void WritePly(const string &filename, const vector<array<unsigned int, 3>> &face
   ply_file.write(outstream, is_binary);
 }
 
-void WriteObj(const string &filename, const vector<array<unsigned int, 3>> &faces, const vector<array<float, 3>> &vertices) {
+void WriteObj(const string &filename, const vector<array<unsigned int, 3>> &faces, const vector<array<float, 3>> &vertices, float red, float green, float blue) {
   Expects(EndsWith(filename, ".obj"));
   std::ofstream file;
   file.open(filename);
+
+  bool write_color = false;
+  if (red >= 0 && green >= 0 && blue >= 0 && red <= 1 && green <= 1 && blue <= 1) {
+    write_color = true;
+  }
 
   for (const auto &v : vertices) {
     file << "v ";
     file << v[0] << " ";
     file << v[1] << " ";
-    file << v[2] << "\n";
+    file << v[2];
+
+    if (write_color) {
+      file << " " << red << " " << green << " " << blue;
+    }
+
+    file << "\n";
   }
 
   for (const auto &f : faces) {

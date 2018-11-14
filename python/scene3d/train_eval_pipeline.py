@@ -1,4 +1,5 @@
 import argparse
+import pickle
 import glob
 import time
 import typing
@@ -1388,15 +1389,44 @@ def save_height_prediction_as_meshes(height_map_model_batch_out, hm_model, origi
         feat.make_overhead_camera_file(new_cam_filename, x, y, scale, theta, ref_cam=ref_cam_components, camera_height=camera_height)
         assert path.isfile(new_cam_filename)
 
-        overhead_depth = default_overhead_camera_height - height_map_model_batch_out['pred_height_map'][i].squeeze()
-        out_filename = '/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead.ply'.format(example_names[i])  # TODO
-        depth_mesh_utils_cpp.depth_to_mesh(overhead_depth, camera_filename=new_cam_filename, camera_index=1, dd_factor=6, out_ply_filename=out_filename)
-        out_ply_filenames.append(out_filename)
+        overhead_heightmap = height_map_model_batch_out['pred_height_map'][i].squeeze()
+        overhead_depth = default_overhead_camera_height - overhead_heightmap
+
+        out_filename_bg = '/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead_bg.ply'.format(example_names[i])  # TODO
+        out_filename_fg = '/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead_fg.ply'.format(example_names[i])  # TODO
+
+        overhead_depth_bg = overhead_depth.copy()
+        overhead_depth_bg[overhead_heightmap > 0.01] = np.nan
+
+        overhead_depth_fg = overhead_depth.copy()
+        overhead_depth_fg[overhead_heightmap <= 0.01] = np.nan
+
+        depth_mesh_utils_cpp.depth_to_mesh(overhead_depth_fg, camera_filename=new_cam_filename, camera_index=1, dd_factor=6, out_ply_filename=out_filename_fg)
+        depth_mesh_utils_cpp.depth_to_mesh(overhead_depth_bg, camera_filename=new_cam_filename, camera_index=1, dd_factor=6, out_ply_filename=out_filename_bg)
+
+        out_ply_filenames.append([out_filename_bg, out_filename_fg])  # list of lists.
 
         if path.isfile(new_cam_filename):
             os.remove(new_cam_filename)
 
+    assert len(out_ply_filenames) == len(example_names)
+
     return out_ply_filenames
+
+
+def save_height_map_output_batch(height_map_model_batch_out, example_names):
+    pred = height_map_model_batch_out['pred_height_map']
+    assert len(pred) == len(example_names)
+
+    ret = []
+    for i, name in enumerate(example_names):
+        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(name)
+        out_file = '/data3/out/scene3d/v8_pred/{}/{}/pred_height_map.bin'.format(house_id, camera_id)
+        io_utils.ensure_dir_exists(path.dirname(out_file))
+        io_utils.save_array_compressed(out_file, pred[i].squeeze())  # (300, 300)
+        ret.append(out_file)
+
+    return ret
 
 
 def mesh_precision_recall_parallel(gt_pred_filename_pairs, sampling_density, thresholds):
@@ -1553,8 +1583,9 @@ class HeightMapModel(object):
 
 
 def find_gt_floor_height(house_id, camera_id):
-    gt_mesh_filename = '/data3/out/scene3d/v8_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id)
-    floor_filename = path.join(path.dirname(gt_mesh_filename), 'floor.txt')
+    gt_mesh_filename1 = '/data3/out/scene3d/v8_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id)
+    gt_mesh_filename2 = '/data3/out/scene3d/v8_gt_mesh/{}/{}/gt_objects.ply'.format(house_id, camera_id)
+    floor_filename = path.join(path.dirname(gt_mesh_filename1), 'floor.txt')
     if path.isfile(floor_filename):
         with open(floor_filename, 'r') as f:
             content = f.read()
@@ -1564,11 +1595,151 @@ def find_gt_floor_height(house_id, camera_id):
             except ValueError as ex:
                 pass
 
-    fv = io_utils.read_mesh(gt_mesh_filename)
+    fv = io_utils.read_mesh(gt_mesh_filename1)
     ycoords = sorted(fv['v'][:, 1].tolist())
-    ret = np.median(ycoords[:int(max(len(ycoords) * 0.01, 100))]).item()
+    height1 = np.median(ycoords[:int(max(len(ycoords) * 0.01, 100))]).item()
 
-    with open(path.join(path.dirname(gt_mesh_filename), 'floor.txt'), 'w') as f:
+    fv = io_utils.read_mesh(gt_mesh_filename2)
+    ycoords = sorted(fv['v'][:, 1].tolist())
+    height2 = np.median(ycoords[:int(max(len(ycoords) * 0.01, 100))]).item()
+
+    ret = min(height1, height2)
+
+    with open(floor_filename, 'w') as f:
         f.write('{:.8f}'.format(ret))
 
     return ret
+
+
+def symlink_all_files_in_dir(src_dir, tgt_dir):
+    files = glob.glob(path.join(src_dir, '*'))
+    io_utils.ensure_dir_exists(tgt_dir)
+    out_files = []
+    for file in files:
+        out_files.append(file)
+        out_file = path.join(tgt_dir, path.basename(file))
+        if path.islink(out_file):
+            os.remove(out_file)
+        elif path.exists(out_file):
+            raise RuntimeError('file exists and is not a link: {}'.format(out_file))
+        os.symlink(file, out_file)
+    return out_files
+
+
+class PRCurveEvaluation(object):
+    def __init__(self, save_filename):
+        if path.isfile(save_filename):
+            with open(save_filename, 'rb') as f:
+                self.results = pickle.load(f)
+        else:
+            self.results = {}
+        self.save_filename = save_filename
+
+        step = 0.01
+        self.thresholds = np.array([0.001, 0.003, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04] + np.arange(0.05, 1 + step, step).tolist() + np.arange(1 + step * 2, 2 + step, step * 2).tolist())
+        self.density = 10000
+
+    def key(self, pred_or_gt, target_type, source_list):
+        assert pred_or_gt in ['pred', 'gt']
+        assert target_type in ['obj', 'background', 'both']
+        if isinstance(source_list, str):
+            source_list = [source_list]
+        assert isinstance(source_list, (tuple, list)), source_list
+        return ','.join([pred_or_gt.strip(), target_type.strip(), '+'.join(sorted(source_list))])
+
+    def is_mesh_empty(self, mesh_filename):
+        if isinstance(mesh_filename, (list, tuple)):
+            return np.any([self.is_mesh_empty(item) for item in mesh_filename])
+        return path.getsize(mesh_filename) < 190 or not path.isfile(mesh_filename)
+
+    def mesh_precision_recall(self, gt_mesh_filenames, pred_mesh_filenames):
+        assert isinstance(gt_mesh_filenames, (list, tuple))
+        assert isinstance(pred_mesh_filenames, (list, tuple))
+        assert gt_mesh_filenames
+        assert pred_mesh_filenames
+
+        if self.is_mesh_empty(gt_mesh_filenames):
+            print('GT mesh is empty. Skipping for now.    {}'.format(gt_mesh_filenames))
+            return dict()
+        if self.is_mesh_empty(pred_mesh_filenames):
+            print('Pred mesh is empty. Skipping for now.    {}'.format(pred_mesh_filenames))
+            return dict()
+
+        precision, recall = depth_mesh_utils_cpp.mesh_precision_recall(gt_mesh_filenames, pred_mesh_filenames, self.density, thresholds=self.thresholds)
+        return {'p': precision, 'r': recall}
+
+    def run_if_not_exists(self, example_name, key, gt_mesh_filenames, pred_mesh_filenames):
+        assert isinstance(gt_mesh_filenames, (list, tuple))
+        assert isinstance(pred_mesh_filenames, (list, tuple))
+        assert gt_mesh_filenames
+        assert pred_mesh_filenames
+
+        if example_name not in self.results:
+            self.results[example_name] = {}
+        if key in self.results[example_name]:
+            return
+        pr = self.mesh_precision_recall(gt_mesh_filenames, pred_mesh_filenames)
+        self.results[example_name][key] = pr
+
+    def save(self):
+        log.info('Saving {}'.format(self.save_filename))
+        # TODO: lock file and also merge before overwriting.
+        with open(self.save_filename, 'wb') as f:
+            pickle.dump(self.results, f)
+
+    def run_evaluation(self, example):
+        """
+        This is the main function.
+        """
+        assert isinstance(example, dict)
+        assert 'name' in example
+
+        name = example['name']
+        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(name)
+
+        gt_bg, gt_objects = sorted(glob.glob('/data3/out/scene3d/v8_gt_mesh/{}/{}/gt*.ply'.format(house_id, camera_id)))
+        pred_files_list = sorted(glob.glob('/data3/out/scene3d/v8_pred_depth_mesh/{}/{}/*.ply'.format(house_id, camera_id)))
+        pred_files = {path.basename(item).split('.')[0]: item for item in pred_files_list}
+        f3d_pred = '/data3/out/scene3d/factored3d_pred/{}/{}/codes_transformed_clipped.ply'.format(house_id, camera_id)
+
+        assert path.isfile(f3d_pred), f3d_pred
+
+        if 'overhead_fg_clipped' not in pred_files:
+            print('Overhead file is not available. Skipping for now.    {}'.format(name))
+            return
+
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['overhead_fg']), [gt_objects], [pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0']), [gt_objects], [pred_files['pred_0']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', 'overhead_fg']), [gt_objects], [pred_files['pred_0'], pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['1', 'overhead_fg']), [gt_objects], [pred_files['pred_1'], pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['2', 'overhead_fg']), [gt_objects], [pred_files['pred_2'], pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', 'overhead_fg']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['f3d']), [gt_objects], [f3d_pred])
+
+    def plot(self, key, precision_or_recall, max_threshold, **kwargs):
+        assert isinstance(key, str)
+        assert precision_or_recall in ['p', 'r']
+        import matplotlib.pyplot as pt
+
+        collected = []
+        names = list(self.results.keys())
+        for name in names:
+            if key in self.results[name]:
+                pr = self.results[name][key]
+                if precision_or_recall in pr:
+                    collected.append(pr[precision_or_recall])
+
+        print('{} measurements in key {}'.format(len(collected), key))
+
+        if len(collected) == 0:
+            raise RuntimeError('not found')
+
+        y = np.array(collected).mean(axis=0)
+        x = self.thresholds
+
+        end = (x <= max_threshold).sum() + 1
+        x = x[:end]
+        y = y[:end]
+
+        pt.plot(x, y, **kwargs)

@@ -1,4 +1,5 @@
 import os
+import time
 from os import path
 import numpy as np
 
@@ -10,9 +11,14 @@ from scene3d.dataset import v8
 def main():
     dataset = v8.MultiLayerDepth(
         # split='test',
-        split='/data2/scene3d/v8/validation_s168.txt',
+        # split='/data2/scene3d/v8/validation_s168.txt',
+        split='/data2/scene3d/v8/test_v2_subset_factored3d.txt',
+        # split='/data3/factored3d/filename.txt',
         subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
     indices = np.arange(len(dataset))
+
+    start_time = time.time()
+    count = 0
 
     for i in indices:
         example = dataset[i]
@@ -41,6 +47,11 @@ def main():
         depth_mesh_utils_cpp.depth_to_mesh(mld[1], camera_filename, camera_index=0, dd_factor=10, out_ply_filename=path.join(out_dir, 'd1.ply'))
         depth_mesh_utils_cpp.depth_to_mesh(mld[2], camera_filename, camera_index=0, dd_factor=10, out_ply_filename=path.join(out_dir, 'd2.ply'))
         depth_mesh_utils_cpp.depth_to_mesh(mld[3], camera_filename, camera_index=0, dd_factor=15, out_ply_filename=path.join(out_dir, 'd3.ply'))
+
+        count += 1
+        remaining = len(indices) - count
+        eta = (time.time() - start_time) / count * remaining
+        print('ETA: {:.2f} minutes'.format(eta / 60))
 
 
 if __name__ == '__main__':

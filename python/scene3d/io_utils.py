@@ -40,8 +40,12 @@ def read_mesh(filename):
     """
     if filename.endswith('.off'):
         return read_off(filename)
-    if filename.endswith('.ply'):
+    elif filename.endswith('.ply'):
         return read_mesh_assimp(filename)
+    elif filename.endswith('.obj'):
+        return read_mesh_assimp(filename)
+    else:
+        raise RuntimeError()
 
 
 def read_off_num_fv(filename: str) -> tuple:
