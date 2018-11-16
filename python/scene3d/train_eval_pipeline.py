@@ -1,4 +1,8 @@
 import argparse
+import io
+import gzip
+import scipy.misc
+import portalocker
 import pickle
 import glob
 import time
@@ -7,6 +11,8 @@ from scene3d import depth_mesh_utils_cpp
 import collections
 import os
 from os import path
+import scipy
+import scipy.io as sio
 
 import numpy as np
 import torch
@@ -1371,9 +1377,43 @@ def save_mldepth_as_meshes(pred_segmented_depth, example):
     out_pred_filenames = []
     # out_gt_filenames = []
     for i in range(4):
-        out_filename = '/data3/out/scene3d/v8_pred_depth_mesh/{}/pred_{}.ply'.format(example['name'], i)  # TODO
+        out_filename = path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/pred_{}.ply'.format(example['name'], i))
         if not path.isfile(out_filename):
             depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        out_pred_filenames.append(out_filename)
+
+        # out_filename = '/data3/out/scene3d/v8_depth_mesh/{}_gt_{}.ply'.format(example['name'], i)
+        # if not path.isfile(out_filename):
+        #     depth_mesh_utils_cpp.depth_to_mesh(example['multi_layer_depth_aligned_background'][i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        # out_gt_filenames.append(out_filename)
+
+    return {
+        'pred': out_pred_filenames,
+        # 'gt': out_gt_filenames,
+    }
+
+
+def save_mldepth_as_meshes_realworld(pred_segmented_depth, out_dir_name):
+    assert pred_segmented_depth.ndim == 3
+    out_pred_filenames = []
+    # out_gt_filenames = []
+
+    ref_cam = [
+        'P',
+        0.0, 0.0, 0.0,  # position
+        0.0, 0.0, -1.0,  # viewing dir
+        0.0, 1.0, 0.0,  # up
+        -0.00617793056641, 0.00617793056641, -0.00463344946349, 0.00463344946349, 0.01, 100  # intrinsics
+    ]
+
+    tmp_camera_name = '/mnt/ramdisk/cam_view.txt'
+    with open(tmp_camera_name, 'w') as f:
+        f.write(' '.join([str(item) for item in ref_cam]))
+
+    for i in range(4):
+        out_filename = path.join(config.default_out_root, out_dir_name, 'pred_{}.ply'.format(i))
+        # if not path.isfile(out_filename):
+        depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], tmp_camera_name, camera_index=0, dd_factor=10, out_ply_filename=out_filename)
         out_pred_filenames.append(out_filename)
 
         # out_filename = '/data3/out/scene3d/v8_depth_mesh/{}_gt_{}.ply'.format(example['name'], i)
@@ -1418,8 +1458,8 @@ def save_height_prediction_as_meshes(height_map_model_batch_out, hm_model, origi
         overhead_heightmap = height_map_model_batch_out['pred_height_map'][i].squeeze()
         overhead_depth = default_overhead_camera_height - overhead_heightmap
 
-        out_filename_bg = '/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead_bg.ply'.format(example_names[i])  # TODO
-        out_filename_fg = '/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead_fg.ply'.format(example_names[i])  # TODO
+        out_filename_bg = path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/overhead_bg.ply'.format(example_names[i]))  # TODO
+        out_filename_fg = path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/overhead_fg.ply'.format(example_names[i]))  # TODO
 
         overhead_depth_bg = overhead_depth.copy()
         overhead_depth_bg[overhead_heightmap > 0.01] = np.nan
@@ -1447,7 +1487,7 @@ def save_height_map_output_batch(height_map_model_batch_out, example_names):
     ret = []
     for i, name in enumerate(example_names):
         house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(name)
-        out_file = '/data3/out/scene3d/v8_pred/{}/{}/pred_height_map.bin'.format(house_id, camera_id)
+        out_file = path.join(config.default_out_root, 'v8_pred/{}/{}/pred_height_map.bin'.format(house_id, camera_id))
         io_utils.ensure_dir_exists(path.dirname(out_file))
         io_utils.save_array_compressed(out_file, pred[i].squeeze())  # (300, 300)
         ret.append(out_file)
@@ -1609,8 +1649,8 @@ class HeightMapModel(object):
 
 
 def find_gt_floor_height(house_id, camera_id):
-    gt_mesh_filename1 = '/data3/out/scene3d/v8_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id)
-    gt_mesh_filename2 = '/data3/out/scene3d/v8_gt_mesh/{}/{}/gt_objects.ply'.format(house_id, camera_id)
+    gt_mesh_filename1 = path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id))
+    gt_mesh_filename2 = path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt_objects.ply'.format(house_id, camera_id))
     floor_filename = path.join(path.dirname(gt_mesh_filename1), 'floor.txt')
     if path.isfile(floor_filename):
         with open(floor_filename, 'r') as f:
@@ -1654,19 +1694,23 @@ def symlink_all_files_in_dir(src_dir, tgt_dir):
 
 class PRCurveEvaluation(object):
     def __init__(self, save_filename):
-        if path.isfile(save_filename):
-            with open(save_filename, 'rb') as f:
-                self.results = pickle.load(f)
-        else:
-            self.results = {}
         self.save_filename = save_filename
+        self.load()
 
         step = 0.01
         self.thresholds = np.array([0.001, 0.003, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04] + np.arange(0.05, 1 + step, step).tolist() + np.arange(1 + step * 2, 2 + step, step * 2).tolist())
         self.density = 10000
 
+    def load(self):
+        try:
+            with portalocker.Lock(self.save_filename, mode='rb', timeout=10) as f:
+                self.results = pickle.load(f)
+        except FileNotFoundError as ex:
+            log.info('File not found. Initializing an empty dict. {}'.format(self.save_filename))
+            self.results = {}
+
     def key(self, pred_or_gt, target_type, source_list):
-        assert pred_or_gt in ['pred', 'gt']
+        assert pred_or_gt in ['pred', 'gt_depth']
         assert target_type in ['obj', 'background', 'both']
         if isinstance(source_list, str):
             source_list = [source_list]
@@ -1685,16 +1729,16 @@ class PRCurveEvaluation(object):
         assert pred_mesh_filenames
 
         if self.is_mesh_empty(gt_mesh_filenames):
-            print('GT mesh is empty. Skipping for now.    {}'.format(gt_mesh_filenames))
-            return dict()
+            log.error('GT mesh is empty. This should not happen.    {}'.format(gt_mesh_filenames))
+            raise RuntimeError()
         if self.is_mesh_empty(pred_mesh_filenames):
-            print('Pred mesh is empty. Skipping for now.    {}'.format(pred_mesh_filenames))
-            return dict()
+            log.warn('Nothing was predicted. Precision=1, Recall=0')
+            return {'p': 1.0, 'r': 0.0, }  # for all thresholds.
 
         precision, recall = depth_mesh_utils_cpp.mesh_precision_recall(gt_mesh_filenames, pred_mesh_filenames, self.density, thresholds=self.thresholds)
         return {'p': precision, 'r': recall}
 
-    def run_if_not_exists(self, example_name, key, gt_mesh_filenames, pred_mesh_filenames):
+    def run_if_not_exists(self, example_name, key, gt_mesh_filenames, pred_mesh_filenames, force=False):
         assert isinstance(gt_mesh_filenames, (list, tuple))
         assert isinstance(pred_mesh_filenames, (list, tuple))
         assert gt_mesh_filenames
@@ -1702,15 +1746,40 @@ class PRCurveEvaluation(object):
 
         if example_name not in self.results:
             self.results[example_name] = {}
-        if key in self.results[example_name]:
+        if not force and self.check_already_computed(example_name, key):
+            log.info('Already computed. Skipping. {}'.format(example_name, key))
             return
         pr = self.mesh_precision_recall(gt_mesh_filenames, pred_mesh_filenames)
         self.results[example_name][key] = pr
 
+    def names(self):
+        return list(self.results.keys())
+
+    def check_already_computed(self, name, key):
+        key = self.force_string_key(key)
+        if key not in self.results[name]:
+            return False
+        elif 'p' not in self.results[name][key]:
+            return False
+        elif 'r' not in self.results[name][key]:
+            return False
+        elif (isinstance(self.results[name][key]['p'], (tuple, list)) and len(self.results[name][key]['p']) == 0) or self.results[name][key]['p'] is None:
+            return False
+        elif (isinstance(self.results[name][key]['r'], (tuple, list)) and len(self.results[name][key]['r']) == 0) or self.results[name][key]['r'] is None:
+            return False
+        return True
+
+    def count(self, key):
+        ret = 0
+        for name in self.names():
+            if self.check_already_computed(name, key):
+                ret += 1
+        return ret
+
     def save(self):
         log.info('Saving {}'.format(self.save_filename))
-        # TODO: lock file and also merge before overwriting.
-        with open(self.save_filename, 'wb') as f:
+        # TODO: merge before overwriting.
+        with portalocker.Lock(self.save_filename, mode='wb', timeout=10) as f:
             pickle.dump(self.results, f)
 
     def run_evaluation(self, example):
@@ -1723,30 +1792,70 @@ class PRCurveEvaluation(object):
         name = example['name']
         house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(name)
 
-        gt_bg, gt_objects = sorted(glob.glob('/data3/out/scene3d/v8_gt_mesh/{}/{}/gt*.ply'.format(house_id, camera_id)))
-        pred_files_list = sorted(glob.glob('/data3/out/scene3d/v8_pred_depth_mesh/{}/{}/*.ply'.format(house_id, camera_id)))
+        gt_bg, gt_objects = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt*.ply'.format(house_id, camera_id))))
+        gt_depths = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id))))
+        assert len(gt_depths) == 4
+        pred_files_list = sorted(glob.glob(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/{}/*.ply'.format(house_id, camera_id))))
         pred_files = {path.basename(item).split('.')[0]: item for item in pred_files_list}
-        f3d_pred = '/data3/out/scene3d/factored3d_pred/{}/{}/codes_transformed_clipped.ply'.format(house_id, camera_id)
+        f3d_pred = path.join(config.default_out_root, 'factored3d_pred/{}/{}/codes_transformed_clipped.ply'.format(house_id, camera_id))
 
         assert path.isfile(f3d_pred), f3d_pred
 
-        if 'overhead_fg_clipped' not in pred_files:
-            print('Overhead file is not available. Skipping for now.    {}'.format(name))
-            return
+        # if 'overhead_fg_clipped' not in pred_files:
+        #     print('Overhead file is not available. Skipping for now.    {}'.format(name))
+        #     return
 
         self.run_if_not_exists(name, self.key('pred', 'obj', ['overhead_fg']), [gt_objects], [pred_files['overhead_fg_clipped']])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0']), [gt_objects], [pred_files['pred_0']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['1']), [gt_objects], [pred_files['pred_1']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['2']), [gt_objects], [pred_files['pred_2']])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0', 'overhead_fg']), [gt_objects], [pred_files['pred_0'], pred_files['overhead_fg_clipped']])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['1', 'overhead_fg']), [gt_objects], [pred_files['pred_1'], pred_files['overhead_fg_clipped']])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['2', 'overhead_fg']), [gt_objects], [pred_files['pred_2'], pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '2']), [gt_objects], [pred_files['pred_0'], pred_files['pred_2']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['1', '2']), [gt_objects], [pred_files['pred_1'], pred_files['pred_2']])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2']])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', 'overhead_fg']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', 'overhead_fg', 'f3d']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['overhead_fg_clipped'], f3d_pred])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['f3d']), [gt_objects], [f3d_pred])
 
-    def plot(self, key, precision_or_recall, max_threshold, **kwargs):
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0']), [gt_objects], [gt_depths[0]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1']), [gt_objects], [gt_depths[1]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['2']), [gt_objects], [gt_depths[2]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['3']), [gt_objects], [gt_depths[3]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1']), [gt_objects], [gt_depths[0], gt_depths[1]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1', '2']), [gt_objects], [gt_depths[1], gt_depths[2]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2]])
+
+        self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_bg, gt_objects], [pred_files['pred_0']])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['1']), [gt_bg, gt_objects], [pred_files['pred_1']])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['2']), [gt_bg, gt_objects], [pred_files['pred_2']])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['3']), [gt_bg, gt_objects], [pred_files['pred_3']])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_3']])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_3']])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['pred_3']])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['pred_3'], pred_files['overhead_fg_clipped']])
+
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_files['overhead_fg_clipped']])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0']), [gt_bg, gt_objects], [gt_depths[0]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['1']), [gt_bg, gt_objects], [gt_depths[1]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['2']), [gt_bg, gt_objects], [gt_depths[2]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['3']), [gt_bg, gt_objects], [gt_depths[3]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[3], ])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[3], ])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], ])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [])
+
+        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['2', '3']), [gt_objects], [gt_depths[2], gt_depths[3]])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1', '2', '3']), [gt_objects], [gt_depths[1], gt_depths[2], gt_depths[3]])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2', '3']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3]])
+
+    def as_array(self, key, precision_or_recall):
+        key = self.force_string_key(key)
         assert isinstance(key, str)
         assert precision_or_recall in ['p', 'r']
-        import matplotlib.pyplot as pt
 
         collected = []
         names = list(self.results.keys())
@@ -1754,14 +1863,40 @@ class PRCurveEvaluation(object):
             if key in self.results[name]:
                 pr = self.results[name][key]
                 if precision_or_recall in pr:
-                    collected.append(pr[precision_or_recall])
+                    values = pr[precision_or_recall]
+                    if isinstance(values, float):
+                        values = np.full(self.thresholds.shape, values, dtype=np.float32)
+                    collected.append(values)
 
         print('{} measurements in key {}'.format(len(collected), key))
 
         if len(collected) == 0:
             raise RuntimeError('not found')
 
-        y = np.array(collected).mean(axis=0)
+        y = np.array(collected)
+        return y
+
+    def mean(self, key, precision_or_recall):
+        return self.as_array(key=key, precision_or_recall=precision_or_recall).mean(axis=0)
+
+    def std(self, key, precision_or_recall):
+        return self.as_array(key=key, precision_or_recall=precision_or_recall).std(axis=0)
+
+    def force_string_key(self, key):
+        if isinstance(key, str):
+            return key
+        elif isinstance(key, (tuple, list)):
+            pred_or_gt, target_type, source_list = key
+            return self.key(pred_or_gt, target_type, source_list)
+        raise RuntimeError('key error: {}'.format(key))
+
+    def plot(self, key, precision_or_recall, max_threshold, plot_quantile=False, **kwargs):
+        key = self.force_string_key(key)
+        assert isinstance(key, str)
+        assert precision_or_recall in ['p', 'r']
+        import matplotlib.pyplot as pt
+        arr = self.as_array(key, precision_or_recall)
+        y = np.mean(arr, axis=0)
         x = self.thresholds
 
         end = (x <= max_threshold).sum() + 1
@@ -1769,3 +1904,36 @@ class PRCurveEvaluation(object):
         y = y[:end]
 
         pt.plot(x, y, **kwargs)
+
+        if plot_quantile:
+            color = kwargs.get('color', None)
+            upper = np.quantile(arr, q=0.75, axis=0)[:end]
+            lower = np.quantile(arr, q=0.25, axis=0)[:end]
+            pt.fill_between(x, lower, upper, alpha=0.08, facecolor=color, antialiased=True)
+
+
+def nyu_pointcloud(name, out_filename):
+    m = sio.loadmat(path.join(config.nyu_root, 'depth/{}.mat'.format(name)))
+
+    x = np.array([np.mgrid[0:427, 0:561][0].ravel(), np.mgrid[0:427, 0:561][1].ravel()])
+    d = m['depth'].ravel()
+    x3d = (x[0, :] - m['K'][0, 2]) * d / m['K'][0, 0]
+    y3d = (x[1, :] - m['K'][1, 2]) * d / m['K'][1, 1]
+    pts = np.array([y3d, x3d, -d]).T
+    io_utils.save_simple_points_ply(out_filename, pts)
+    # pts2 = m['Rtilt'].T.dot(pts.T).T
+    # io_utils.save_simple_points_ply('/mnt/ramdisk/hi2.ply', pts2)
+
+
+def nyu_gravity_angle(name):
+    m = sio.loadmat(path.join(config.nyu_root, 'depth/{}.mat'.format(name)))
+    v = np.array([0, 1, 0], dtype=np.float64).reshape(3, 1)
+    v2 = m['Rtilt'].dot(v)
+    theta = np.arccos(np.inner(v.ravel(), v2.ravel()))
+    return theta
+
+
+def nyu_rgb_image(name):
+    img = io_utils.read_jpg(path.join(config.nyu_root, 'images/{}.jpg'.format(name)))[3:-3]
+    resized = scipy.misc.imresize(img, (240, 320))
+    return resized

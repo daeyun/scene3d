@@ -69,12 +69,19 @@ elif hostname == 'daeyun-vision-lab':
     scene3d_root = '/data2/scene3d'
     default_out_root = '/data3/out/scene3d'
     etn_features_root = '/data3/out/scene3d/overhead_pred'
+    nyu_root = '/data3/nyu'
 
 elif path.isfile(path.expanduser('~/.is_uci_vision_cluster')):
     suncg_root = '/home/daeyuns/data2/suncg_data'
     pbrs_root = '/home/daeyuns/data2/pbrs'
     scene3d_root = '/home/daeyuns/data2/scene3d'
     default_out_root = '/home/daeyuns/data3/out/scene3d'
+
+elif path.isfile(path.expanduser('~/.is_titan_cluster')):
+    suncg_root = '/extra/titansc0/daeyun/data/suncg_data'
+    pbrs_root = '/extra/titansc0/daeyun/data/pbrs'
+    scene3d_root = '/extra/titansc0/daeyun/data/scene3d'
+    default_out_root = '/extra/titansc0/daeyun/data/out/scene3d'
 
 elif hostname == 'aleph0':
     suncg_root = '/mnt/scratch1/daeyuns/data/suncg_data'

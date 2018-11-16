@@ -8,6 +8,12 @@ from scene3d.eval import generate_gt_mesh
 from scene3d.dataset import v8
 
 
+def is_mesh_empty(mesh_filename):
+    if isinstance(mesh_filename, (list, tuple)):
+        return np.any([is_mesh_empty(item) for item in mesh_filename])
+    return not path.isfile(mesh_filename) or path.getsize(mesh_filename) < 200
+
+
 def main():
     dataset = v8.MultiLayerDepth(
         # split='test',
@@ -26,6 +32,19 @@ def main():
         house_id, camera_id = example['name'].split('/')
         camera_filename = example['camera_filename']
         out_dir = '/data3/out/scene3d/v8_gt_mesh/{}/{}'.format(house_id, camera_id)
+
+        files_to_check_for_skip = [
+            path.join(out_dir, 'd0.ply'),
+            path.join(out_dir, 'd1.ply'),
+            path.join(out_dir, 'd2.ply'),
+            path.join(out_dir, 'd3.ply'),
+            path.join(out_dir, 'gt_bg.ply'),
+            path.join(out_dir, 'gt_objects.ply'),
+        ]
+
+        if not is_mesh_empty(files_to_check_for_skip):
+            print(i, 'Skipping. already generated.')
+            continue
 
         print(i, example['name'])
 

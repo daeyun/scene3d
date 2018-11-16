@@ -1,5 +1,6 @@
 import torch
 from os import path
+from os import path
 import pyassimp
 import numpy as np
 from pprint import pprint
@@ -40,8 +41,8 @@ from scene3d import train_eval_pipeline
 
 
 def main():
-    depth_checkpoint = '/data3/out/scene3d/v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth'
-    seg_checkpoint = '/data3/out/scene3d/v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth'
+    depth_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth')
+    seg_checkpoint = path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth')
 
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
     depth_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(depth_checkpoint)
@@ -50,13 +51,22 @@ def main():
     print(metadata)
 
     dataset = v8.MultiLayerDepth(
-        split='/data2/scene3d/v8/test_v2_subset_factored3d.txt',
+        split=path.join(config.scene3d_root, 'v8/test_v2_subset_factored3d.txt'),
         subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=['rgb', 'camera_filename'])
 
     count = 0
-    for i in range(500):
+    for i in range(len(dataset)):
         example = dataset[i]
         print(count, i, example['name'])
+
+        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(example['name'])
+        pred_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
+        if len(pred_meshes) == 4:
+            print('Already computed. Skipping this example.')
+            continue
+        elif len(pred_meshes) > 4:
+            print(pred_meshes)
+            raise RuntimeError()
 
         depth_pred = depth_model(torch.Tensor(example['rgb'][None]).cuda())
         seg_pred = seg_model(torch.Tensor(example['rgb'][None]).cuda())
@@ -70,10 +80,8 @@ def main():
         out = train_eval_pipeline.save_mldepth_as_meshes(segmented_depth, example)
         print(out)
 
-        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(example['name'])
-
-        real_gt_meshes = sorted(glob.glob('/data3/out/scene3d/v8_gt_mesh/{}/{}/gt_*.ply'.format(house_id, camera_id)))
-        depth_gt_meshes = sorted(glob.glob('/data3/out/scene3d/v8_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id)))
+        real_gt_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt_*.ply'.format(house_id, camera_id))))
+        depth_gt_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id))))
         assert len(real_gt_meshes) == 2
         assert len(depth_gt_meshes) == 4, depth_gt_meshes
 
@@ -88,10 +96,10 @@ def overhead():
 
     dataset = v8.MultiLayerDepth(
         # split='/data2/scene3d/v8/validation_s168.txt',
-        split='/data2/scene3d/v8/test_v2_subset_factored3d.txt',
+        split=path.join(config.scene3d_root, 'v8/test_v2_subset_factored3d.txt'),
         subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=['rgb', ])
 
-    batch_size = 10
+    batch_size = 5
     num_data_workers = 0
     loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=num_data_workers, shuffle=False, drop_last=False, pin_memory=True)
 
@@ -103,11 +111,12 @@ def overhead():
 
         skip = True
         for name in names:
-            if not path.isfile('/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead_bg_clipped.ply'.format(name)) or not path.isfile('/data3/out/scene3d/v8_pred_depth_mesh/{}/overhead_fg_clipped.ply'.format(name)):
+            if not path.isfile(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/overhead_bg_clipped.ply'.format(name))) \
+                    or not path.isfile(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/overhead_fg_clipped.ply'.format(name))):
                 skip = False
                 break
         if skip:
-            print('Skipping this batch.')
+            print('Already computed. Skipping this batch.')
             continue
 
         out = hm_model.predict_height_map(batch)
@@ -133,5 +142,5 @@ def overhead():
 
 
 if __name__ == '__main__':
-    # main()
-    overhead()
+    main()
+    # overhead()
