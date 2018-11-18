@@ -35,6 +35,15 @@ def undo_rgb_whitening(rgb):
     return np.clip(ret, 0.0, 1.0)  # force 0 <= x <=1.0
 
 
+def rgb_scale(rgb):
+    ret = rgb.copy()
+    ret -= np.array([178.1781, 158.5039, 142.5141], dtype=np.float32)
+    ret *= 1 / 255.0
+    ret[ret < 0] = 0.0
+    ret[ret > 1] = 1.0
+    return ret
+
+
 def is_filename_prefix_valid(value):
     return re.match(r'^[a-z0-9]{32}/\d{6}$', value) is not None
 

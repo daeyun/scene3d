@@ -1393,6 +1393,27 @@ def save_mldepth_as_meshes(pred_segmented_depth, example):
     }
 
 
+def save_mldepth_as_meshes_for_visualization(pred_segmented_depth, example):
+    assert pred_segmented_depth.ndim == 3
+    out_pred_filenames = []
+    # out_gt_filenames = []
+    for i in range(4):
+        out_filename = '/mnt/ramdisk/vis_mesh/single.ply'
+        if not path.isfile(out_filename):
+            depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        out_pred_filenames.append(out_filename)
+
+        # out_filename = '/data3/out/scene3d/v8_depth_mesh/{}_gt_{}.ply'.format(example['name'], i)
+        # if not path.isfile(out_filename):
+        #     depth_mesh_utils_cpp.depth_to_mesh(example['multi_layer_depth_aligned_background'][i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        # out_gt_filenames.append(out_filename)
+
+    return {
+        'pred': out_pred_filenames,
+        # 'gt': out_gt_filenames,
+    }
+
+
 def save_mldepth_as_meshes_realworld(pred_segmented_depth, out_dir_name):
     assert pred_segmented_depth.ndim == 3
     out_pred_filenames = []
@@ -1562,8 +1583,13 @@ class HeightMapModel(object):
                 cam_param_feature_extractor_model=self.regression_feature_extractor_model,
             )
 
-    def predict_height_map(self, batch, visualize_indices=None):
+    def predict_height_map_single(self, batch):
+        features, cam, transformer_names = self.transformer._get_transformed_features(batch, [0, 1], use_gt_geometry=False)
+        pred_height_map = self.height_map_model.get_output(torch.Tensor(features).cuda())
 
+        return torch_utils.recursive_torch_to_numpy(pred_height_map).squeeze(), features.squeeze()
+
+    def predict_height_map(self, batch, visualize_indices=None):
         input_batch = {
             'rgb': batch['rgb'],
             'name': batch['name'],
@@ -1909,7 +1935,7 @@ class PRCurveEvaluation(object):
             color = kwargs.get('color', None)
             upper = np.quantile(arr, q=0.75, axis=0)[:end]
             lower = np.quantile(arr, q=0.25, axis=0)[:end]
-            pt.fill_between(x, lower, upper, alpha=0.08, facecolor=color, antialiased=True)
+            pt.fill_between(x, lower, upper, alpha=0.1, facecolor=color, antialiased=True)
 
 
 def nyu_pointcloud(name, out_filename):

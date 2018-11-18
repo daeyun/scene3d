@@ -16,7 +16,7 @@ def main():
         example = dataset[i]
         print(i, example['name'])
         pr_eval.run_evaluation(example)
-        if i % 10 == 0:
+        if i % 60 == 0:
             pr_eval.save()
     pr_eval.save()
 
