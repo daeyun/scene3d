@@ -40,7 +40,11 @@ import pickle
 from scene3d import train_eval_pipeline
 
 
-def main():
+def main(force_indices=tuple()):
+    """
+    :param force_indices: re-generate those indices even if it's already done
+    :return:
+    """
     depth_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth')
     seg_checkpoint = path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth')
 
@@ -56,17 +60,23 @@ def main():
 
     count = 0
     for i in range(len(dataset)):
+        if i in force_indices:
+            force = True
+        else:
+            force = False
+
         example = dataset[i]
         print(count, i, example['name'])
 
         house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(example['name'])
         pred_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
-        if len(pred_meshes) == 4:
-            print('Already computed. Skipping this example.')
-            continue
-        elif len(pred_meshes) > 4:
-            print(pred_meshes)
-            raise RuntimeError()
+        if not force:
+            if len(pred_meshes) == 4:
+                print('Already computed. Skipping this example.')
+                continue
+            elif len(pred_meshes) > 4:
+                print(pred_meshes)
+                raise RuntimeError()
 
         depth_pred = depth_model(torch.Tensor(example['rgb'][None]).cuda())
         seg_pred = seg_model(torch.Tensor(example['rgb'][None]).cuda())
@@ -77,7 +87,7 @@ def main():
         assert segmented_depth.shape[0] == 1
         segmented_depth = np.squeeze(segmented_depth)
 
-        out = train_eval_pipeline.save_mldepth_as_meshes(segmented_depth, example)
+        out = train_eval_pipeline.save_mldepth_as_meshes(segmented_depth, example, force=True)
         print(out)
 
         real_gt_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt_*.ply'.format(house_id, camera_id))))
@@ -142,5 +152,5 @@ def overhead():
 
 
 if __name__ == '__main__':
-    main()
+    main(force_indices=[426, 440])
     # overhead()

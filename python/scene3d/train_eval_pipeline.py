@@ -1372,14 +1372,23 @@ class Evaluation():
         }
 
 
-def save_mldepth_as_meshes(pred_segmented_depth, example):
+def save_mldepth_as_meshes(pred_segmented_depth, example, force=False):
     assert pred_segmented_depth.ndim == 3
     out_pred_filenames = []
     # out_gt_filenames = []
     for i in range(4):
         out_filename = path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/pred_{}.ply'.format(example['name'], i))
-        if not path.isfile(out_filename):
-            depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        if i == 0:
+            dd_factor = 7
+        elif i == 1:
+            dd_factor = 5
+        elif i == 2:
+            dd_factor = 2
+        else:
+            dd_factor = 7
+
+        if force or not path.isfile(out_filename):
+            depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=dd_factor, out_ply_filename=out_filename)
         out_pred_filenames.append(out_filename)
 
         # out_filename = '/data3/out/scene3d/v8_depth_mesh/{}_gt_{}.ply'.format(example['name'], i)
@@ -1393,14 +1402,24 @@ def save_mldepth_as_meshes(pred_segmented_depth, example):
     }
 
 
-def save_mldepth_as_meshes_for_visualization(pred_segmented_depth, example):
+def save_mldepth_as_meshes_for_visualization(pred_segmented_depth, example, force=False):
     assert pred_segmented_depth.ndim == 3
     out_pred_filenames = []
     # out_gt_filenames = []
     for i in range(4):
         out_filename = '/mnt/ramdisk/vis_mesh/single.ply'
-        if not path.isfile(out_filename):
-            depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+
+        if i == 0:
+            dd_factor = 7
+        elif i == 1:
+            dd_factor = 5
+        elif i == 2:
+            dd_factor = 2
+        else:
+            dd_factor = 7
+
+        if force or not path.isfile(out_filename):
+            depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=dd_factor, out_ply_filename=out_filename)
         out_pred_filenames.append(out_filename)
 
         # out_filename = '/data3/out/scene3d/v8_depth_mesh/{}_gt_{}.ply'.format(example['name'], i)
