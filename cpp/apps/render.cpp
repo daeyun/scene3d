@@ -187,7 +187,9 @@ int main(int argc, const char **argv) {
 
         // Depth values are collected in the callback function, in the order traversed.
         ray_tracer.Traverse(ray_origin, ray_direction, [&](float t, float u, float v, unsigned int prim_id) -> bool {
-          depth_values->push_back(t);
+          // Convert ray displacement to depth.
+          float d = t * cam_view_dir.dot(ray_direction);
+          depth_values->push_back(d);
 
           // Stop traversal if the triangle ID corresponds to a background.
           found_background = is_background(prim_id);
