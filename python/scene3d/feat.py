@@ -15,7 +15,7 @@ from scene3d import io_utils
 from scene3d import log
 from scene3d import loss_fn
 from scene3d import torch_utils
-from scene3d import train_eval_pipeline
+from scene3d import train_eval_pipeline_v9 #TODO: do not commit. need to revert to original because v9 is work in progress
 from scene3d import transforms
 from scene3d.dataset import dataset_utils
 from scene3d.net import unet

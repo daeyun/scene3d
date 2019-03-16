@@ -17,8 +17,6 @@ import scipy.io as sio
 import numpy as np
 import torch
 import torch.utils.data
-import torch.nn.parallel
-import torch.distributed
 from torch import nn
 from torch import optim
 from torch.backends import cudnn
@@ -34,7 +32,6 @@ from scene3d.dataset import dataset_utils
 from scene3d.dataset import v1
 from scene3d.dataset import v2
 from scene3d.dataset import v8
-from scene3d.dataset import v9
 from scene3d.net import unet
 from scene3d.net import unet_no_bn
 from scene3d.net import unet_overhead
@@ -93,8 +90,6 @@ available_experiments = [
     'OVERHEAD_offline_01',  # all features, predicted geometry
     'OVERHEAD_offline_02',  # no semantics, predicted geometry
     'OVERHEAD_offline_03',  # no semantics, no depth.
-    'v9-multi_layer_depth_aligned_background_multi_branch',  # NEW
-    'v9-category_nyu40_merged_background-2l',  # TODO: NEW
 ]
 
 available_models = [
@@ -219,12 +214,6 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_camera_pose_3params'))
     elif experiment_name == 'v8-overhead_camera_pose_4params':
         dataset = v8.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_camera_pose_4params'))
-    elif experiment_name == 'v9-multi_layer_depth_aligned_background_multi_branch':
-        # TODO: make sure this is right. NEW
-        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
-    elif experiment_name == 'v9-category_nyu40_merged_background-2l':
-        # TODO: make sure this is right. NEW
-        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background'))
     else:
         raise NotImplementedError()
 
@@ -344,11 +333,7 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             model = unet.Unet1(out_channels=80, in_channels=1)  # category 34 is wall=background.
         elif experiment_name == 'overfit-v8-multi_layer_depth-unet_v1':
             model = unet.Unet1(out_channels=4)
-        elif experiment_name == 'v9-category_nyu40_merged_background-2l':
-            # TODO: make sure this is right. NEW
-            model = unet.Unet1(out_channels=80)  # two layer segmentation
         else:
-            print(experiment_name)
             raise NotImplementedError()
     elif model_name == 'unet_v2':
         if experiment_name == 'v8-multi_layer_depth_aligned_background_multi_branch':
@@ -373,9 +358,6 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             model = unet.Unet2(out_channels=1)
         elif experiment_name == 'v8-two_layer_depth':
             model = unet.Unet2(out_channels=2)
-        elif experiment_name == 'v9-multi_layer_depth_aligned_background_multi_branch':
-            # TODO: make sure this is right. NEW
-            model = unet.Unet2(out_channels=5)
         else:
             raise NotImplementedError()
     elif model_name == 'unet_v2_regression':
@@ -404,7 +386,7 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     return model, optimizer, frozen_model
 
 
-def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_model: typing.Union[nn.Module, feat.FeatureGenerator] = None) -> torch.Tensor:
+def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_model) -> torch.Tensor:
     if experiment_name == 'multi-layer':
         example_name, in_rgb, target = batch
         in_rgb = in_rgb.cuda()
@@ -745,25 +727,6 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         loss_scale = (target[:, 2] - pred[:, 2]).abs().mean()
         loss_theta = (target[:, 3] - pred[:, 3]).abs().mean()
         loss_all = loss_translation + loss_scale + loss_theta
-    elif experiment_name == 'v9-multi_layer_depth_aligned_background_multi_branch':
-        # TODO: NEW
-        in_rgb = batch['rgb'].cuda()
-        target = batch['multi_layer_depth_aligned_background'].cuda()
-        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
-        assert pred.shape[1] == 5
-        assert target.shape[0] == pred.shape[0]
-        assert target.shape == pred.shape
-        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=False)
-    elif experiment_name == 'v9-category_nyu40_merged_background-2l':
-        # TODO: NEW
-        in_rgb = batch['rgb'].cuda()
-        target1 = batch['category_nyu40_merged_background'][:, 0].cuda()  # (B, 240, 320)
-        target2 = batch['category_nyu40_merged_background'][:, 2].cuda()  # (B, 240, 320)
-        pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
-        assert pred.shape[1] == 80
-        loss1 = loss_fn.loss_calc_classification(pred[:, :40], target1, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
-        loss2 = loss_fn.loss_calc_classification(pred[:, 40:], target2, ignore_index=65535)  # ignore empty. background is ignored
-        loss_all = (loss1 + loss2) / 2
     else:
         raise NotImplementedError()
 
@@ -800,39 +763,17 @@ def load_checkpoint(filename, use_cpu=False) -> typing.Tuple[nn.Module, optim.Op
     assert filename.endswith('.pth')  # Sanity check. Not a requirement.
     log.info('Loading from checkpoint file {}'.format(filename))
     loaded_dict = torch_utils.load_torch_model(filename, use_cpu=use_cpu)
-
-    # TODO: this is temporary
-    # for key in list(loaded_dict['model_state_dict'].keys()):
-    #     if key.startswith('dec6') or key.startswith('dec5') or key.startswith('dec4') or key.startswith('dec3') or key.startswith('dec2'):
-    #         loaded_dict['model_state_dict'].pop(key)
-    # end of temporary code
-
     if not isinstance(loaded_dict, dict):
         log.error('Loaded object:\n{}'.format(loaded_dict))
         raise RuntimeError()
 
     metadata_dict = loaded_dict['metadata']
-
-    # TODO:  this is VERY temporary
     pytorch_model, optimizer, frozen_model = get_pytorch_model_and_optimizer(
         model_name=metadata_dict['model_name'],
-        # experiment_name='v9-multi_layer_depth_aligned_background_multi_branch',
         experiment_name=metadata_dict['experiment_name'],
     )
-    # pytorch_model, optimizer, frozen_model = get_pytorch_model_and_optimizer(
-    #     model_name=metadata_dict['model_name'],
-    #     experiment_name=metadata_dict['experiment_name'],
-    # )
-    # pytorch_model.load_state_dict(loaded_dict['model_state_dict'], strict=False)  # TODO: strict=false is temporary
     pytorch_model.load_state_dict(loaded_dict['model_state_dict'])
-
     optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
-
-    # TODO: this is temporary
-    # for key, item in pytorch_model.named_parameters():
-    #     if not (key.startswith('dec6') or key.startswith('dec5') or key.startswith('dec4') or key.startswith('dec3') or key.startswith('dec2')):
-    #         item.requires_grad = False
-    # end of temporary code
 
     return pytorch_model, optimizer, metadata_dict, frozen_model
 
@@ -864,7 +805,7 @@ def save_checkpoint(save_dir: str, pytorch_model: nn.Module, optimizer: torch.op
     save_filename = path.join(save_dir, '{:08d}_{:03d}_{:07d}.pth'.format(metadata['global_step'], metadata['epoch'], metadata['iter']))
     log.info('Saving %s', save_filename)
 
-    if isinstance(pytorch_model, (nn.DataParallel, nn.parallel.DistributedDataParallel, nn.parallel.DistributedDataParallelCPU)):
+    if isinstance(pytorch_model, nn.DataParallel):
         model_state_dict = pytorch_model.module.state_dict()
     else:
         model_state_dict = pytorch_model.state_dict()
@@ -958,7 +899,6 @@ class Trainer(object):
 
         if not self.use_cpu:
             torch.set_default_tensor_type('torch.cuda.FloatTensor')
-            cudnn.benchmark = True
             self.logger.info('cudnn version: {}'.format(cudnn.version()))
             assert torch.cuda.is_available()
 
@@ -993,8 +933,7 @@ class Trainer(object):
             self.model, self.optimizer, self.loaded_metadata, self.frozen_model = load_checkpoint(self.load_checkpoint, use_cpu=self.use_cpu)
             self.logger.info('Loaded metadata from {}:\n{}'.format(self.load_checkpoint, self.loaded_metadata))
 
-            if not (self.experiment_name == 'v9-multi_layer_depth_aligned_background_multi_branch' or self.experiment_name == 'v9-category_nyu40_merged_background-2l'):  # TODO: specific to this experiment. needs refactoring
-                assert self.experiment_name == self.loaded_metadata['experiment_name']
+            assert self.experiment_name == self.loaded_metadata['experiment_name']
             assert self.model_name == self.loaded_metadata['model_name']
             if self.batch_size != self.loaded_metadata['batch_size']:
                 self.logger.info('batch_size changed from {} to {}'.format(self.loaded_metadata['batch_size'], self.batch_size))
@@ -1264,176 +1203,6 @@ def reduce_list_of_dicts_of_lists(ld):
 
 
 class Evaluation():
-    def __init__(self, model_metadata):
-        self.pred = None
-        self.target = None
-        self.model_metadata = model_metadata
-
-    def set_input(self, pred, batch):
-        self.pred = pred
-        self.batch = batch
-
-    @staticmethod
-    def _mean_of_finite_per_example(arr):
-        """
-        :param arr: (B, .., ...)
-        :return: list of size B.
-        """
-        arr_2d = arr.reshape(arr.shape[0], -1)
-        mask = torch.isfinite(arr_2d)
-        ret = (arr_2d.masked_fill(~mask, 0).sum(dim=1) / mask.sum(dim=1, dtype=torch.float32)).tolist()
-        return ret
-
-    @staticmethod
-    def _masked_iou_per_example(a, b, ignore_mask):
-        """
-        :param a: (B, .., ...)
-        :param b: same as a
-        :return: list of size B.
-        """
-        assert a.shape == b.shape
-        assert ignore_mask.shape == b.shape
-        a_2d = torch_utils.recursive_torch_to_numpy(a.reshape(a.shape[0], -1)).astype(np.bool)
-        b_2d = torch_utils.recursive_torch_to_numpy(b.reshape(b.shape[0], -1)).astype(np.bool)
-        mask_2d = torch_utils.recursive_torch_to_numpy(ignore_mask.reshape(ignore_mask.shape[0], -1)).astype(np.bool)
-
-        intersection = a_2d & b_2d
-        union = a_2d | b_2d
-        intersection[mask_2d] = 0
-        union[mask_2d] = 0
-
-        return (intersection.sum(axis=1) / union.sum(axis=1)).tolist()
-
-    def multi_layer_depth_aligned_background_l1(self):
-        # l1 here means L1 error
-        assert 'aligned_background' in self.model_metadata['experiment_name']
-        target = self.batch['multi_layer_depth_aligned_background'].cuda()
-
-        if 'nolog' in self.model_metadata['experiment_name']:
-            l1_with_nan = (target - self.pred).abs()
-        else:
-            l1_with_nan = (target - loss_fn.undo_log_depth(self.pred)).abs()
-
-        mask_visible_bg = torch.isnan(target[:, 1])  # (B, H, W)
-
-        overall = self._mean_of_finite_per_example(l1_with_nan)
-        objects = self._mean_of_finite_per_example(l1_with_nan[:, :3])
-        background = self._mean_of_finite_per_example(l1_with_nan[:, 3])
-        visible_objects = self._mean_of_finite_per_example(l1_with_nan[:, 0])
-        invisible_objects = self._mean_of_finite_per_example(l1_with_nan[:, (1, 2)])
-        instance_exit = self._mean_of_finite_per_example(l1_with_nan[:, 1])
-        last_exit = self._mean_of_finite_per_example(l1_with_nan[:, 2])
-
-        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
-        background_l1_with_nan[mask_visible_bg] = np.nan  # ignore visible background error
-        invisible_background = self._mean_of_finite_per_example(background_l1_with_nan)
-
-        # overwrite and reuse same variable name
-        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
-        background_l1_with_nan[~mask_visible_bg] = np.nan  # ignore visible background error
-        visible_background = self._mean_of_finite_per_example(background_l1_with_nan)
-
-        # Swap visible background in channels 0 and 3.
-        l1_with_nan[:, 0][mask_visible_bg], l1_with_nan[:, 3][mask_visible_bg] = l1_with_nan[:, 3][mask_visible_bg], l1_with_nan[:, 0][mask_visible_bg]
-
-        visible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 0])
-        invisible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 1:])
-
-        return {
-            'overall': overall,
-            'objects': objects,
-            'background': background,
-            'visible_objects': visible_objects,
-            'invisible_objects': invisible_objects,
-            'visible_surfaces': visible_surfaces,
-            'invisible_surfaces': invisible_surfaces,
-            'visible_background': visible_background,
-            'invisible_background': invisible_background,
-            'instance_exit': instance_exit,
-            'last_exit': last_exit,
-        }
-
-    def multi_layer_depth_unaligned_background_l1(self):
-        assert self.model_metadata['experiment_name'] == 'v8-multi_layer_depth'
-        target = self.batch['multi_layer_depth'].cuda()
-
-        if 'nolog' in self.model_metadata['experiment_name']:
-            # This shouldn't happen. we didn't do this experiment for this model.
-            raise RuntimeError()
-            # l1_with_nan = (target - self.pred).abs()
-        else:
-            # (B, 4, H, W)
-            p = loss_fn.undo_log_depth(self.pred)
-            l1_with_nan = (target - p).abs()
-
-        overall = self._mean_of_finite_per_example(l1_with_nan)
-        visible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 0])
-        invisible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 1:])
-
-        # Swap visible background in channels 0 and 3.
-        # TODO: visualize and make sure swap worked.
-        mask_visible_bg = torch.isnan(target[:, 1])
-        l1_with_nan[:, 0][mask_visible_bg], l1_with_nan[:, 3][mask_visible_bg] = l1_with_nan[:, 3][mask_visible_bg], l1_with_nan[:, 0][mask_visible_bg]
-
-        objects = self._mean_of_finite_per_example(l1_with_nan[:, :3])
-        background = self._mean_of_finite_per_example(l1_with_nan[:, 3])
-
-        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
-        background_l1_with_nan[mask_visible_bg] = np.nan  # zero out visible background error
-        invisible_background = self._mean_of_finite_per_example(background_l1_with_nan)
-
-        # overwrite and reuse same variable name
-        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
-        background_l1_with_nan[~mask_visible_bg] = np.nan  # zero out visible background error
-        visible_background = self._mean_of_finite_per_example(background_l1_with_nan)
-
-        invisible_objects = self._mean_of_finite_per_example(l1_with_nan[:, (1, 2)])
-        instance_exit = self._mean_of_finite_per_example(l1_with_nan[:, 1])
-        last_exit = self._mean_of_finite_per_example(l1_with_nan[:, 2])
-
-        return {
-            'overall': overall,
-            'objects': objects,
-            'background': background,
-            'visible_objects': self._mean_of_finite_per_example(l1_with_nan[:, 0]),
-            'invisible_objects': invisible_objects,
-            'visible_surfaces': visible_surfaces,
-            'invisible_surfaces': invisible_surfaces,
-            'visible_background': visible_background,
-            'invisible_background': invisible_background,
-            'instance_exit': instance_exit,
-            'last_exit': last_exit,
-        }
-
-    def category_nyu40_merged_background_l2(self):
-        # l2 here means two layers
-
-        assert self.pred.shape[1] == 80
-        assert 'category' in self.model_metadata['experiment_name']
-        argmax_l1 = semantic_segmentation_from_raw_prediction(self.pred[:, :40])
-        # argmax_l2 = semantic_segmentation_from_raw_prediction(self.pred[:, 40:])
-
-        target = self.batch['category_nyu40_merged_background']
-        target_l1 = torch_utils.recursive_torch_to_numpy(target[:, 2])
-
-        ignored = (target_l1 == 65535) | (target_l1 == 33)  # (B, H, W)
-        correct = (target_l1 == argmax_l1).astype(np.float32)
-        correct[ignored] = np.nan
-
-        accuracy = self._mean_of_finite_per_example(torch_utils.recursive_numpy_to_torch(correct))
-
-        pred_foreground = argmax_l1 != 34
-        target_foreground = target_l1 != 34
-
-        foreground_iou = self._masked_iou_per_example(pred_foreground, target_foreground, ignore_mask=ignored)
-
-        return {
-            'layer1_accuracy': accuracy,
-            'layer1_foreground_iou': foreground_iou,
-        }
-
-
-class EvaluationV9:
     def __init__(self, model_metadata):
         self.pred = None
         self.target = None
@@ -2027,7 +1796,7 @@ class PRCurveEvaluation(object):
 
         step = 0.01
         self.thresholds = np.array([0.001, 0.003, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04] + np.arange(0.05, 1 + step, step).tolist() + np.arange(1 + step * 2, 2 + step, step * 2).tolist())
-        self.density = 10000
+        self.density = 5000
 
     def load(self):
         try:
@@ -2047,7 +1816,7 @@ class PRCurveEvaluation(object):
 
     def is_mesh_empty(self, mesh_filename):
         if isinstance(mesh_filename, (list, tuple)):
-            return np.any([self.is_mesh_empty(item) for item in mesh_filename])
+            return np.all([self.is_mesh_empty(item) for item in mesh_filename])
         return path.getsize(mesh_filename) < 190 or not path.isfile(mesh_filename)
 
     def mesh_precision_recall(self, gt_mesh_filenames, pred_mesh_filenames):
@@ -2120,72 +1889,71 @@ class PRCurveEvaluation(object):
         name = example['name']
         house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(name)
 
-        gt_bg, gt_objects = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt*.ply'.format(house_id, camera_id))))
-        gt_depths = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id))))
-        assert len(gt_depths) == 4
-        pred_files_list = sorted(glob.glob(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/{}/*.ply'.format(house_id, camera_id))))
-        pred_files = {path.basename(item).split('.')[0]: item for item in pred_files_list}
-        f3d_pred = path.join(config.default_out_root, 'factored3d_pred/{}/{}/codes_transformed_clipped.ply'.format(house_id, camera_id))
+        gt_bg, gt_objects = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/gt*.ply'.format(house_id, camera_id))))
+        gt_depths = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id))))
+        print(gt_depths)
+        assert len(gt_depths) == 5
+        # pred_files_list = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/*.ply'.format(house_id, camera_id))))
+        # pred_files = {path.basename(item).split('.')[0]: item for item in pred_files_list}
+        # f3d_pred = path.join(config.default_out_root, 'factored3d_pred/{}/{}/codes_transformed_clipped.ply'.format(house_id, camera_id))
 
-        assert path.isfile(f3d_pred), f3d_pred
+        # assert path.isfile(f3d_pred), f3d_pred
 
         # if 'overhead_fg_clipped' not in pred_files:
         #     print('Overhead file is not available. Skipping for now.    {}'.format(name))
         #     return
 
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['overhead_fg']), [gt_objects], [pred_files['overhead_fg_clipped']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['0']), [gt_objects], [pred_files['pred_0']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['1']), [gt_objects], [pred_files['pred_1']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['2']), [gt_objects], [pred_files['pred_2']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', 'overhead_fg']), [gt_objects], [pred_files['pred_0'], pred_files['overhead_fg_clipped']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['1', 'overhead_fg']), [gt_objects], [pred_files['pred_1'], pred_files['overhead_fg_clipped']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['2', 'overhead_fg']), [gt_objects], [pred_files['pred_2'], pred_files['overhead_fg_clipped']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '2']), [gt_objects], [pred_files['pred_0'], pred_files['pred_2']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['1', '2']), [gt_objects], [pred_files['pred_1'], pred_files['pred_2']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', 'overhead_fg']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['overhead_fg_clipped']])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', 'overhead_fg', 'f3d']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['overhead_fg_clipped'], f3d_pred])
-        self.run_if_not_exists(name, self.key('pred', 'obj', ['f3d']), [gt_objects], [f3d_pred])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['overhead_fg']), [gt_objects], [pred_files['overhead_fg_clipped']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['0']), [gt_objects], [pred_files['pred_0']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['1']), [gt_objects], [pred_files['pred_1']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['2']), [gt_objects], [pred_files['pred_2']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['0', 'overhead_fg']), [gt_objects], [pred_files['pred_0'], pred_files['overhead_fg_clipped']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['1', 'overhead_fg']), [gt_objects], [pred_files['pred_1'], pred_files['overhead_fg_clipped']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['2', 'overhead_fg']), [gt_objects], [pred_files['pred_2'], pred_files['overhead_fg_clipped']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '2']), [gt_objects], [pred_files['pred_0'], pred_files['pred_2']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['1', '2']), [gt_objects], [pred_files['pred_1'], pred_files['pred_2']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', 'overhead_fg']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['overhead_fg_clipped']])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', 'overhead_fg', 'f3d']), [gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['overhead_fg_clipped'], f3d_pred])
+        # self.run_if_not_exists(name, self.key('pred', 'obj', ['f3d']), [gt_objects], [f3d_pred])
+
+        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1', '2', '3']), [gt_objects], [gt_depths[1], gt_depths[2], gt_depths[3]])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['2', '3']), [gt_objects], [gt_depths[2], gt_depths[3]])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['3']), [gt_objects], [gt_depths[3]])
 
         self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0']), [gt_objects], [gt_depths[0]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1']), [gt_objects], [gt_depths[1]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['2']), [gt_objects], [gt_depths[2]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['3']), [gt_objects], [gt_depths[3]])
         self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1']), [gt_objects], [gt_depths[0], gt_depths[1]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1', '2']), [gt_objects], [gt_depths[1], gt_depths[2]])
         self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2', '3']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3]])
 
-        self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_files['overhead_fg_clipped']])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_bg, gt_objects], [pred_files['pred_0']])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['1']), [gt_bg, gt_objects], [pred_files['pred_1']])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['2']), [gt_bg, gt_objects], [pred_files['pred_2']])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['3']), [gt_bg, gt_objects], [pred_files['pred_3']])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_3']])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_3']])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['pred_3']])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['pred_3'], pred_files['overhead_fg_clipped']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_files['overhead_fg_clipped']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_bg, gt_objects], [pred_files['pred_0']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['1']), [gt_bg, gt_objects], [pred_files['pred_1']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['2']), [gt_bg, gt_objects], [pred_files['pred_2']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['3']), [gt_bg, gt_objects], [pred_files['pred_3']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_3']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_3']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['pred_3']])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [pred_files['pred_0'], pred_files['pred_1'], pred_files['pred_2'], pred_files['pred_3'], pred_files['overhead_fg_clipped']])
+        #
+        # # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_files['overhead_fg_clipped']])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0']), [gt_bg, gt_objects], [gt_depths[0]])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['1']), [gt_bg, gt_objects], [gt_depths[1]])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['2']), [gt_bg, gt_objects], [gt_depths[2]])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['3']), [gt_bg, gt_objects], [gt_depths[3]])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[3], ])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[3], ])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], ])
+        # # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [])
+        #
+        # # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['2', '3']), [gt_objects], [gt_depths[2], gt_depths[3]])
+        # # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1', '2', '3']), [gt_objects], [gt_depths[1], gt_depths[2], gt_depths[3]])
+        # # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2', '3']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3]])
+        #
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], ])
+        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], ])
 
-        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_files['overhead_fg_clipped']])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0']), [gt_bg, gt_objects], [gt_depths[0]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['1']), [gt_bg, gt_objects], [gt_depths[1]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['2']), [gt_bg, gt_objects], [gt_depths[2]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['3']), [gt_bg, gt_objects], [gt_depths[3]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[3], ])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[3], ])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], ])
-        # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [])
-
-        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['2', '3']), [gt_objects], [gt_depths[2], gt_depths[3]])
-        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1', '2', '3']), [gt_objects], [gt_depths[1], gt_depths[2], gt_depths[3]])
-        # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2', '3']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3]])
-
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], ])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], ])
-
-        # TODO:  DO NOT COMMIT
-        gt_overhead = '/home/daeyun/mnt/v8_gt_overhead_mesh/{}/{}/overhead_fg.ply'.format(house_id, camera_id)
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], gt_overhead])
 
     def as_array(self, key, precision_or_recall):
         key = self.force_string_key(key)
@@ -2230,7 +1998,7 @@ class PRCurveEvaluation(object):
         assert isinstance(key, str)
         assert precision_or_recall in ['p', 'r']
         import matplotlib.pyplot as pt
-        arr = self.as_array(key, precision_or_recall)[:200]  # TODO: 200 is temporary
+        arr = self.as_array(key, precision_or_recall)
         y = np.mean(arr, axis=0)
         x = self.thresholds
 

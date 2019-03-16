@@ -2,6 +2,7 @@ import multiprocessing
 
 from scene3d import train_eval_pipeline
 import argparse
+import os
 import torch
 
 parser = argparse.ArgumentParser(description='training')

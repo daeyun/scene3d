@@ -15,9 +15,15 @@
 
 namespace scene3d {
 
-void RenderMultiLayerDepthImage(MultiLayerDepthRenderer *renderer, MultiLayerImage<float> *ml_depth, MultiLayerImage<uint32_t> *ml_prim_ids) {
-  *ml_depth = MultiLayerImage<float>(static_cast<unsigned int>(renderer->height()), static_cast<unsigned int>(renderer->width()), NAN);
-  *ml_prim_ids = MultiLayerImage<uint32_t>(static_cast<unsigned int>(renderer->height()), static_cast<unsigned int>(renderer->width()), std::numeric_limits<uint32_t>::max());
+void RenderMultiLayerDepthImage(MultiLayerDepthRenderer *renderer,
+                                MultiLayerImage<float> *ml_depth,
+                                MultiLayerImage<uint32_t> *ml_prim_ids) {
+  *ml_depth = MultiLayerImage<float>(static_cast<unsigned int>(renderer->height()),
+                                     static_cast<unsigned int>(renderer->width()),
+                                     NAN);
+  *ml_prim_ids = MultiLayerImage<uint32_t>(static_cast<unsigned int>(renderer->height()),
+                                           static_cast<unsigned int>(renderer->width()),
+                                           std::numeric_limits<uint32_t>::max());
 
   for (unsigned int y = 0; y < renderer->height(); y++) {
     for (unsigned int x = 0; x < renderer->width(); x++) {
@@ -28,9 +34,15 @@ void RenderMultiLayerDepthImage(MultiLayerDepthRenderer *renderer, MultiLayerIma
   }
 }
 
-void RenderObjectCenteredMultiLayerDepthImage(MultiLayerDepthRenderer *renderer, MultiLayerImage<float> *ml_depth, MultiLayerImage<uint32_t> *ml_prim_ids) {
-  *ml_depth = MultiLayerImage<float>(static_cast<unsigned int>(renderer->height()), static_cast<unsigned int>(renderer->width()), NAN);
-  *ml_prim_ids = MultiLayerImage<uint32_t>(static_cast<unsigned int>(renderer->height()), static_cast<unsigned int>(renderer->width()), std::numeric_limits<uint32_t>::max());
+void RenderObjectCenteredMultiLayerDepthImage(MultiLayerDepthRenderer *renderer,
+                                              MultiLayerImage<float> *ml_depth,
+                                              MultiLayerImage<uint32_t> *ml_prim_ids) {
+  *ml_depth = MultiLayerImage<float>(static_cast<unsigned int>(renderer->height()),
+                                     static_cast<unsigned int>(renderer->width()),
+                                     NAN);
+  *ml_prim_ids = MultiLayerImage<uint32_t>(static_cast<unsigned int>(renderer->height()),
+                                           static_cast<unsigned int>(renderer->width()),
+                                           std::numeric_limits<uint32_t>::max());
 
   for (unsigned int y = 0; y < renderer->height(); y++) {
     for (unsigned int x = 0; x < renderer->width(); x++) {
@@ -54,8 +66,12 @@ AABB DepthCamBoundingBox(const Image<float> &depth_image, const Camera &camera) 
   return ret;
 }
 
-void GenerateMultiDepthExample(suncg::Scene *scene, const MultiLayerImage<float> &full_ml_depth, const MultiLayerImage<uint32_t> &ml_prim_ids,
-                               MultiLayerImage<float> *out_ml_depth, MultiLayerImage<uint16_t> *out_ml_model_indices, MultiLayerImage<uint32_t> *out_ml_prim_ids) {
+void GenerateMultiDepthExample(suncg::Scene *scene,
+                               const MultiLayerImage<float> &full_ml_depth,
+                               const MultiLayerImage<uint32_t> &ml_prim_ids,
+                               MultiLayerImage<float> *out_ml_depth,
+                               MultiLayerImage<uint16_t> *out_ml_model_indices,
+                               MultiLayerImage<uint32_t> *out_ml_prim_ids) {
   Expects(full_ml_depth.width() == ml_prim_ids.width());
   Expects(full_ml_depth.height() == ml_prim_ids.height());
 
@@ -65,6 +81,27 @@ void GenerateMultiDepthExample(suncg::Scene *scene, const MultiLayerImage<float>
   *out_ml_depth = MultiLayerImage<float>(h, w, NAN);
   *out_ml_model_indices = MultiLayerImage<uint16_t>(h, w, std::numeric_limits<uint16_t>::max());
   *out_ml_prim_ids = MultiLayerImage<uint32_t>(h, w, std::numeric_limits<uint32_t>::max());
+
+  // Populate instance ids of objects in the traditional depth.
+  std::set<std::string> visible_instance_ids;
+  for (unsigned int y = 0; y < full_ml_depth.height(); y++) {
+    for (unsigned int x = 0; x < full_ml_depth.width(); x++) {
+      vector<uint32_t> *prim_ids = ml_prim_ids.values(y, x);
+      if (prim_ids->empty()) {
+        continue;
+      }
+      const suncg::Instance &instance = scene->PrimIdToInstance(prim_ids->at(0));
+      visible_instance_ids.insert(instance.id);
+    }
+  }
+
+  auto should_triangle_be_included = [&](uint32_t prim_id) -> bool {
+    if (scene->IsPrimBackground(prim_id)) {
+      return true;
+    }
+    const suncg::Instance &instance_id = scene->PrimIdToInstance(prim_id);
+    return visible_instance_ids.find(instance_id.id) != visible_instance_ids.end();
+  };
 
   for (unsigned int y = 0; y < full_ml_depth.height(); y++) {
     for (unsigned int x = 0; x < full_ml_depth.width(); x++) {
@@ -89,66 +126,95 @@ void GenerateMultiDepthExample(suncg::Scene *scene, const MultiLayerImage<float>
 
       Expects(d->size() == prim_ids->size());
 
-      // If this pixel is empty (ray did not hit an object or background), all four layers will be NaN.
+      // If this pixel is empty (ray did not hit an object or background), all five layers will be NaN.
       if (d->empty()) {
         insert_nan();
         insert_nan();
         insert_nan();
         insert_nan();
+        insert_nan();
       } else {
-        // Layer 0. Traditional depth image.
-        // ===========================================
-        insert_layer(0);
-
-        // Layer 1. Instance exit rule.
-        // ===========================================
-        // This `Instance` struct contains instance id, model id (from which we can get category id), room id, and the instance type.  See suncg_utils.h
-        const suncg::Instance &layer0_instance = scene->PrimIdToInstance(prim_ids->at(0));
+        bool has_background = scene->IsPrimBackground(prim_ids->at(prim_ids->size() - 1));
         bool is_first_layer_background = scene->IsPrimBackground(prim_ids->at(0));
         if (is_first_layer_background) {
-          // If the first layer was a background, second layer is NAN.
+          // shortcut, for performance reasons.
           insert_nan();
+          insert_nan();
+          insert_nan();
+          insert_nan();
+          insert_layer(0);
         } else {
-          // Because the first layer was not empty or a background, there must be a second layer. Even if there is only one input layer.
-          // Iterate in reverse order and find the first item whose instance label is the same as the first layer.
-          size_t instance_exit_index = 0;
-          for (size_t i = prim_ids->size() - 1; i > 0; --i) {
-            if (layer0_instance.id == scene->PrimIdToInstance(prim_ids->at(i)).id) {
-              instance_exit_index = i;
-              break;
+          // There must be at least one object here because first layer is not background.
+          std::vector<size_t> object_instance_entry_indices;
+          std::vector<string> object_instance_entry_ids;
+          {
+            for (size_t j = 0; j < prim_ids->size(); ++j) {
+              const auto &prim_id = prim_ids->at(j);
+              if (not should_triangle_be_included(prim_id)) {
+                continue;
+              }
+
+              const suncg::Instance &instance_j_hit = scene->PrimIdToInstance(prim_id);
+              if (std::find(object_instance_entry_ids.begin(), object_instance_entry_ids.end(), instance_j_hit.id) == object_instance_entry_ids.end()
+                  and not scene->IsPrimBackground(prim_ids->at(j))) {
+                object_instance_entry_ids.push_back(instance_j_hit.id);
+                object_instance_entry_indices.push_back(j);
+              }
+              if (object_instance_entry_indices.size() == 2) {
+                break;  // We only need the first two instances.
+              }
             }
           }
 
-          insert_layer(instance_exit_index);
-        }
+          std::vector<size_t> object_instance_exit_indices(object_instance_entry_indices.size());
+          int insert_count = 0;
+          {
+            std::set<string> object_instance_ids;
+            for (int j = prim_ids->size() - 1; j >= 0; --j) {
+              const auto &prim_id = prim_ids->at(j);
+              if (not should_triangle_be_included(prim_id)) {
+                continue;
+              }
 
-        // Layer 2. Second to the last layer.
-        // ===========================================
-        // This layer represents the empty space in front of the background.
-        // Case 1: If Layer 0 was a background or empty space; or if there is no background in this pixel, Layer 2 will be NaN, i.e. ignored at training time.
-        // Case 2: If there is only one object between the camera and the background, this layer will be the same as Layer 1.
-        // Case 3: If there is another object, the value of this layer will be greater than Layer 1.  i.e. last instance exit.
+              const suncg::Instance &instance_j_hit = scene->PrimIdToInstance(prim_id);
+              if (object_instance_ids.find(instance_j_hit.id) == object_instance_ids.end() and not scene->IsPrimBackground(prim_ids->at(j))) {
+                // New object found.
+                object_instance_ids.insert(instance_j_hit.id);
+                // If it's any of the two found in the forward pass, save them.
+                if (instance_j_hit.id == object_instance_entry_ids[0]) {
+                  object_instance_exit_indices[0] = j;
+                  insert_count++;
+                } else if ((object_instance_entry_ids.size() > 1) and (instance_j_hit.id == object_instance_entry_ids[1])) {
+                  object_instance_exit_indices[1] = j;
+                  insert_count++;
+                }
+              }
+              if (insert_count == object_instance_entry_indices.size()) {
+                break;  // We only need the first one or two instances.
+              }
+            }
+          }
 
-        // First we need to know if there is a background (if there is, it is the last layer).
-        bool is_last_layer_background = scene->IsPrimBackground(prim_ids->at(prim_ids->size() - 1));
-        // Now handle Case 1.
-        if (is_first_layer_background || !is_last_layer_background) {
-          // This means there is no invisible empty space in front of the background. Or it is undefined because there is no background.
-          insert_nan();
-        } else {
-          // There must be at least two layers.
-          // Get the second to the last layer. This covers cases 2 and 3.
-          insert_layer(prim_ids->size() - 2);
-        }
+          Ensures(object_instance_entry_indices.size() == object_instance_exit_indices.size());
+          Ensures(!object_instance_entry_indices.empty());
 
-        // Layer 3. Background layer.
-        // ===========================================
-        // Only disoccluded background.
-        if (is_first_layer_background || !is_last_layer_background) { // Same NaN condition as layer 2.
-          insert_nan();
-        } else {
-          // Get the last layer.
-          insert_layer(prim_ids->size() - 1);
+          if (object_instance_entry_indices.size() == 1) {
+            insert_layer(object_instance_entry_indices[0]);
+            insert_layer(object_instance_exit_indices[0]);
+            insert_nan();
+            insert_nan();
+          } else {
+            // those two object depths aren't always ordered. e.g. interlocking objects like desk and chair.
+            insert_layer(object_instance_entry_indices[0]);
+            insert_layer(object_instance_exit_indices[0]);
+            insert_layer(object_instance_entry_indices[1]);
+            insert_layer(object_instance_exit_indices[1]);
+          }
+          if (has_background) {
+            insert_layer(prim_ids->size() - 1);
+          } else {
+            insert_nan();
+          }
         }
       }
     }
@@ -205,13 +271,23 @@ float ExtractFrustumMesh(suncg::Scene *scene,
   GenerateMultiDepthExample(scene, ml_depth, ml_prim_ids, &out_ml_depth, &out_ml_model_indices, &out_ml_prim_ids);
 
   Image<float> background(out_ml_depth.height(), out_ml_depth.width(), NAN);
-  ExtractBackgroundFromFourLayerModel(out_ml_depth, &background);
-  LOGGER->info("Elapsed (ExtractFrustumMesh: depth rendering): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
+
+  // TODO: make sure this is ok
+//  ExtractBackgroundFromFourLayerModel(out_ml_depth, &background);
+  out_ml_depth.ExtractLayer(4, &background);
+
+  LOGGER->info("Elapsed (ExtractFrustumMesh: depth rendering): {} ms",
+               scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
   start_time = scene3d::TimeSinceEpoch<std::milli>();
 //  const float dd_factor = 10.0;
-  TriangulateDepth(background, camera, dd_factor, &out_mesh_background_only->faces, &out_mesh_background_only->vertices);
-  LOGGER->info("Elapsed (ExtractFrustumMesh: TriangulateDepth): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
+  TriangulateDepth(background,
+                   camera,
+                   dd_factor,
+                   &out_mesh_background_only->faces,
+                   &out_mesh_background_only->vertices);
+  LOGGER->info("Elapsed (ExtractFrustumMesh: TriangulateDepth): {} ms",
+               scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
 
   // Floor detection
@@ -252,9 +328,12 @@ float ExtractFrustumMesh(suncg::Scene *scene,
         visible_triangles_mesh.vertices.push_back(scene->vertices[face[i]]);
       }
     }
-    visible_triangles_mesh.faces.push_back(array<unsigned int, 3>{new_vertex_mapping[face[0]], new_vertex_mapping[face[1]], new_vertex_mapping[face[2]]});
+    visible_triangles_mesh.faces.push_back(array<unsigned int, 3>{new_vertex_mapping[face[0]],
+                                                                  new_vertex_mapping[face[1]],
+                                                                  new_vertex_mapping[face[2]]});
   }
-  LOGGER->info("Elapsed (ExtractFrustumMesh: visibility test): {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
+  LOGGER->info("Elapsed (ExtractFrustumMesh: visibility test): {} ms",
+               scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
   start_time = scene3d::TimeSinceEpoch<std::milli>();
   array<Plane, 6> planes;

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="VcsDirectoryMappings">
+    <mapping directory="$PROJECT_DIR$" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/Catch2" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/GSL" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/SUNCGtoolbox" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/assimp" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/c-blosc" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/cxxopts" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/eigen" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/fast-cpp-csv-parser" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/googletest" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/lrucache11" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/mve" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/nanort" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/nlohmann_json" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/simplify_mesh" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/spdlog" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/cpp/third_party/repos/tinyply" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/python/third_party/inplace_abn" vcs="Git" />
+  </component>
+</project>

@@ -14,13 +14,18 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
   // Assume gravity direction is -Y.
   const double kMinBoxAreaXZ = 0.5;  // Candidates smaller than this will be ignored.
 
+
   // Prepare point cloud.
   Image<float> depth_0;
   ml_depth.ExtractLayer(0, &depth_0);
   Image<float> depth_1;
   ml_depth.ExtractLayer(1, &depth_1);
+  Image<float> depth_2;
+  ml_depth.ExtractLayer(2, &depth_2);
   Image<float> depth_3;
   ml_depth.ExtractLayer(3, &depth_3);
+  Image<float> depth_4;
+  ml_depth.ExtractLayer(4, &depth_4);
 
   Points3d depth_0_points;
   PclFromDepthInWorldCoords(depth_0, camera, &depth_0_points);
@@ -28,11 +33,17 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
   Points3d depth_1_points;
   PclFromDepthInWorldCoords(depth_1, camera, &depth_1_points);
 
+  Points3d depth_2_points;
+  PclFromDepthInWorldCoords(depth_2, camera, &depth_2_points);
+
   Points3d depth_3_points;
   PclFromDepthInWorldCoords(depth_3, camera, &depth_3_points);
 
-  Points3d depth_3_points_cam;  // TODO: This can be optimized.
-  PclFromDepthInCamCoords(depth_3, camera, &depth_3_points_cam);
+  Points3d depth_4_points;
+  PclFromDepthInWorldCoords(depth_4, camera, &depth_4_points);
+
+  Points3d depth_4_points_cam;  // TODO: This can be optimized.
+  PclFromDepthInCamCoords(depth_4, camera, &depth_4_points_cam);
 
   Vec3 vd = camera.viewing_direction();
   vd[1] = 0;
@@ -43,10 +54,22 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
   aligner->WorldToCam(depth_0_points, &depth_0_points_a);
   Points3d depth_1_points_a;
   aligner->WorldToCam(depth_1_points, &depth_1_points_a);
+  Points3d depth_2_points_a;
+  aligner->WorldToCam(depth_0_points, &depth_2_points_a);
   Points3d depth_3_points_a;
-  aligner->WorldToCam(depth_3_points, &depth_3_points_a);
-  Points3d depth_01_points_a(3, depth_0_points_a.cols() + depth_1_points_a.cols());
-  depth_01_points_a << depth_0_points_a, depth_1_points_a;
+  aligner->WorldToCam(depth_1_points, &depth_3_points_a);
+  Points3d depth_4_points_a;
+  aligner->WorldToCam(depth_4_points, &depth_4_points_a);
+
+  // object pcl. name should actually be depth_0123_points.
+  Points3d depth_01_points_a
+      (3, depth_0_points_a.cols() + depth_1_points_a.cols() + depth_2_points_a.cols() + depth_3_points_a.cols());
+  depth_01_points_a << depth_0_points_a, depth_1_points_a, depth_2_points_a, depth_3_points_a;
+
+  Points3d depth_01234_points_a
+      (3, depth_0_points_a.cols() + depth_1_points_a.cols() +
+          depth_2_points_a.cols() + depth_3_points_a.cols() + depth_4_points_a.cols());
+  depth_01234_points_a << depth_0_points_a, depth_1_points_a, depth_2_points_a, depth_3_points_a, depth_4_points_a;
 
   // Heuristic 1: Depth statistics.
   candidate_boxes->push_back([&]() -> AABB {
@@ -86,12 +109,12 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
     const double kFrustumZoom = 0.9;
 
     double mean_depth = 0;
-    if (depth_3_points_a.cols() < 10) {
+    if (depth_4_points_a.cols() < 10) {
       // This heuristic is used even if there are too few background points.
       // Just need to set a constant mean depth value.
       mean_depth = 0.5 * (kMaxDistanceFromCamera + kMinDistanceFromCamera);
     } else {
-      mean_depth = std::abs(depth_3_points_cam.row(2).mean());  // In original camera coordinates.
+      mean_depth = std::abs(depth_4_points_cam.row(2).mean());  // In original camera coordinates.
       mean_depth *= kCentroidWeight;
       mean_depth = std::max(std::min(mean_depth, kMaxDistanceFromCamera), kMinDistanceFromCamera);
     }
@@ -113,7 +136,8 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
     // Square bias.
     return AABB(background_center_aligned.array() - size, background_center_aligned.array() + size);
   }());
-  Ensures(candidate_boxes->at(candidate_boxes->size() - 1).XZArea() > kMinBoxAreaXZ);  // This bounding box is always used.
+  Ensures(
+      candidate_boxes->at(candidate_boxes->size() - 1).XZArea() > kMinBoxAreaXZ);  // This bounding box is always used.
 
   // Heuristic 3: Objects-only. Include all objects.
   candidate_boxes->push_back([&]() -> AABB {
@@ -124,7 +148,7 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
       return AABB();  // This heuristic is not used if there are too few valid points.
     }
 
-    // Extract prim ids for points in depth 0 and 1.
+    // Extract prim ids for points in depth 0 and 4.
     vector<uint32_t> valid_prim_ids;
     for (unsigned int y = 0; y < depth_0.height(); ++y) {
       for (unsigned int x = 0; x < depth_0.width(); ++x) {
@@ -138,15 +162,16 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
     }
     for (unsigned int y = 0; y < depth_1.height(); ++y) {
       for (unsigned int x = 0; x < depth_1.width(); ++x) {
-        float value = depth_1.at(y, x);
+        float value = depth_4.at(y, x);
         if (std::isfinite(value)) {
-          auto pid = ml_prim_ids.at(y, x, 1);
+          auto pid = ml_prim_ids.at(y, x, 4);
           Ensures(pid != std::numeric_limits<uint32_t>::max());
           valid_prim_ids.push_back(pid);
         }
       }
     }
-    Expects(valid_prim_ids.size() == depth_01_points_a.cols());
+//    Expects(valid_prim_ids.size() == depth_01_points_a.cols());
+
 
     // Find the current room. Pixels vote on which room they belong to. Majority wins.
     map<string, int> room_counts;
@@ -219,7 +244,10 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
     return box;
   }());
 
-  LOGGER->info("box area: {:.1f}, {:.1f}, {:.1f}", candidate_boxes->at(0).XZArea(), candidate_boxes->at(1).XZArea(), candidate_boxes->at(2).XZArea());
+  LOGGER->info("box area: {:.1f}, {:.1f}, {:.1f}",
+               candidate_boxes->at(0).XZArea(),
+               candidate_boxes->at(1).XZArea(),
+               candidate_boxes->at(2).XZArea());
 
   Vec box_weights(3);
   box_weights[0] = 1;
@@ -232,11 +260,14 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
     }
   }
 
-  Vec3 combined_bmin = (box_weights[0] * candidate_boxes->at(0).bmin + box_weights[1] * candidate_boxes->at(1).bmin + box_weights[2] * candidate_boxes->at(2).bmin) / box_weights.sum();
-  Vec3 combined_bmax = (box_weights[0] * candidate_boxes->at(0).bmax + box_weights[1] * candidate_boxes->at(1).bmax + box_weights[2] * candidate_boxes->at(2).bmax) / box_weights.sum();
+  Vec3 combined_bmin = (box_weights[0] * candidate_boxes->at(0).bmin + box_weights[1] * candidate_boxes->at(1).bmin
+      + box_weights[2] * candidate_boxes->at(2).bmin) / box_weights.sum();
+
+  Vec3 combined_bmax = (box_weights[0] * candidate_boxes->at(0).bmax + box_weights[1] * candidate_boxes->at(1).bmax
+      + box_weights[2] * candidate_boxes->at(2).bmax) / box_weights.sum();
 
   // Determine the the height of the overhead camera will be.
-  combined_bmax[1] = depth_01_points_a.row(1).maxCoeff() - 0.05;
+  combined_bmax[1] = depth_01234_points_a.row(1).maxCoeff() - 0.05;
 
   // 0 in world coordinates. Not really important.
   combined_bmin[1] = -aligner->position()[1];
@@ -257,7 +288,10 @@ unique_ptr<OrthographicCamera> ComputeOverheadCamera(const MultiLayerImage<float
   overhead_frustum.far = 50;
   overhead_frustum = ForceFixedAspectRatio(overhead_hw_ratio, overhead_frustum);
 
-  auto ret = make_unique<OrthographicCamera>(overhead_campos, overhead_campos + Vec3{0, -1, 0}, aligner->viewing_direction(), overhead_frustum);
+  auto ret = make_unique<OrthographicCamera>(overhead_campos,
+                                             overhead_campos + Vec3{0, -1, 0},
+                                             aligner->viewing_direction(),
+                                             overhead_frustum);
 
 #if 0  // Enable for debugging and visualization.
   {
@@ -390,7 +424,11 @@ bool dm_is_depthdisc(float *widths, float *depths, float dd_factor, int i1, int 
   return depths[i_max] - depths[i_min] > widths[i_min] * dd_factor;
 }
 
-void TriangulateDepth(const Image<float> &depth, const Camera &camera, float dd_factor, vector<array<unsigned int, 3>> *faces, vector<array<float, 3>> *vertices) {
+void TriangulateDepth(const Image<float> &depth,
+                      const Camera &camera,
+                      float dd_factor,
+                      vector<array<unsigned int, 3>> *faces,
+                      vector<array<float, 3>> *vertices) {
   const unsigned int width = depth.width();
   const unsigned int height = depth.height();
 
@@ -429,7 +467,8 @@ void TriangulateDepth(const Image<float> &depth, const Camera &camera, float dd_
     Expects(v2 >= 0);
     Expects(v3 >= 0);
 
-    faces->push_back(array<unsigned int, 3>{static_cast<unsigned int>(v1), static_cast<unsigned int>(v2), static_cast<unsigned int>(v3)});
+    faces->push_back(array<unsigned int, 3>{static_cast<unsigned int>(v1), static_cast<unsigned int>(v2),
+                                            static_cast<unsigned int>(v3)});
   };
 
   for (int y = 0; y < height - 1; ++y) {

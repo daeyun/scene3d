@@ -73,7 +73,7 @@ int main(int argc, const char **argv) {
     std::cout << "Output file: " << ret << std::endl;
     return ret;
   };
-  const unsigned int kNumOutputLayers = 4;
+  const unsigned int kNumOutputLayers = 5;
 
   Ensures(width < 1e5);
   Ensures(height < 1e5);
@@ -96,7 +96,6 @@ int main(int argc, const char **argv) {
 
   for (int camera_i = 0; camera_i < cameras.size(); ++camera_i) {
     PerspectiveCamera camera = cameras[camera_i];
-    LOGGER->info("Rendering camera {}", camera_i);
 
     auto renderer = scene3d::SunCgMultiLayerDepthRenderer(
         &ray_tracer,
@@ -119,8 +118,14 @@ int main(int argc, const char **argv) {
       MultiLayerImage<float> out_ml_depth;
       MultiLayerImage<uint16_t> out_ml_model_indices;
       MultiLayerImage<uint32_t> out_ml_prim_ids;
-      GenerateMultiDepthExample(scene.get(), ml_depth, ml_prim_ids, &out_ml_depth, &out_ml_model_indices, &out_ml_prim_ids);
+      GenerateMultiDepthExample(scene.get(),
+                                ml_depth,
+                                ml_prim_ids,
+                                &out_ml_depth,
+                                &out_ml_model_indices,
+                                &out_ml_prim_ids);
       timer2.Toc();
+
 
       // 2. Overhead camera rendering
       // -------------------------------------------------------
@@ -132,7 +137,15 @@ int main(int argc, const char **argv) {
       const unsigned int kOverheadWidth = 300;
       double overhead_hw_ratio = static_cast<double>(kOverheadHeight) / kOverheadWidth;
       unique_ptr<OrthographicCamera>
-          overhead_cam = ComputeOverheadCamera(out_ml_depth, out_ml_model_indices, out_ml_prim_ids, camera, scene.get(), overhead_hw_ratio, &average_bounding_box, &candidate_boxes, &aligner);
+          overhead_cam = ComputeOverheadCamera(out_ml_depth,
+                                               out_ml_model_indices,
+                                               out_ml_prim_ids,
+                                               camera,
+                                               scene.get(),
+                                               overhead_hw_ratio,
+                                               &average_bounding_box,
+                                               &candidate_boxes,
+                                               &aligner);
 
       auto overhead_renderer = scene3d::SunCgMultiLayerDepthRenderer(
           &ray_tracer,
@@ -148,17 +161,23 @@ int main(int argc, const char **argv) {
       MultiLayerImage<float> out_ml_depth_overhead;
       MultiLayerImage<uint16_t> out_ml_model_indices_overhead;
       MultiLayerImage<uint32_t> out_ml_prim_ids_overhead;
-      GenerateMultiDepthExample(scene.get(), ml_depth_overhead, ml_prim_ids_overhead, &out_ml_depth_overhead, &out_ml_model_indices_overhead, &out_ml_prim_ids_overhead);
+      GenerateMultiDepthExample(scene.get(),
+                                ml_depth_overhead,
+                                ml_prim_ids_overhead,
+                                &out_ml_depth_overhead,
+                                &out_ml_model_indices_overhead,
+                                &out_ml_prim_ids_overhead);
+
 
       // Detect main floor.
-      vector<float> overhead_depth0_values;
-      out_ml_depth_overhead.ExtractLayer(0, &overhead_depth0_values);
-      vector<uint16_t> overhead_model0_values;
-      out_ml_model_indices_overhead.ExtractLayer(0, &overhead_model0_values);
+      vector<float> overhead_depth4_values;
+      out_ml_depth_overhead.ExtractLayer(4, &overhead_depth4_values);
+      vector<uint16_t> overhead_model4_values;
+      out_ml_model_indices_overhead.ExtractLayer(4, &overhead_model4_values);
       vector<float> overhead_floor_values;
-      for (int i = 0; i < overhead_depth0_values.size(); ++i) {
-        if (std::isfinite(overhead_depth0_values[i]) && overhead_model0_values[i] == 3) {  // model_id 3 is floor.
-          overhead_floor_values.push_back(overhead_depth0_values[i]);
+      for (int i = 0; i < overhead_depth4_values.size(); ++i) {
+        if (std::isfinite(overhead_depth4_values[i]) && overhead_model4_values[i] == 3) {  // model_id 3 is floor.
+          overhead_floor_values.push_back(overhead_depth4_values[i]);
         }
       }
       float floor_depth = [&](vector<float> &v) -> float {
@@ -181,13 +200,14 @@ int main(int argc, const char **argv) {
 
       timer3.Tic();
       // Save as compressed binary files.
-      out_ml_depth.Save(generate_filename(camera_i, "ldi", "bin"), kNumOutputLayers);
+      out_ml_depth.Save(generate_filename(camera_i, "ldi", "bin"), kNumOutputLayers); // TODO
       out_ml_model_indices.Save(generate_filename(camera_i, "model", "bin"), kNumOutputLayers);
       out_ml_depth_overhead.Save(generate_filename(camera_i, "ldi-o", "bin"), kNumOutputLayers);
       out_ml_model_indices_overhead.Save(generate_filename(camera_i, "model-o", "bin"), kNumOutputLayers);
       // Save cameras.
       SaveCameras(generate_filename(camera_i, "cam", "txt"), vector<Camera *>{&camera, overhead_cam.get()});
-      SaveAABB(generate_filename(camera_i, "aabb", "txt"), vector<AABB>{average_bounding_box, candidate_boxes[0], candidate_boxes[1], candidate_boxes[2]});
+      SaveAABB(generate_filename(camera_i, "aabb", "txt"),
+               vector<AABB>{average_bounding_box, candidate_boxes[0], candidate_boxes[1], candidate_boxes[2]});
       timer3.Toc();
     }
 
@@ -202,7 +222,12 @@ int main(int argc, const char **argv) {
       MultiLayerImage<float> out_ml_depth_objcentered;
       MultiLayerImage<uint16_t> out_ml_model_indices_objcentered;
       MultiLayerImage<uint32_t> out_ml_prim_ids_objcentered;
-      GenerateMultiDepthExample(scene.get(), ml_depth_objcentered, ml_prim_ids_objcentered, &out_ml_depth_objcentered, &out_ml_model_indices_objcentered, &out_ml_prim_ids_objcentered);
+      GenerateMultiDepthExample(scene.get(),
+                                ml_depth_objcentered,
+                                ml_prim_ids_objcentered,
+                                &out_ml_depth_objcentered,
+                                &out_ml_model_indices_objcentered,
+                                &out_ml_prim_ids_objcentered);
 
       // TODO: This part can be refactored/simplified.
       out_ml_depth_objcentered.Transform([&](size_t index, size_t l, float d) -> float {
@@ -223,7 +248,8 @@ int main(int argc, const char **argv) {
 
       // Surface normals.
       Image<uint32_t> first_layer_prim_id;
-      MultiLayerImage<float> surface_normals(object_centered_instance_thickness.height(), object_centered_instance_thickness.width(), NAN);
+      MultiLayerImage<float>
+          surface_normals(object_centered_instance_thickness.height(), object_centered_instance_thickness.width(), NAN);
       ml_prim_ids_objcentered.ExtractLayer(0, &first_layer_prim_id);
       for (int y = 0; y < object_centered_instance_thickness.height(); ++y) {
         for (int x = 0; x < object_centered_instance_thickness.width(); ++x) {

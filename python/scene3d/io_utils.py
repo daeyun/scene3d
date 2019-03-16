@@ -44,6 +44,8 @@ def read_mesh(filename):
         return read_mesh_assimp(filename)
     elif filename.endswith('.obj'):
         return read_mesh_assimp(filename)
+    elif filename.endswith('.stl'):
+        return read_mesh_assimp(filename)
     else:
         raise RuntimeError()
 

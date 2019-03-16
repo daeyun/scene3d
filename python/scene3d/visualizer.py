@@ -232,7 +232,9 @@ class Visualizer2(object):
 
         seg_pred_argmax = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred[:, :40])
 
-        segmented_depth = loss_fn.undo_log_depth(train_eval_pipeline.segment_predicted_depth(torch_utils.recursive_torch_to_numpy(depth_pred), seg_pred_argmax))
+        depth_pred_np = torch_utils.recursive_torch_to_numpy(depth_pred)
+
+        segmented_depth = loss_fn.undo_log_depth(train_eval_pipeline.segment_predicted_depth(depth_pred_np, seg_pred_argmax))
         assert segmented_depth.shape[0] == 1
         segmented_depth = np.squeeze(segmented_depth)
 
@@ -247,8 +249,7 @@ class Visualizer2(object):
         depth_mesh_utils_cpp.depth_to_mesh(segmented_depth_single[3], self.example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
 
         # Factored3d
-        # f3d_utils.align_factored3d_mesh_with_meshlab_cam_coords('/data3/out/scene3d/factored3d_pred/{}/codes.obj'.format(name), '/mnt/ramdisk/nyu_mld/f3d_objets.stl')
-        # f3d_utils.align_factored3d_mesh_with_meshlab_cam_coords('/data3/out/scene3d/factored3d_pred/{}/layout.obj'.format(name), '/mnt/ramdisk/nyu_mld/f3d_layout.stl')
+        # aligned_filenames = f3d_utils.align_factored3d_mesh_with_our_gt('/data3/out/scene3d/factored3d_pred/{}/layout.obj'.format(name), self.example['name'])
 
         ### PREDICTED DEPTH
         fig = pt.figure(figsize=(20, 8))
@@ -300,7 +301,6 @@ class Visualizer2(object):
         pt.show()
         print('')
 
-
         if visualize_gt:
             gt_depth = self.example['multi_layer_depth_aligned_background']
             ### GT DEPTH
@@ -331,7 +331,6 @@ class Visualizer2(object):
             ax.axes.get_yaxis().set_ticks([])
             ax.set_title('$\\bar D_4$', {'fontsize': 14})
 
-
             gt_seg = self.example['category_nyu40_merged_background'].copy()
             gt_seg[gt_seg == 65535] = 34
             gt_seg = gt_seg.astype(np.uint8)
@@ -353,10 +352,6 @@ class Visualizer2(object):
             ax.set_title('$\\bar D_3$ Segmentation  ($\\bar M_3$)', {'fontsize': 14})
             pt.show()
             print('')
-
-
-
-
 
         ##########
 

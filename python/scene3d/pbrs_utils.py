@@ -38,21 +38,31 @@ def _house_id_to_camera_id_mapping() -> typing.Dict[str, typing.Sequence[str]]:
     return __house_id_to_camera_ids_cache
 
 
-def load_pbrs_filenames() -> typing.Sequence[str]:
-    # List of png filenames in pbrs.
-    cache_file = path.join(config.pbrs_root, 'mlt_v2_files.json')
-    if path.isfile(cache_file):
-        with open(cache_file, 'r') as f:
-            rel_filenames = json.load(f)
-        ret = [path.join(config.pbrs_root, file) for file in rel_filenames]
+def load_pbrs_filenames(example_name_list=None) -> typing.Sequence[str]:
+    if example_name_list is None:
+        # List of png filenames in pbrs.
+        cache_file = path.join(config.pbrs_root, 'mlt_v2_files.json')
+        if path.isfile(cache_file):
+            with open(cache_file, 'r') as f:
+                rel_filenames = json.load(f)
+            ret = [path.join(config.pbrs_root, file) for file in rel_filenames]
+        else:
+            files = glob.glob(path.join(config.pbrs_root, 'mlt_v2/**/*.png'))
+            files = sorted(files)
+            rel_filenames = [path.relpath(file, config.pbrs_root) for file in files]
+            with open(cache_file, 'w') as f:
+                json.dump(rel_filenames, f)
+            ret = files
+        return ret
+
+    elif example_name_list.endswith('.txt'):
+        example_names = io_utils.read_lines_and_strip(example_name_list)
+        ret = [path.join(config.pbrs_root, 'mlt_v2', item + '_mlt.png') for item in example_names]
+        io_utils.assert_file_exists(ret[0])
+        return ret
+
     else:
-        files = glob.glob(path.join(config.pbrs_root, 'mlt_v2/**/*.png'))
-        files = sorted(files)
-        rel_filenames = [path.relpath(file, config.pbrs_root) for file in files]
-        with open(cache_file, 'w') as f:
-            json.dump(rel_filenames, f)
-        ret = files
-    return ret
+        raise NotImplementedError()
 
 
 def get_camera_params_line(house_id: str, camera_id: typing.Union[str, int] = None) -> typing.Union[typing.Sequence[str], str]:

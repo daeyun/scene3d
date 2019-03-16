@@ -30,7 +30,7 @@ See https://www.jamescoyle.net/how-to/943-create-a-ram-disk-in-linux
 """
 
 num_threads = 12
-out_root = '/data2/scene3d/v8'
+out_root = '/data4/scene3d/v9'
 
 # Can be any directory. Temporary output files are written here.
 # tmp_out_root = '/tmp/scene3d'
@@ -177,6 +177,8 @@ def thread_worker(thread_id):
 
 def main():
     files = pbrs_utils.load_pbrs_filenames()
+    # files = pbrs_utils.load_pbrs_filenames('/data2/scene3d/v8/test_v2_subset_factored3d.txt')  # TODO: this is temporary. use the line above
+    # files = ['/data2/pbrs/mlt_v2/050236b2dcaa484aad506207089cab5d/000008_mlt.png']
 
     global files_by_house_id
     global camera_ids_by_house_id

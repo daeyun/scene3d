@@ -64,9 +64,18 @@ elif hostname == 'ren-ubuntu':
     default_out_root = '/media/ren/devRen4T/research/datasets/out/scene3d'  # This should be the directory containing checkpoint files.
 
 elif hostname == 'daeyun-vision-lab':
+    # Deprecated.
     suncg_root = '/data2/suncg_data'
     pbrs_root = '/data2/pbrs'
     scene3d_root = '/data2/scene3d'
+    default_out_root = '/data3/out/scene3d'
+    etn_features_root = '/data3/out/scene3d/overhead_pred'
+    nyu_root = '/data3/nyu'
+
+elif hostname == 'daeyun-lab':
+    suncg_root = '/data/data/suncg_data'
+    pbrs_root = '/data/data/pbrs'
+    scene3d_root = '/data/data/scene3d'
     default_out_root = '/data3/out/scene3d'
     etn_features_root = '/data3/out/scene3d/overhead_pred'
     nyu_root = '/data3/nyu'
@@ -83,11 +92,25 @@ elif path.isfile(path.expanduser('~/.is_titan_cluster')):
     scene3d_root = '/extra/titansc0/daeyun/data/scene3d'
     default_out_root = '/extra/titansc0/daeyun/data/out/scene3d'
 
-elif hostname == 'aleph0':
+# elif hostname == 'aleph0':
+#     suncg_root = '/mnt/scratch1/daeyuns/data/suncg_data'
+#     pbrs_root = '/mnt/scratch1/daeyuns/data/pbrs'
+#     scene3d_root = '/mnt/scratch1/daeyuns/data/scene3d'
+#     default_out_root = '/mnt/scratch1/daeyuns/data/out/scene3d'
+#     etn_features_root = '/home/daeyuns/overhead_data'
+
+elif hostname == 'aleph1':
     suncg_root = '/mnt/scratch1/daeyuns/data/suncg_data'
     pbrs_root = '/mnt/scratch1/daeyuns/data/pbrs'
     scene3d_root = '/mnt/scratch1/daeyuns/data/scene3d'
-    default_out_root = '/mnt/scratch1/daeyuns/data/out/scene3d'
+    default_out_root = '/home/daeyuns/out_shared/scene3d'
+    etn_features_root = '/home/daeyuns/overhead_data'
+
+elif hostname == 'aleph2':
+    suncg_root = '/mnt/scratch1/daeyuns/data/suncg_data'
+    pbrs_root = '/mnt/scratch1/daeyuns/data/pbrs'
+    scene3d_root = '/mnt/scratch1/daeyuns/data/scene3d'
+    default_out_root = '/home/daeyuns/out_shared/scene3d'
     etn_features_root = '/home/daeyuns/overhead_data'
 
 else:

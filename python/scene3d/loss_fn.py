@@ -65,7 +65,8 @@ def compute_masked_smooth_l1_loss(pred, target, apply_log_to_target=True):
     assert area.dtype == torch.int64
     assert area.shape == loss.shape
 
-    loss = (loss / (area.type(loss.dtype) + 1e-3)).mean()
+    # loss = (loss / (area.type(loss.dtype) + 1e-3)).mean()
+    loss = (loss / (area.type(loss.dtype) + 200)).mean()  # TODO: this is an arbitrary smoothing constant
 
     return loss
 

@@ -1,4 +1,6 @@
 import numpy as np
+import numpy.linalg as la
+from os import path
 
 from scene3d import camera
 from scene3d import io_utils
@@ -72,3 +74,20 @@ def align_factored3d_mesh_with_meshlab_cam_coords(mesh_filename, out_filename):
 
     return [out_filename]
     # return [out_filename, out_filename2]
+
+
+def clip_infinity_vertices(filename, threshold):
+    fv = io_utils.read_mesh(filename)
+    sel = fv['v'][:, 2] > threshold
+
+    # limit the distance of all vertices to 7, from the origin.
+    fv['v'][sel] /= la.norm(fv['v'][sel], axis=1).reshape(-1, 1) / threshold
+
+    affected_faces = np.isin(fv['f'], np.where(sel)[0])
+    fv['f'] = fv['f'][~np.all(affected_faces, axis=1)]
+
+    prefix, ext = path.splitext(filename)
+
+    new_filename = prefix + '_clipped' + '.off'
+    io_utils.save_off(fv, new_filename)
+    return new_filename
