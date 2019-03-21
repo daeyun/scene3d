@@ -9,15 +9,13 @@ from torch.utils import data
 
 from scene3d import config
 from scene3d import log
+from scene3d import shards
 from scene3d import training_utils_cpp
 from scene3d import torch_utils
 from scene3d import io_utils
 from scene3d import render_depth
 from scene3d.dataset import dataset_utils
 
-"""
-TODO: WIP
-"""
 
 def undo_rgb_whitening(rgb):
     rgb_mean = np.array([178.1781, 158.5039, 142.5141], dtype=np.float32)
@@ -51,18 +49,41 @@ def is_filename_prefix_valid(value):
     return re.match(r'^[a-z0-9]{32}/\d{6}$', value) is not None
 
 
+if config.hostname.startswith('aleph'):
+    # this will down things down for a few seconds
+    names_to_shard = shards.get_v9_train_name_to_shard_mapping()
+
+
 def find_etn_filename(example_name):
-    if config.hostname == 'aleph0':
-        shards = ['02', '01', '03', '04']  # sorted by decreasing size. This is specific to aleph0.ics machine.
-        filename = ''
-        for item in shards:
-            filename_candidate = path.join(config.etn_features_root, item, '{}.bin'.format(example_name))
-            if path.exists(filename_candidate):
-                filename = filename_candidate
-                break
-        if not filename:
-            raise RuntimeError('File not found: {}'.format(example_name))
+    if config.hostname.startswith('aleph'):
+        shard = names_to_shard[example_name]
+        ret = path.join(config.etn_features_root, shard, '{}.bin'.format(example_name))
+        if not path.exists(ret):
+            ret = path.join(config.etn_features_root2, shard, '{}.bin'.format(example_name))
+        return ret
+    elif config.hostname == 'daeyun-lab':
+        return path.join('/data4/out/scene3d/overhead_pred', '{}.bin'.format(example_name))
     else:
+        raise NotImplementedError()
+        filename = path.join(config.etn_features_root, '{}.bin'.format(example_name))
+        assert path.exists(filename), filename
+    return filename
+
+
+def find_etn_zb_filename(example_name):
+    """
+    zbuffered features
+    """
+    if config.hostname.startswith('aleph'):
+        shard = names_to_shard[example_name]
+        ret = path.join(config.etn_zb_features_root, shard, '{}.bin'.format(example_name))
+        if not path.exists(ret):
+            ret = path.join(config.etn_zb_features_root2, shard, '{}.bin'.format(example_name))
+        return ret
+    elif config.hostname == 'daeyun-lab':
+        return path.join('/data4/out/scene3d/overhead_zb_pred', '{}.bin'.format(example_name))
+    else:
+        raise NotImplementedError()
         filename = path.join(config.etn_features_root, '{}.bin'.format(example_name))
         assert path.exists(filename), filename
     return filename
@@ -84,6 +105,10 @@ class MultiLayerDepth(data.Dataset):
             split_filename = path.join(config.scene3d_root, 'v9/test.txt')
         elif split == 'all':
             split_filename = path.join(config.scene3d_root, 'v9/all.txt')
+        elif isinstance(split, (list, tuple)):
+            for item in split:
+                assert item.startswith('/') and item.endswith('.txt') and path.isfile(item), item
+            split_filename = split
         elif split.startswith('/') and split.endswith('.txt') and path.isfile(split):
             split_filename = split
         else:
@@ -91,7 +116,13 @@ class MultiLayerDepth(data.Dataset):
 
         log.info('Loading examples from file {}'.format(split_filename))
 
-        self.filename_prefixes = io_utils.read_lines_and_strip(split_filename)
+        if isinstance(split_filename, (list, tuple)):
+            self.filename_prefixes = []
+            for item in split_filename:
+                prefixes = io_utils.read_lines_and_strip(item)
+                self.filename_prefixes.extend(prefixes)
+        else:
+            self.filename_prefixes = io_utils.read_lines_and_strip(split_filename)
 
         # Make sure the text file contains valid example names.
         assert is_filename_prefix_valid(self.filename_prefixes[0]) and is_filename_prefix_valid(self.filename_prefixes[-1])
@@ -116,10 +147,20 @@ class MultiLayerDepth(data.Dataset):
             'multi_layer_depth_aligned_background',
             # 'multi_layer_depth_aligned_background_and_input_depth',
             # 'multi_layer_depth_replicated_background',
-            # 'multi_layer_overhead_depth',
+            'multi_layer_overhead_depth',
             # 'overhead_features',
             # 'overhead_features_v2',
             # 'overhead_features_v3',
+            'overhead_features_v9_v1_all',
+            'overhead_features_v9_v1_firstonly',
+            'overhead_features_v9_v1_nosemantics',
+            'overhead_features_v9_v1_nodepth',
+            'overhead_features_v9_v1_nodepthandsemantics',
+            'overhead_features_v9_v2_all',  # zbuffered
+            'overhead_features_v9_v2_firstonly',  # zbuffered
+            'overhead_features_v9_v2_nosemantics',  # zbuffered
+            'overhead_features_v9_v2_nodepth',  # zbuffered
+            'overhead_features_v9_v2_nodepthandsemantics',  # zbuffered
             'name',
             'camera_filename',
             # 'normals',
@@ -131,7 +172,7 @@ class MultiLayerDepth(data.Dataset):
             # 'overhead_category_nyu40',
             # 'overhead_category_nyu40_merged_background',
             # 'overhead_camera_pose_3params',
-            # 'overhead_camera_pose_4params',
+            'overhead_camera_pose_4params',
         )
 
         assert isinstance(fields, (tuple, list))
@@ -347,6 +388,122 @@ class MultiLayerDepth(data.Dataset):
         ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
         ret[field_name] = ldi_overhead
 
+    def get_overhead_features_v9_v1_all(self, example_name, ret):
+        field_name = 'overhead_features_v9_v1_all'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_filename(example_name)
+
+        # 232 channels
+        ldi_overhead = io_utils.read_array_compressed(filename, dtype=np.float16).astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v1_firstonly(self, example_name, ret):
+        field_name = 'overhead_features_v9_v1_firstonly'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_filename(example_name)
+
+        # 117 channels
+        ldi_overhead = io_utils.read_array_compressed(filename, dtype=np.float16)[:-(64 + 48 + 3)].astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v1_nosemantics(self, example_name, ret):
+        field_name = 'overhead_features_v9_v1_nosemantics'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_filename(example_name)
+
+        # 104 channels.     232 - 64*2
+        ldi_overhead_16 = io_utils.read_array_compressed(filename, dtype=np.float16)
+        ldi_overhead = np.concatenate([ldi_overhead_16[:53], ldi_overhead_16[117:168], ], axis=0).astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v1_nodepth(self, example_name, ret):
+        field_name = 'overhead_features_v9_v1_nodepth'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_filename(example_name)
+
+        # 136 channels.     232 - 48*2
+        ldi_overhead_16 = io_utils.read_array_compressed(filename, dtype=np.float16)
+        ldi_overhead = np.concatenate([ldi_overhead_16[:5], ldi_overhead_16[53:120], ldi_overhead_16[168:], ], axis=0).astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v1_nodepthandsemantics(self, example_name, ret):
+        field_name = 'overhead_features_v9_v1_nodepthandsemantics'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_filename(example_name)
+
+        # 8 channels.     232 - 48*2 - 64*2
+        ldi_overhead_16 = io_utils.read_array_compressed(filename, dtype=np.float16)
+        ldi_overhead = np.concatenate([ldi_overhead_16[:5], ldi_overhead_16[117:120], ], axis=0).astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v2_all(self, example_name, ret):
+        field_name = 'overhead_features_v9_v2_all'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_zb_filename(example_name)
+
+        # 232 channels
+        ldi_overhead = io_utils.read_array_compressed(filename, dtype=np.float16).astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v2_firstonly(self, example_name, ret):
+        field_name = 'overhead_features_v9_v2_firstonly'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_zb_filename(example_name)
+
+        # 117 channels
+        ldi_overhead = io_utils.read_array_compressed(filename, dtype=np.float16)[:-(64 + 48 + 3)].astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v2_nosemantics(self, example_name, ret):
+        field_name = 'overhead_features_v9_v2_nosemantics'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_zb_filename(example_name)
+
+        # 104 channels.     232 - 64*2
+        ldi_overhead_16 = io_utils.read_array_compressed(filename, dtype=np.float16)
+        ldi_overhead = np.concatenate([ldi_overhead_16[:53], ldi_overhead_16[117:168], ], axis=0).astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v2_nodepth(self, example_name, ret):
+        field_name = 'overhead_features_v9_v2_nodepth'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_zb_filename(example_name)
+
+        # 136 channels.     232 - 48*2
+        ldi_overhead_16 = io_utils.read_array_compressed(filename, dtype=np.float16)
+        ldi_overhead = np.concatenate([ldi_overhead_16[:5], ldi_overhead_16[53:120], ldi_overhead_16[168:], ], axis=0).astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
+    def get_overhead_features_v9_v2_nodepthandsemantics(self, example_name, ret):
+        field_name = 'overhead_features_v9_v2_nodepthandsemantics'
+        if field_name not in self.fields or field_name in ret:
+            return
+        filename = find_etn_zb_filename(example_name)
+
+        # 8 channels.     232 - 48*2 - 64*2
+        ldi_overhead_16 = io_utils.read_array_compressed(filename, dtype=np.float16)
+        ldi_overhead = np.concatenate([ldi_overhead_16[:5], ldi_overhead_16[117:120], ], axis=0).astype(np.float32)
+        ldi_overhead = dataset_utils.force_contiguous(ldi_overhead)
+        ret[field_name] = ldi_overhead
+
     def get_normals(self, example_name, ret):
         field_name = 'normals'
         if field_name not in self.fields or field_name in ret:
@@ -409,8 +566,9 @@ class MultiLayerDepth(data.Dataset):
         d = dataset_utils.force_contiguous(d)
         training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_merged_background")
 
-        # bg_mask = d[0] == 34  # merged into wall category (34). Ignored in layers != 1.
-        # d[1][bg_mask] = d[2][bg_mask] = d[3][bg_mask] = 65535
+        d = d[[0, 2]]
+        d[d == 65535] = 34  # this includes "ignored" pixels (rare). it's better to treat them as background.
+        assert (d < 40).all()  # sanity check. this can be removed later, for performance reasons.
 
         d = dataset_utils.force_contiguous(d.astype(np.int))
         ret[field_name] = d
@@ -571,6 +729,16 @@ class MultiLayerDepth(data.Dataset):
         self.get_overhead_features(example_name, ret)
         self.get_overhead_features_v2(example_name, ret)
         self.get_overhead_features_v3(example_name, ret)
+        self.get_overhead_features_v9_v1_all(example_name, ret)
+        self.get_overhead_features_v9_v1_firstonly(example_name, ret)
+        self.get_overhead_features_v9_v1_nosemantics(example_name, ret)
+        self.get_overhead_features_v9_v1_nodepth(example_name, ret)
+        self.get_overhead_features_v9_v1_nodepthandsemantics(example_name, ret)
+        self.get_overhead_features_v9_v2_all(example_name, ret)
+        self.get_overhead_features_v9_v2_firstonly(example_name, ret)
+        self.get_overhead_features_v9_v2_nosemantics(example_name, ret)
+        self.get_overhead_features_v9_v2_nodepth(example_name, ret)
+        self.get_overhead_features_v9_v2_nodepthandsemantics(example_name, ret)
         self.get_normals(example_name, ret)
         self.get_normal_direction_volume(example_name, ret)
         self.get_model_id(example_name, ret)

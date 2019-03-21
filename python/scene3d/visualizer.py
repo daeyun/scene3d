@@ -181,8 +181,8 @@ class Visualizer(object):
 
 class Visualizer2(object):
     def __init__(self):
-        self.depth_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth')
-        self.seg_checkpoint = path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth')
+        self.depth_checkpoint = path.join(config.default_out_root, 'v9/v9-multi_layer_depth_aligned_background_multi_branch/0/01149000_005_0003355.pth')
+        self.seg_checkpoint = path.join(config.default_out_root, 'v9/v9-category_nyu40_merged_background-2l/0/01130000_005_0001780.pth')
 
         torch.set_default_tensor_type('torch.cuda.FloatTensor')
         self.depth_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(self.depth_checkpoint)
@@ -192,7 +192,7 @@ class Visualizer2(object):
 
         checkpoint_filenames = {
             'pose_3param': path.join(config.default_out_root, 'v8/v8-overhead_camera_pose/0/00420000_018_0014478.pth'),
-            'overhead_height_map_model': path.join(config.default_out_root, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
+            # 'overhead_height_map_model': path.join(config.default_out_root, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
         }
 
         self.hm_model = train_eval_pipeline.HeightMapModel(checkpoint_filenames, device_id=0)

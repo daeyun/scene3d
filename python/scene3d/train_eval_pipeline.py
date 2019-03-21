@@ -1,4 +1,7 @@
 import argparse
+import torch
+import pprint
+import math
 import io
 import gzip
 import scipy.misc
@@ -23,6 +26,7 @@ from torch import nn
 from torch import optim
 from torch.backends import cudnn
 
+from scene3d import config
 from scene3d import config
 from scene3d import feat
 from scene3d import io_utils
@@ -95,6 +99,18 @@ available_experiments = [
     'OVERHEAD_offline_03',  # no semantics, no depth.
     'v9-multi_layer_depth_aligned_background_multi_branch',  # NEW
     'v9-category_nyu40_merged_background-2l',  # TODO: NEW
+
+    'v9_OVERHEAD_v1_heightmap_01',  # all features
+    'v9_OVERHEAD_v1_heightmap_02',  # first object instance only
+    'v9_OVERHEAD_v1_heightmap_03',  # depth only
+    'v9_OVERHEAD_v1_heightmap_04',  # semantics only
+    'v9_OVERHEAD_v1_heightmap_05',  # no depth and semantics
+
+    'v9_OVERHEAD_v2_heightmap_01',  # zbuffered, all features
+    'v9_OVERHEAD_v2_heightmap_02',  # zbuffered, first object instance only
+    'v9_OVERHEAD_v2_heightmap_03',  # zbuffered, depth only
+    'v9_OVERHEAD_v2_heightmap_04',  # zbuffered, semantics only
+    'v9_OVERHEAD_v2_heightmap_05',  # zbuffered, no depth and semantics
 ]
 
 available_models = [
@@ -225,6 +241,26 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
     elif experiment_name == 'v9-category_nyu40_merged_background-2l':
         # TODO: make sure this is right. NEW
         dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background'))
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_01':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_all', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_02':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_firstonly', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_03':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_nosemantics', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_04':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_nodepth', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_05':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_nodepthandsemantics', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_01':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_all', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_02':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_firstonly', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_03':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_nosemantics', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_04':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_nodepth', 'camera_filename', 'multi_layer_overhead_depth'))
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_05':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_nodepthandsemantics', 'camera_filename', 'multi_layer_overhead_depth'))
     else:
         raise NotImplementedError()
 
@@ -307,6 +343,26 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
             # exclude semantic segmentation and depth features
             model = unet_overhead.Unet1(in_channels=117 - 64 - 48, out_channels=1)
             learning_rate = 0.002
+        elif experiment_name == 'v9_OVERHEAD_v1_heightmap_01':
+            model = unet_overhead.Unet1(in_channels=232, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v1_heightmap_02':
+            model = unet_overhead.Unet1(in_channels=230 // 2 + 2, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v1_heightmap_03':
+            model = unet_overhead.Unet1(in_channels=232 - 64 * 2, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v1_heightmap_04':
+            model = unet_overhead.Unet1(in_channels=232 - 48 * 2, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v1_heightmap_05':
+            model = unet_overhead.Unet1(in_channels=232 - 48 * 2 - 64 * 2, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v2_heightmap_01':
+            model = unet_overhead.Unet1(in_channels=232, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v2_heightmap_02':
+            model = unet_overhead.Unet1(in_channels=230 // 2 + 2, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v2_heightmap_03':
+            model = unet_overhead.Unet1(in_channels=232 - 64 * 2, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v2_heightmap_04':
+            model = unet_overhead.Unet1(in_channels=232 - 48 * 2, out_channels=1, ch=(32, 48, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v2_heightmap_05':
+            model = unet_overhead.Unet1(in_channels=232 - 48 * 2 - 64 * 2, out_channels=1, ch=(32, 48, 128, 192, 256))
         else:
             raise NotImplementedError()
     elif model_name == 'unet_v1':
@@ -404,7 +460,7 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     return model, optimizer, frozen_model
 
 
-def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_model: typing.Union[nn.Module, feat.FeatureGenerator] = None) -> torch.Tensor:
+def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_model=None) -> torch.Tensor:
     if experiment_name == 'multi-layer':
         example_name, in_rgb, target = batch
         in_rgb = in_rgb.cuda()
@@ -532,7 +588,130 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
         loss_all = pytorch_model([input_features, target_depth])
 
-    # v8
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_01':
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v1_all'].cuda()
+        assert input_features_all.shape[1] == 232
+        assert input_features_all.dim() == 4
+
+        # 0: best guess depth
+        # 1: frustum visibility map
+        # 2-5: rgb features
+        # 5-53 depth features
+        # 53-117 semantic segmentation features
+        # 117-120: rgb features
+        # 120-168 depth features
+        # 168-232 semantic segmentation features
+
+        input_features = input_features_all
+        assert input_features.shape[1] == 232, input_features.shape[1]
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_02':  # first object instance only
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v1_firstonly'].cuda()
+        assert input_features_all.shape[1] == 232 - 64 - 48 - 3, input_features_all.shape[1]
+        assert input_features_all.shape[1] == 117, input_features_all.shape[1]
+        assert input_features_all.dim() == 4
+
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features_all, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_03':  # exclude semantics
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v1_nosemantics'].cuda()
+        assert input_features_all.shape[1] == 232 - 64 * 2, input_features_all.shape[1]
+        assert input_features_all.dim() == 4
+
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features_all, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_04':  # exclude depth
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v1_nodepth'].cuda()
+        assert input_features_all.shape[1] == 232 - 48 * 2, input_features_all.shape[1]
+        assert input_features_all.dim() == 4
+
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features_all, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v1_heightmap_05':  # exclude depth and semantics
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v1_nodepthandsemantics'].cuda()
+        assert input_features_all.shape[1] == 232 - 64 * 2 - 48 * 2, input_features_all.shape[1]
+        assert input_features_all.dim() == 4
+
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features_all, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_01':
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v2_all'].cuda()
+        assert input_features_all.shape[1] == 232
+        assert input_features_all.dim() == 4
+
+        # 0: best guess depth
+        # 1: frustum visibility map
+        # 2-5: rgb features
+        # 5-53 depth features
+        # 53-117 semantic segmentation features
+        # 117-120: rgb features
+        # 120-168 depth features
+        # 168-232 semantic segmentation features
+
+        input_features = input_features_all
+        assert input_features.shape[1] == 232, input_features.shape[1]
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_02':  # first object instance only
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v2_firstonly'].cuda()
+        assert input_features_all.shape[1] == 232 - 64 - 48 - 3, input_features_all.shape[1]
+        assert input_features_all.shape[1] == 117, input_features_all.shape[1]
+        assert input_features_all.dim() == 4
+
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features_all, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_03':  # exclude semantics
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v2_nosemantics'].cuda()
+        assert input_features_all.shape[1] == 232 - 64 * 2, input_features_all.shape[1]
+        assert input_features_all.dim() == 4
+
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features_all, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_04':  # exclude depth
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v2_nodepth'].cuda()
+        assert input_features_all.shape[1] == 232 - 48 * 2, input_features_all.shape[1]
+        assert input_features_all.dim() == 4
+
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features_all, target_depth])
+
+    elif experiment_name == 'v9_OVERHEAD_v2_heightmap_05':  # exclude depth and semantics
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v2_nodepthandsemantics'].cuda()
+        assert input_features_all.shape[1] == 232 - 64 * 2 - 48 * 2, input_features_all.shape[1]
+        assert input_features_all.dim() == 4
+
+        target_depth = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda(async=True)  # check how long this takes.
+        loss_all = pytorch_model([input_features_all, target_depth])
+
     elif experiment_name == 'v8-multi_layer_depth':
         in_rgb = batch['rgb'].cuda()
         target = batch['multi_layer_depth'].cuda()
@@ -746,21 +925,20 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         loss_theta = (target[:, 3] - pred[:, 3]).abs().mean()
         loss_all = loss_translation + loss_scale + loss_theta
     elif experiment_name == 'v9-multi_layer_depth_aligned_background_multi_branch':
-        # TODO: NEW
         in_rgb = batch['rgb'].cuda()
         target = batch['multi_layer_depth_aligned_background'].cuda()
         pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
         assert pred.shape[1] == 5
         assert target.shape[0] == pred.shape[0]
         assert target.shape == pred.shape
-        loss_all = loss_fn.compute_masked_smooth_l1_loss(pred=pred, target=target, apply_log_to_target=False)
+        loss_all = loss_fn.compute_masked_smooth_l1_loss_v9_frontal(pred=pred, target=target)
     elif experiment_name == 'v9-category_nyu40_merged_background-2l':
-        # TODO: NEW
         in_rgb = batch['rgb'].cuda()
         target1 = batch['category_nyu40_merged_background'][:, 0].cuda()  # (B, 240, 320)
-        target2 = batch['category_nyu40_merged_background'][:, 2].cuda()  # (B, 240, 320)
+        target2 = batch['category_nyu40_merged_background'][:, 1].cuda()  # (B, 240, 320)
         pred = pytorch_model(in_rgb)  # (B, C, 240, 320)
         assert pred.shape[1] == 80
+        # nothing should be ignored
         loss1 = loss_fn.loss_calc_classification(pred[:, :40], target1, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
         loss2 = loss_fn.loss_calc_classification(pred[:, 40:], target2, ignore_index=65535)  # ignore empty. background is ignored
         loss_all = (loss1 + loss2) / 2
@@ -790,14 +968,14 @@ def get_output_and_target(pytorch_model: nn.Module, batch, experiment_name: str,
     }
 
 
-def load_checkpoint(filename, use_cpu=False) -> typing.Tuple[nn.Module, optim.Optimizer, dict, nn.Module]:
+def load_checkpoint(filename, use_cpu=False, strict=True, load_optimizer=True) -> typing.Tuple[nn.Module, optim.Optimizer, dict, nn.Module]:
     """
     :return: A tuple of (pytorch_model, optimizer, metadata_dict)
     `metadata_dict` contains `global_step`, etc.
     See `save_checkpoint`.
     """
-    assert path.isfile(filename)
-    assert filename.endswith('.pth')  # Sanity check. Not a requirement.
+    assert path.isfile(filename), filename
+    assert filename.endswith('.pth'), filename  # Sanity check. Not a requirement.
     log.info('Loading from checkpoint file {}'.format(filename))
     loaded_dict = torch_utils.load_torch_model(filename, use_cpu=use_cpu)
 
@@ -813,20 +991,15 @@ def load_checkpoint(filename, use_cpu=False) -> typing.Tuple[nn.Module, optim.Op
 
     metadata_dict = loaded_dict['metadata']
 
-    # TODO:  this is VERY temporary
     pytorch_model, optimizer, frozen_model = get_pytorch_model_and_optimizer(
         model_name=metadata_dict['model_name'],
-        # experiment_name='v9-multi_layer_depth_aligned_background_multi_branch',
         experiment_name=metadata_dict['experiment_name'],
     )
-    # pytorch_model, optimizer, frozen_model = get_pytorch_model_and_optimizer(
-    #     model_name=metadata_dict['model_name'],
-    #     experiment_name=metadata_dict['experiment_name'],
-    # )
-    # pytorch_model.load_state_dict(loaded_dict['model_state_dict'], strict=False)  # TODO: strict=false is temporary
-    pytorch_model.load_state_dict(loaded_dict['model_state_dict'])
 
-    optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
+    pytorch_model.load_state_dict(loaded_dict['model_state_dict'], strict=strict)
+
+    if load_optimizer:
+        optimizer.load_state_dict(loaded_dict['optimizer_state_dict'])
 
     # TODO: this is temporary
     # for key, item in pytorch_model.named_parameters():
@@ -1218,37 +1391,40 @@ def surface_normal_eval(checkpoint_filename, split_name='test', num_examples=100
 
 
 def semantic_segmentation_from_raw_prediction(pred):
+    assert len(pred.shape) == 4
     pred_np = torch_utils.recursive_torch_to_numpy(pred)  # (B, 40, h, w)
     pred_np_argmax = np.argmax(pred_np, axis=1).astype(np.uint8)
     return pred_np_argmax
 
 
-def segment_predicted_depth(pred_depth, pred_nyu40):
+def segment_predicted_depth(pred_depth, pred_nyu40_l1, pred_nyu40_l2):
     """
-    TODO: use last-exit segmentation.
     :param pred_depth: Background must be aligned.
     :param pred_nyu40: np.ndarray of shape (B, H, W) and type np.uint8
-    :return:
+    :return: (B, 5, 240, 320)
     """
     assert pred_depth.ndim == 4
-    assert pred_nyu40.ndim == 3
-    assert pred_depth.shape[1] == 4
-    assert pred_nyu40.dtype == np.uint8
+    assert pred_nyu40_l1.ndim == 3
+    assert pred_depth.shape[1] == 5
+    assert pred_nyu40_l1.dtype == np.uint8
+    assert pred_nyu40_l1.shape == pred_nyu40_l2.shape
+    assert pred_nyu40_l1.dtype == pred_nyu40_l2.dtype
 
     ret = pred_depth.copy()
-    ret.transpose(1, 0, 2, 3)[:3, pred_nyu40 == 34] = np.nan
+    ret.transpose(1, 0, 2, 3)[:2, pred_nyu40_l1 == 34] = np.nan
+    ret.transpose(1, 0, 2, 3)[2:4, pred_nyu40_l2 == 34] = np.nan
 
     return ret
 
 
 def traditional_depth_from_aligned_multi_layer_depth(aligned_and_segmented_depth):
     assert aligned_and_segmented_depth.ndim == 4
-    assert aligned_and_segmented_depth.shape[1] == 4
+    assert aligned_and_segmented_depth.shape[1] == 5
 
     ret = aligned_and_segmented_depth.copy()
 
     mask = ~np.isfinite(aligned_and_segmented_depth[:, 0])
-    ret[:, 0][mask] = ret[:, 3][mask]
+    ret[:, 0][mask] = ret[:, 4][mask]
 
     return ret[:, 0]
 
@@ -1305,6 +1481,7 @@ class Evaluation():
         return (intersection.sum(axis=1) / union.sum(axis=1)).tolist()
 
     def multi_layer_depth_aligned_background_l1(self):
+        raise NotImplementedError()  # log depth
         # l1 here means L1 error
         assert 'aligned_background' in self.model_metadata['experiment_name']
         target = self.batch['multi_layer_depth_aligned_background'].cuda()
@@ -1354,6 +1531,7 @@ class Evaluation():
         }
 
     def multi_layer_depth_unaligned_background_l1(self):
+        raise NotImplementedError()  # log depth
         assert self.model_metadata['experiment_name'] == 'v8-multi_layer_depth'
         target = self.batch['multi_layer_depth'].cuda()
 
@@ -1433,178 +1611,539 @@ class Evaluation():
         }
 
 
-class EvaluationV9:
-    def __init__(self, model_metadata):
-        self.pred = None
-        self.target = None
-        self.model_metadata = model_metadata
+def log10(x):
+    """Convert a new tensor with the base-10 logarithm of the elements of x. """
+    return torch.log(x) / math.log(10)
 
-    def set_input(self, pred, batch):
-        self.pred = pred
-        self.batch = batch
 
-    @staticmethod
-    def _mean_of_finite_per_example(arr):
-        """
-        :param arr: (B, .., ...)
-        :return: list of size B.
-        """
-        arr_2d = arr.reshape(arr.shape[0], -1)
-        mask = torch.isfinite(arr_2d)
-        ret = (arr_2d.masked_fill(~mask, 0).sum(dim=1) / mask.sum(dim=1, dtype=torch.float32)).tolist()
-        return ret
+class SegmentationResult:
+    def __init__(self):
+        self.cross_entropy_l1, self.cross_entropy_l2, self.cross_entropy = 0, 0, 0
+        self.foreground_iou_l1, self.foreground_iou_l2, self.foreground_iou = 0, 0, 0
+        self.accuracy_l1, self.accuracy_l2, self.accuracy = 0, 0, 0
 
     @staticmethod
-    def _masked_iou_per_example(a, b, ignore_mask):
+    def _masked_iou(a, b, ignore_mask):
         """
-        :param a: (B, .., ...)
+        :param a: (H, W)
         :param b: same as a
-        :return: list of size B.
+        :return: float
         """
         assert a.shape == b.shape
         assert ignore_mask.shape == b.shape
-        a_2d = torch_utils.recursive_torch_to_numpy(a.reshape(a.shape[0], -1)).astype(np.bool)
-        b_2d = torch_utils.recursive_torch_to_numpy(b.reshape(b.shape[0], -1)).astype(np.bool)
-        mask_2d = torch_utils.recursive_torch_to_numpy(ignore_mask.reshape(ignore_mask.shape[0], -1)).astype(np.bool)
+        a_2d = torch_utils.recursive_torch_to_numpy(a.reshape(-1)).astype(np.bool)
+
+        b_2d = torch_utils.recursive_torch_to_numpy(b.reshape(-1)).astype(np.bool)
+        mask_2d = torch_utils.recursive_torch_to_numpy(ignore_mask.reshape(-1)).astype(np.bool)
 
         intersection = a_2d & b_2d
         union = a_2d | b_2d
         intersection[mask_2d] = 0
         union[mask_2d] = 0
 
-        return (intersection.sum(axis=1) / union.sum(axis=1)).tolist()
+        i = float(intersection.sum())
+        u = float(union.sum())
+        if i == 0:
+            return 0
+        return i / u
 
-    def multi_layer_depth_aligned_background_l1(self):
-        # l1 here means L1 error
-        assert 'aligned_background' in self.model_metadata['experiment_name']
-        target = self.batch['multi_layer_depth_aligned_background'].cuda()
+    def evaluate(self, output: torch.Tensor, target: torch.Tensor):
+        assert len(output.shape) == 3
+        assert len(target.shape) == 3
+        assert target.shape[0] == 2
+        assert output.shape[0] == 80  # two layer segmentation
 
-        if 'nolog' in self.model_metadata['experiment_name']:
-            l1_with_nan = (target - self.pred).abs()
+        pred = output
+        target1 = target[0][None].cuda()  # (1, 240, 320)
+        target2 = target[1][None].cuda()  # (1, 240, 320)
+
+        pred1 = pred[:40][None]  # (1, 40, 240, 320)
+        pred2 = pred[40:][None]  # (1, 40, 240, 320)
+
+        self.cross_entropy_l1 = float(loss_fn.loss_calc_classification(pred1, target1, ignore_index=65535))  # ignore empty. background is merged to the wall category (34), which is not ignored.
+        self.cross_entropy_l2 = float(loss_fn.loss_calc_classification(pred2, target2, ignore_index=65535))  # ignore empty. background is ignored
+
+        argmax_l1 = torch_utils.recursive_numpy_to_torch(semantic_segmentation_from_raw_prediction(pred1)).long().cuda()  # (1, 240, 320)
+        argmax_l2 = torch_utils.recursive_numpy_to_torch(semantic_segmentation_from_raw_prediction(pred2)).long().cuda()  # (1, 240, 320)
+
+        ignored_l1 = (target1 == 65535) | (target1 == 33)  # (H, W)
+        correct_l1 = (target1 == argmax_l1).float()
+        self.accuracy_l1 = float(correct_l1[~ignored_l1].mean())
+
+        ignored_l2 = (target2 == 65535) | (target2 == 33)  # (H, W)
+        correct_l2 = (target2 == argmax_l2).float()
+        self.accuracy_l2 = float(correct_l2[~ignored_l2].mean())
+
+        pred_foreground_l1 = argmax_l1 != 34
+        target_foreground_l1 = target1 != 34
+
+        pred_foreground_l2 = argmax_l2 != 34
+        target_foreground_l2 = target2 != 34
+
+        pred_foreground_l2[pred_foreground_l1 == 0] = 0  # TODO
+
+        self.foreground_iou_l1 = float(self._masked_iou(pred_foreground_l1, target_foreground_l1, ignore_mask=ignored_l1))
+        self.foreground_iou_l2 = float(self._masked_iou(pred_foreground_l2, target_foreground_l2, ignore_mask=ignored_l2))
+
+        self.cross_entropy = float((self.cross_entropy_l1 + self.cross_entropy_l2) / 2)
+        self.foreground_iou = float((self.foreground_iou_l1 + self.foreground_iou_l2) / 2)
+        self.accuracy = float((self.accuracy_l1 + self.accuracy_l2) / 2)
+
+
+class SegmentationResultQualitative:
+    def __init__(self):
+        # This is for v9 multi-layer segmentation
+        self.example_name = None
+        self.in_rgb = None
+        self.output = None
+        self.target = None
+
+        self.pred_l1 = None
+        self.pred_l2 = None
+
+        self.argmax_l1 = None
+        self.argmax_l2 = None
+
+        self.target_l1 = None
+        self.target_l2 = None
+
+    def set_values(self, example_name, in_rgb, output, target):
+        assert isinstance(example_name, str)
+        self.example_name = example_name
+
+        self.in_rgb = torch_utils.recursive_torch_to_numpy(in_rgb)  # type: np.ndarray
+        self.output = torch_utils.recursive_torch_to_numpy(output)  # type: np.ndarray
+        self.target = torch_utils.recursive_torch_to_numpy(target).astype(np.uint16)  # type: np.ndarray
+
+        assert self.in_rgb.ndim == 3
+        assert self.output.ndim == 3
+        assert self.target.ndim == 3
+        assert self.output.shape[0] == 80
+        assert self.target.shape[0] == 2
+
+        self.pred_l1 = self.output[:40]
+        self.pred_l2 = self.output[40:]
+        self.argmax_l1 = semantic_segmentation_from_raw_prediction(self.pred_l1[None]).astype(np.uint16)[0]
+        self.argmax_l2 = semantic_segmentation_from_raw_prediction(self.pred_l2[None]).astype(np.uint16)[0]
+        self.target_l1 = self.target[0]
+        self.target_l2 = self.target[1]
+
+    @staticmethod
+    def colorize_segmentation(seg40_image: np.ndarray):
+        assert seg40_image.dtype == np.uint16
+
+        seg40_image_flat = seg40_image.ravel()
+        seg40_image_flat[seg40_image_flat == 65535] = 40  # black color
+
+        h, w = seg40_image.shape
+        ret = colormap40[seg40_image_flat].reshape(h, w, 3)
+        return ret
+
+    def plot(self):
+        pass
+
+
+class DepthResult(object):
+    """
+    This is third-party code
+    https://github.com/dontLoveBugs/DORN_pytorch/blob/master/metrics.py
+    """
+
+    def __init__(self):
+        self.irmse, self.imae = 0, 0
+        self.mse, self.rmse, self.mae = 0, 0, 0
+        self.absrel, self.lg10 = 0, 0
+        self.delta1, self.delta2, self.delta3 = 0, 0, 0
+        self.data_time, self.gpu_time = 0, 0
+        self.huber = 0
+
+    def set_to_worst(self):
+        self.irmse, self.imae = np.inf, np.inf
+        self.mse, self.rmse, self.mae = np.inf, np.inf, np.inf
+        self.absrel, self.lg10 = np.inf, np.inf
+        self.delta1, self.delta2, self.delta3 = 0, 0, 0
+        self.data_time, self.gpu_time = 0, 0
+
+    def update(self, irmse, imae, mse, rmse, mae, absrel, lg10, delta1, delta2, delta3, gpu_time, data_time):
+        self.irmse, self.imae = irmse, imae
+        self.mse, self.rmse, self.mae = mse, rmse, mae
+        self.absrel, self.lg10 = absrel, lg10
+        self.delta1, self.delta2, self.delta3 = delta1, delta2, delta3
+        self.data_time, self.gpu_time = data_time, gpu_time
+
+    def evaluate(self, output, target):
+        valid_mask = (target > 0) & torch.isfinite(target)
+        output = output[valid_mask]
+        target = target[valid_mask]
+
+        abs_diff = (output - target).abs()
+
+        self.mse = float((torch.pow(abs_diff, 2)).mean())
+        self.rmse = math.sqrt(self.mse)
+        self.mae = float(abs_diff.mean())
+        self.lg10 = float((log10(output) - log10(target)).abs().mean())
+        self.absrel = float((abs_diff / target).mean())
+
+        maxRatio = torch.max(output / target, target / output)
+        self.delta1 = float((maxRatio < 1.25).float().mean())
+        self.delta2 = float((maxRatio < 1.25 ** 2).float().mean())
+        self.delta3 = float((maxRatio < 1.25 ** 3).float().mean())
+        self.data_time = 0
+        self.gpu_time = 0
+
+        self.huber = float(torch.where(abs_diff < 1, 0.5 * abs_diff ** 2, abs_diff - 0.5).mean())
+
+        inv_output = 1 / output
+        inv_target = 1 / target
+        abs_inv_diff = (inv_output - inv_target).abs()
+        self.irmse = math.sqrt((torch.pow(abs_inv_diff, 2)).mean())
+        self.imae = float(abs_inv_diff.mean())
+
+
+class HeightMapResult(object):
+    """
+    This is third-party code
+    https://github.com/dontLoveBugs/DORN_pytorch/blob/master/metrics.py
+    """
+
+    def __init__(self):
+        self.irmse, self.imae = 0, 0
+        self.mse, self.rmse, self.mae = 0, 0, 0
+        self.absrel, self.lg10 = 0, 0
+        self.delta1, self.delta2, self.delta3 = 0, 0, 0
+        self.data_time, self.gpu_time = 0, 0
+        self.huber = 0
+
+    def set_to_worst(self):
+        self.irmse, self.imae = np.inf, np.inf
+        self.mse, self.rmse, self.mae = np.inf, np.inf, np.inf
+        self.absrel, self.lg10 = np.inf, np.inf
+        self.delta1, self.delta2, self.delta3 = 0, 0, 0
+        self.data_time, self.gpu_time = 0, 0
+
+    def update(self, irmse, imae, mse, rmse, mae, absrel, lg10, delta1, delta2, delta3, gpu_time, data_time):
+        self.irmse, self.imae = irmse, imae
+        self.mse, self.rmse, self.mae = mse, rmse, mae
+        self.absrel, self.lg10 = absrel, lg10
+        self.delta1, self.delta2, self.delta3 = delta1, delta2, delta3
+        self.data_time, self.gpu_time = data_time, gpu_time
+
+    def evaluate(self, output, target):
+        valid_mask = (target > 0) & torch.isfinite(target)
+        output = output[valid_mask]
+        target = target[valid_mask]
+
+        abs_diff = (output - target).abs()
+
+        self.mse = float((torch.pow(abs_diff, 2)).mean())
+        self.rmse = math.sqrt(self.mse)
+        self.mae = float(abs_diff.mean())
+        self.lg10 = float((log10(output) - log10(target)).abs().mean())
+        self.absrel = float((abs_diff / target).mean())
+
+        maxRatio = torch.max(output / target, target / output)
+        self.delta1 = float((maxRatio < 1.25).float().mean())
+        self.delta2 = float((maxRatio < 1.25 ** 2).float().mean())
+        self.delta3 = float((maxRatio < 1.25 ** 3).float().mean())
+        self.data_time = 0
+        self.gpu_time = 0
+
+        self.huber = float(torch.where(abs_diff < 1, 0.5 * abs_diff ** 2, abs_diff - 0.5).mean())
+
+        inv_output = 1 / output
+        inv_target = 1 / target
+        abs_inv_diff = (inv_output - inv_target).abs()
+        self.irmse = math.sqrt((torch.pow(abs_inv_diff, 2)).mean())
+        self.imae = float(abs_inv_diff.mean())
+
+
+class DepthResultQualitative:
+    def __init__(self):
+        # This is for v9 multi-layer depth images.
+        self.example_name = None
+        self.in_rgb = None
+        self.output = None
+        self.target = None
+
+    def set_values(self, example_name, in_rgb, output, target):
+        assert isinstance(example_name, str)
+        self.example_name = example_name
+
+        self.in_rgb = torch_utils.recursive_torch_to_numpy(in_rgb)  # type: np.ndarray
+        self.output = torch_utils.recursive_torch_to_numpy(output)  # type: np.ndarray
+        self.target = torch_utils.recursive_torch_to_numpy(target)  # type: np.ndarray
+
+        assert self.in_rgb.ndim == 3
+        assert self.output.ndim == 3
+        assert self.target.ndim == 3
+        assert self.output.shape[0] == 5
+        assert self.output.shape == self.target.shape
+
+    def plot(self):
+        import matplotlib.pyplot as pt
+
+        pt.figure(figsize=(18, 3))
+        pt.imshow(v8.undo_rgb_whitening(self.in_rgb).squeeze().transpose(1, 2, 0))
+        pt.axis('off')
+
+        pt.figure(figsize=(22, 4))
+        for i in range(5):
+            pt.subplot(1, 5, i + 1)
+            pt.imshow(self.target[i])
+            pt.colorbar()
+            pt.axis('off')
+            pt.set_cmap('viridis')
+
+        pt.figure(figsize=(22, 4))
+        for i in range(5):
+            pt.subplot(1, 5, i + 1)
+            output_i = self.output[i].copy()
+            output_i[~np.isfinite(self.target[i])] = np.nan
+            pt.imshow(output_i)
+            pt.colorbar()
+            pt.axis('off')
+            pt.set_cmap('viridis')
+
+        pt.show()
+
+        pt.figure(figsize=(22, 4))
+        for i in range(5):
+            pt.subplot(1, 5, i + 1)
+            output_i = np.abs(self.output[i] - self.target[i])
+            output_i[~np.isfinite(self.target[i])] = np.nan
+            pt.imshow(output_i)
+            pt.colorbar()
+            pt.clim(0, 1)
+            pt.set_cmap('Reds')
+            pt.axis('off')
+
+        pt.show()
+
+
+class EvaluationV9:
+    def __init__(self):
+        self.batch_size = 20
+        self.num_data_workers = 4
+
+        self.all_results = collections.defaultdict(lambda: collections.defaultdict(dict))
+        self.overhead_on_the_fly = False
+
+    def _load_model(self, checkpoint_filename):
+        torch.set_default_tensor_type('torch.cuda.FloatTensor')
+        cudnn.benchmark = True
+        assert torch.cuda.is_available()
+
+        model, _, metadata, _ = load_checkpoint(checkpoint_filename, strict=False, load_optimizer=False)
+
+        device_ids = list(range(torch.cuda.device_count()))
+        log.info('device_ids: {}'.format(device_ids))
+        experiment = metadata['experiment_name']
+
+        model = model.cuda().eval()
+        if not experiment.startswith('v9_OVERHEAD'):
+            model = nn.DataParallel(model, device_ids=device_ids)
+        torch.set_default_tensor_type('torch.FloatTensor')
+
+        log.info('\n{}'.format(pprint.pformat(metadata)))
+
+        if self.overhead_on_the_fly:
+            if experiment.startswith('v9_OVERHEAD_v1'):
+                gating_function_index = 0
+                depth_checkpoint_filename = path.join(config.default_out_root, 'v9/v9-multi_layer_depth_aligned_background_multi_branch/0/01149000_005_0003355.pth')
+                segmentation_checkpoint_filename = path.join(config.default_out_root, 'v9/v9-category_nyu40_merged_background-2l/0/01130000_005_0001780.pth')
+                frozen_model_or_transformer = feat.Transformer(
+                    depth_checkpoint_filename=depth_checkpoint_filename,
+                    segmentation_checkpoint_filename=segmentation_checkpoint_filename,
+                    device_id=1,
+                    num_workers=1,
+                    gating_function_index=gating_function_index,
+                )
+            elif experiment.startswith('v9_OVERHEAD_v2'):
+                gating_function_index = 1  # zbuffered features
+                depth_checkpoint_filename = path.join(config.default_out_root, 'v9/v9-multi_layer_depth_aligned_background_multi_branch/0/01149000_005_0003355.pth')
+                segmentation_checkpoint_filename = path.join(config.default_out_root, 'v9/v9-category_nyu40_merged_background-2l/0/01130000_005_0001780.pth')
+                frozen_model_or_transformer = feat.Transformer(
+                    depth_checkpoint_filename=depth_checkpoint_filename,
+                    segmentation_checkpoint_filename=segmentation_checkpoint_filename,
+                    device_id=1,
+                    num_workers=1,
+                    gating_function_index=gating_function_index,
+                )
+            else:
+                frozen_model_or_transformer = None
         else:
-            l1_with_nan = (target - loss_fn.undo_log_depth(self.pred)).abs()
+            frozen_model_or_transformer = None
 
-        mask_visible_bg = torch.isnan(target[:, 1])  # (B, H, W)
+        return model, metadata, frozen_model_or_transformer
 
-        overall = self._mean_of_finite_per_example(l1_with_nan)
-        objects = self._mean_of_finite_per_example(l1_with_nan[:, :3])
-        background = self._mean_of_finite_per_example(l1_with_nan[:, 3])
-        visible_objects = self._mean_of_finite_per_example(l1_with_nan[:, 0])
-        invisible_objects = self._mean_of_finite_per_example(l1_with_nan[:, (1, 2)])
-        instance_exit = self._mean_of_finite_per_example(l1_with_nan[:, 1])
-        last_exit = self._mean_of_finite_per_example(l1_with_nan[:, 2])
+    def _init_data_loader(self, metadata, split_name):
+        experiment = metadata['experiment_name']
 
-        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
-        background_l1_with_nan[mask_visible_bg] = np.nan  # ignore visible background error
-        invisible_background = self._mean_of_finite_per_example(background_l1_with_nan)
-
-        # overwrite and reuse same variable name
-        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
-        background_l1_with_nan[~mask_visible_bg] = np.nan  # ignore visible background error
-        visible_background = self._mean_of_finite_per_example(background_l1_with_nan)
-
-        # Swap visible background in channels 0 and 3.
-        l1_with_nan[:, 0][mask_visible_bg], l1_with_nan[:, 3][mask_visible_bg] = l1_with_nan[:, 3][mask_visible_bg], l1_with_nan[:, 0][mask_visible_bg]
-
-        visible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 0])
-        invisible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 1:])
-
-        return {
-            'overall': overall,
-            'objects': objects,
-            'background': background,
-            'visible_objects': visible_objects,
-            'invisible_objects': invisible_objects,
-            'visible_surfaces': visible_surfaces,
-            'invisible_surfaces': invisible_surfaces,
-            'visible_background': visible_background,
-            'invisible_background': invisible_background,
-            'instance_exit': instance_exit,
-            'last_exit': last_exit,
-        }
-
-    def multi_layer_depth_unaligned_background_l1(self):
-        assert self.model_metadata['experiment_name'] == 'v8-multi_layer_depth'
-        target = self.batch['multi_layer_depth'].cuda()
-
-        if 'nolog' in self.model_metadata['experiment_name']:
-            # This shouldn't happen. we didn't do this experiment for this model.
-            raise RuntimeError()
-            # l1_with_nan = (target - self.pred).abs()
+        if experiment == 'v9-multi_layer_depth_aligned_background_multi_branch':
+            dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'multi_layer_depth_aligned_background'))
+        elif experiment == 'v9-category_nyu40_merged_background-2l':
+            dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'category_nyu40_merged_background'))
+        elif experiment.startswith('v9_OVERHEAD'):
+            if self.overhead_on_the_fly:
+                dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'camera_filename', 'multi_layer_overhead_depth', 'overhead_camera_pose_4params'))
+            else:
+                if experiment == 'v9_OVERHEAD_v1_heightmap_01':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_all', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v1_heightmap_02':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_firstonly', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v1_heightmap_03':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_nosemantics', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v1_heightmap_04':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_nodepth', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v1_heightmap_05':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_nodepthandsemantics', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v2_heightmap_01':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_all', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v2_heightmap_02':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_firstonly', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v2_heightmap_03':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_nosemantics', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v2_heightmap_04':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_nodepth', 'camera_filename', 'multi_layer_overhead_depth'))
+                elif experiment == 'v9_OVERHEAD_v2_heightmap_05':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_nodepthandsemantics', 'camera_filename', 'multi_layer_overhead_depth'))
+                else:
+                    raise NotImplementedError()
         else:
-            # (B, 4, H, W)
-            p = loss_fn.undo_log_depth(self.pred)
-            l1_with_nan = (target - p).abs()
+            raise NotImplementedError()
 
-        overall = self._mean_of_finite_per_example(l1_with_nan)
-        visible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 0])
-        invisible_surfaces = self._mean_of_finite_per_example(l1_with_nan[:, 1:])
+        data_loader = torch.utils.data.DataLoader(dataset, batch_size=self.batch_size, num_workers=self.num_data_workers, shuffle=False, drop_last=False, pin_memory=True)
+        return data_loader
 
-        # Swap visible background in channels 0 and 3.
-        # TODO: visualize and make sure swap worked.
-        mask_visible_bg = torch.isnan(target[:, 1])
-        l1_with_nan[:, 0][mask_visible_bg], l1_with_nan[:, 3][mask_visible_bg] = l1_with_nan[:, 3][mask_visible_bg], l1_with_nan[:, 0][mask_visible_bg]
+    def _compute_error(self, model, frozen_model_or_transformer, metadata, batch, include_qualitative=False):
+        experiment = metadata['experiment_name']
 
-        objects = self._mean_of_finite_per_example(l1_with_nan[:, :3])
-        background = self._mean_of_finite_per_example(l1_with_nan[:, 3])
+        in_rgb = batch['rgb'].cuda()
 
-        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
-        background_l1_with_nan[mask_visible_bg] = np.nan  # zero out visible background error
-        invisible_background = self._mean_of_finite_per_example(background_l1_with_nan)
+        ret = []
+        ret_qualitative = []
 
-        # overwrite and reuse same variable name
-        background_l1_with_nan = l1_with_nan[:, 3].clone()  # (B, H, W)
-        background_l1_with_nan[~mask_visible_bg] = np.nan  # zero out visible background error
-        visible_background = self._mean_of_finite_per_example(background_l1_with_nan)
+        if experiment == 'v9-multi_layer_depth_aligned_background_multi_branch':
+            target = batch['multi_layer_depth_aligned_background'].cuda()
+            pred = model(in_rgb)  # (B, C, 240, 320)
 
-        invisible_objects = self._mean_of_finite_per_example(l1_with_nan[:, (1, 2)])
-        instance_exit = self._mean_of_finite_per_example(l1_with_nan[:, 1])
-        last_exit = self._mean_of_finite_per_example(l1_with_nan[:, 2])
+            num_examples_in_batch = int(target.shape[0])
+            assert num_examples_in_batch == pred.shape[0]
 
-        return {
-            'overall': overall,
-            'objects': objects,
-            'background': background,
-            'visible_objects': self._mean_of_finite_per_example(l1_with_nan[:, 0]),
-            'invisible_objects': invisible_objects,
-            'visible_surfaces': visible_surfaces,
-            'invisible_surfaces': invisible_surfaces,
-            'visible_background': visible_background,
-            'invisible_background': invisible_background,
-            'instance_exit': instance_exit,
-            'last_exit': last_exit,
+            for i in range(num_examples_in_batch):
+                depth_result = DepthResult()
+                depth_result.evaluate(pred[i], target[i])
+                ret.append(depth_result)
+
+                if include_qualitative:
+                    depth_result_qualitative = DepthResultQualitative()
+                    depth_result_qualitative.set_values(
+                        example_name=batch['name'][i],
+                        in_rgb=in_rgb[i],
+                        output=pred[i],
+                        target=target[i],
+                    )
+                    ret_qualitative.append(depth_result_qualitative)
+        elif experiment == 'v9-category_nyu40_merged_background-2l':
+            target = batch['category_nyu40_merged_background'].cuda()
+            pred = model(in_rgb)  # (B, 80, 240, 320)
+
+            num_examples_in_batch = int(target.shape[0])
+            assert num_examples_in_batch == pred.shape[0]
+
+            for i in range(num_examples_in_batch):
+                segmentation_result = SegmentationResult()
+                segmentation_result.evaluate(pred[i], target[i])
+                ret.append(segmentation_result)
+
+                if include_qualitative:
+                    segmentation_result_qualitative = SegmentationResultQualitative()
+                    segmentation_result_qualitative.set_values(
+                        example_name=batch['name'][i],
+                        in_rgb=in_rgb[i],
+                        output=pred[i],
+                        target=target[i],
+                    )
+                    ret_qualitative.append(segmentation_result_qualitative)
+        elif experiment.startswith('v9_OVERHEAD_') and 'heightmap' in experiment:
+            target = batch['multi_layer_overhead_depth'][:, :1].contiguous().cuda()
+            num_examples_in_batch = int(target.shape[0])
+
+            if self.overhead_on_the_fly:
+                features, out_cam, out_names = frozen_model_or_transformer.get_transformed_features(batch, start_end_indices=None, use_gt_geometry=False)
+                pred = model.get_output(torch.Tensor(features).cuda())
+            else:
+                field_name = {
+                    'v9_OVERHEAD_v1_heightmap_01': 'overhead_features_v9_v1_all',
+                    'v9_OVERHEAD_v1_heightmap_02': 'overhead_features_v9_v1_firstonly',
+                    'v9_OVERHEAD_v1_heightmap_03': 'overhead_features_v9_v1_nosemantics',
+                    'v9_OVERHEAD_v1_heightmap_04': 'overhead_features_v9_v1_nodepth',
+                    'v9_OVERHEAD_v1_heightmap_05': 'overhead_features_v9_v1_nodepthandsemantics',
+
+                    'v9_OVERHEAD_v2_heightmap_01': 'overhead_features_v9_v2_all',
+                    'v9_OVERHEAD_v2_heightmap_02': 'overhead_features_v9_v2_firstonly',
+                    'v9_OVERHEAD_v2_heightmap_03': 'overhead_features_v9_v2_nosemantics',
+                    'v9_OVERHEAD_v2_heightmap_04': 'overhead_features_v9_v2_nodepth',
+                    'v9_OVERHEAD_v2_heightmap_05': 'overhead_features_v9_v2_nodepthandsemantics',
+                }[experiment]
+                features = batch[field_name].cuda()
+                pred = model.get_output(features)
+
+            assert num_examples_in_batch == pred.shape[0]
+
+            for i in range(num_examples_in_batch):
+                result = HeightMapResult()
+                result.evaluate(output=pred[i], target=target[i])
+                ret.append(result)
+
+        else:
+            raise NotImplementedError()
+
+        return ret, ret_qualitative
+
+    def check_cache(self, key_list, include_qualitative=False):
+        current = self.all_results
+        for k in key_list:
+            if k not in current:
+                return None
+            current = current[k]
+        if include_qualitative and 'qualitative_results' not in current:
+            return None
+        return current
+
+    def evaluate(self, checkpoint_filename, split_name, include_qualitative=False):
+        model, metadata, frozen_model_or_transformer = self._load_model(checkpoint_filename)
+
+        keys = [metadata['experiment_name'], path.basename(split_name), checkpoint_filename]
+        cached_item = self.check_cache(keys, include_qualitative=include_qualitative)
+        if cached_item is not None:
+            return cached_item
+
+        data_loader = self._init_data_loader(metadata, split_name)
+
+        ret = []
+        ret_qualitative = []
+        for i_iter, batch in enumerate(data_loader):
+            result_list, result_list_qualitative = self._compute_error(model, frozen_model_or_transformer, metadata, batch, include_qualitative=include_qualitative)
+            ret.extend(result_list)
+            ret_qualitative.extend(result_list_qualitative)  # can be empty if include_qualitative is false.
+
+        res = {
+            'metadata': metadata,
+            'results': ret,
         }
 
-    def category_nyu40_merged_background_l2(self):
-        # l2 here means two layers
+        if include_qualitative:
+            res['qualitative_results'] = ret_qualitative
 
-        assert self.pred.shape[1] == 80
-        assert 'category' in self.model_metadata['experiment_name']
-        argmax_l1 = semantic_segmentation_from_raw_prediction(self.pred[:, :40])
-        # argmax_l2 = semantic_segmentation_from_raw_prediction(self.pred[:, 40:])
+        self.all_results[metadata['experiment_name']][path.basename(split_name)][checkpoint_filename] = res
 
-        target = self.batch['category_nyu40_merged_background']
-        target_l1 = torch_utils.recursive_torch_to_numpy(target[:, 2])
-
-        ignored = (target_l1 == 65535) | (target_l1 == 33)  # (B, H, W)
-        correct = (target_l1 == argmax_l1).astype(np.float32)
-        correct[ignored] = np.nan
-
-        accuracy = self._mean_of_finite_per_example(torch_utils.recursive_numpy_to_torch(correct))
-
-        pred_foreground = argmax_l1 != 34
-        target_foreground = target_l1 != 34
-
-        foreground_iou = self._masked_iou_per_example(pred_foreground, target_foreground, ignore_mask=ignored)
-
-        return {
-            'layer1_accuracy': accuracy,
-            'layer1_foreground_iou': foreground_iou,
-        }
+        return res
 
 
 def save_mldepth_as_meshes(pred_segmented_depth, example, force=False):
     assert pred_segmented_depth.ndim == 3
+    assert pred_segmented_depth.shape[0] == 4
     out_pred_filenames = []
     # out_gt_filenames = []
     for i in range(4):
@@ -1617,6 +2156,40 @@ def save_mldepth_as_meshes(pred_segmented_depth, example, force=False):
             dd_factor = 2
         else:
             dd_factor = 7
+
+        if force or not path.isfile(out_filename):
+            depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=dd_factor, out_ply_filename=out_filename)
+        out_pred_filenames.append(out_filename)
+
+        # out_filename = '/data3/out/scene3d/v8_depth_mesh/{}_gt_{}.ply'.format(example['name'], i)
+        # if not path.isfile(out_filename):
+        #     depth_mesh_utils_cpp.depth_to_mesh(example['multi_layer_depth_aligned_background'][i], example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        # out_gt_filenames.append(out_filename)
+
+    return {
+        'pred': out_pred_filenames,
+        # 'gt': out_gt_filenames,
+    }
+
+
+def save_mldepth_as_meshes_v9(pred_segmented_depth, example, force=False):
+    assert pred_segmented_depth.ndim == 3
+    assert pred_segmented_depth.shape[0] == 5
+
+    out_pred_filenames = []
+    # out_gt_filenames = []
+    for i in range(5):
+        out_filename = path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/pred_{}.ply'.format(example['name'], i))
+        if i == 0:
+            dd_factor = 5
+        elif i == 1:
+            dd_factor = 5
+        elif i == 2:
+            dd_factor = 3
+        elif i == 3:
+            dd_factor = 3
+        else:
+            dd_factor = 8
 
         if force or not path.isfile(out_filename):
             depth_mesh_utils_cpp.depth_to_mesh(pred_segmented_depth[i], example['camera_filename'], camera_index=0, dd_factor=dd_factor, out_ply_filename=out_filename)
@@ -1729,8 +2302,8 @@ def save_height_prediction_as_meshes(height_map_model_batch_out, hm_model, origi
         overhead_heightmap = height_map_model_batch_out['pred_height_map'][i].squeeze()
         overhead_depth = default_overhead_camera_height - overhead_heightmap
 
-        out_filename_bg = path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/overhead_bg.ply'.format(example_names[i]))  # TODO
-        out_filename_fg = path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/overhead_fg.ply'.format(example_names[i]))  # TODO
+        out_filename_bg = path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/overhead_bg.ply'.format(example_names[i]))  # TODO
+        out_filename_fg = path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/overhead_fg.ply'.format(example_names[i]))  # TODO
 
         overhead_depth_bg = overhead_depth.copy()
         overhead_depth_bg[overhead_heightmap > 0.01] = np.nan
@@ -1779,7 +2352,7 @@ def save_height_mesh(overhead_heightmap, x, y, scale, theta, original_camera_fil
     # overhead_heightmap = height_map_model_batch_out['pred_height_map'][i].squeeze()
     overhead_depth = default_overhead_camera_height - overhead_heightmap
 
-    out_dir = '/home/daeyun/mnt/v8_gt_overhead_mesh'
+    out_dir = '/home/daeyun/mnt/v9_gt_overhead_mesh'
 
     out_filename_bg = path.join(out_dir, '{}/overhead_bg.ply'.format(example_name))
     out_filename_fg = path.join(out_dir, '{}/overhead_fg.ply'.format(example_name))
@@ -1876,9 +2449,14 @@ class HeightMapModel(object):
             assert self.regression_model is not None
             assert self.regression_feature_extractor_model is not None
 
+            depth_checkpoint_filename = path.join(config.default_out_root, 'v9/v9-multi_layer_depth_aligned_background_multi_branch/0/01149000_005_0003355.pth')
+            segmentation_checkpoint_filename = path.join(config.default_out_root, 'v9/v9-category_nyu40_merged_background-2l/0/01130000_005_0001780.pth')
+
             self.transformer = feat.Transformer(
-                depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
-                segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
+                # depth_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00700000_008_0001768.pth'),
+                # segmentation_checkpoint_filename=path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00800000_022_0016362.pth'),
+                depth_checkpoint_filename=depth_checkpoint_filename,
+                segmentation_checkpoint_filename=segmentation_checkpoint_filename,
                 device_id=self.device_id,
                 num_workers=5,
                 cam_param_regression_model=self.regression_model,
@@ -1977,8 +2555,8 @@ class HeightMapModel(object):
 
 
 def find_gt_floor_height(house_id, camera_id):
-    gt_mesh_filename1 = path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id))
-    gt_mesh_filename2 = path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt_objects.ply'.format(house_id, camera_id))
+    gt_mesh_filename1 = path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id))
+    gt_mesh_filename2 = path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/gt_objects.ply'.format(house_id, camera_id))
     floor_filename = path.join(path.dirname(gt_mesh_filename1), 'floor.txt')
     if path.isfile(floor_filename):
         with open(floor_filename, 'r') as f:
@@ -2047,7 +2625,7 @@ class PRCurveEvaluation(object):
 
     def is_mesh_empty(self, mesh_filename):
         if isinstance(mesh_filename, (list, tuple)):
-            return np.any([self.is_mesh_empty(item) for item in mesh_filename])
+            return np.all([self.is_mesh_empty(item) for item in mesh_filename])
         return path.getsize(mesh_filename) < 190 or not path.isfile(mesh_filename)
 
     def mesh_precision_recall(self, gt_mesh_filenames, pred_mesh_filenames):
@@ -2284,3 +2862,47 @@ def nyu_rgb_image(name):
     img = io_utils.read_jpg(path.join(config.nyu_root, 'images/{}.jpg'.format(name)))[3:-3]
     resized = scipy.misc.imresize(img, (240, 320))
     return resized
+
+
+colormap40 = np.array([[0, 0, 143],
+                       [182, 0, 0],
+                       [0, 140, 0],
+                       [195, 79, 255],
+                       [1, 165, 202],
+                       [236, 157, 0],
+                       [118, 255, 0],
+                       [89, 83, 84],
+                       [255, 117, 152],
+                       [148, 0, 115],
+                       [0, 243, 204],
+                       [72, 83, 255],
+                       [166, 161, 154],
+                       [0, 67, 1],
+                       [237, 183, 255],
+                       [138, 104, 0],
+                       [97, 0, 163],
+                       [92, 0, 17],
+                       [255, 245, 133],
+                       [0, 123, 105],
+                       [146, 184, 83],
+                       [171, 212, 255],
+                       [126, 121, 163],
+                       [255, 84, 1],
+                       [10, 87, 125],
+                       [168, 97, 92],
+                       [231, 0, 185],
+                       [255, 195, 166],
+                       [91, 53, 0],
+                       [0, 180, 133],
+                       [126, 158, 255],
+                       [231, 2, 92],
+                       [184, 216, 183],
+                       [192, 130, 183],
+                       [0, 0, 0],  # [111, 137, 91],
+                       [138, 72, 162],
+                       [91, 50, 90],
+                       [220, 138, 103],
+                       [79, 92, 44],
+                       [0, 225, 115],
+                       [0, 0, 0],  # 41st black color for uncategorized.
+                       ], dtype=np.float32) / 255.0

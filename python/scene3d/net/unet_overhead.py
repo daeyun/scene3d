@@ -15,10 +15,10 @@ device_ids = device_count
 
 def conv_0(in_ch, out_ch):
     return nn.Sequential(
-        nn.Conv2d(in_ch, out_ch, kernel_size=5, padding=8, dilation=4),
+        nn.Conv2d(in_ch, out_ch, kernel_size=5, padding=8, dilation=4, bias=False),
         nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
-        nn.Conv2d(out_ch, out_ch, kernel_size=5, padding=8, dilation=4),
+        nn.Conv2d(out_ch, out_ch, kernel_size=5, padding=8, dilation=4, bias=False),
         nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
     )
@@ -26,22 +26,22 @@ def conv_0(in_ch, out_ch):
 
 def conv_0_ip(in_ch, out_ch):
     return nn.Sequential(
-        nn.Conv2d(in_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
-        nn.Conv2d(out_ch, out_ch, kernel_size=5, padding=8, dilation=4),
-        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
+        nn.Conv2d(in_ch, out_ch, kernel_size=5, padding=8, dilation=4, bias=False),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
+        nn.Conv2d(out_ch, out_ch, kernel_size=5, padding=8, dilation=4, bias=False),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
     )
 
 
 def conv_1(in_ch, out_ch):
     return nn.Sequential(
-        nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=2, dilation=2),
+        nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=2, dilation=2, bias=False),
         nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
-        nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
+        nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
         nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
-        nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
+        nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
         nn.BatchNorm2d(out_ch, momentum=0.01),
         nn.ReLU(inplace=True),
     )
@@ -49,12 +49,12 @@ def conv_1(in_ch, out_ch):
 
 def conv_1_ip(in_ch, out_ch):
     return nn.Sequential(
-        nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=2, dilation=2),
-        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
-        nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
-        nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1),
-        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01, devices=device_ids),
+        nn.Conv2d(in_ch, out_ch, kernel_size=3, padding=2, dilation=2, bias=False),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
+        nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
+        nn.Conv2d(out_ch, out_ch, kernel_size=3, padding=1, bias=False),
+        InPlaceABNSync(out_ch, momentum=0.01, activation="leaky_relu", slope=0.01),
     )
 
 
@@ -110,14 +110,12 @@ class Unet0(nn.Module):
 
 
 class Unet1(nn.Module):
-    def __init__(self, in_channels, out_channels=1):
+    def __init__(self, in_channels, out_channels=1, ch=(64, 64, 128, 256, 768)):
         super().__init__()
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=False)
 
         self.pad = torch.nn.ConstantPad2d(2, 0.0)
         self.unpad = torch.nn.ConstantPad2d(-2, 0.0)
-
-        ch = [64, 64, 128, 256, 768]
 
         self.enc1 = conv_0_ip(in_channels, ch[0])
         self.enc2 = conv_0_ip(ch[0], ch[1])

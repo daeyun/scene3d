@@ -1548,7 +1548,7 @@ def save_height_mesh(overhead_heightmap, x, y, scale, theta, original_camera_fil
     # overhead_heightmap = height_map_model_batch_out['pred_height_map'][i].squeeze()
     overhead_depth = default_overhead_camera_height - overhead_heightmap
 
-    out_dir = '/home/daeyun/mnt/v8_gt_overhead_mesh'
+    out_dir = '/home/daeyun/mnt/v9_gt_overhead_mesh'
 
     out_filename_bg = path.join(out_dir, '{}/overhead_bg.ply'.format(example_name))
     out_filename_fg = path.join(out_dir, '{}/overhead_fg.ply'.format(example_name))
@@ -1796,7 +1796,7 @@ class PRCurveEvaluation(object):
 
         step = 0.01
         self.thresholds = np.array([0.001, 0.003, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04] + np.arange(0.05, 1 + step, step).tolist() + np.arange(1 + step * 2, 2 + step, step * 2).tolist())
-        self.density = 5000
+        self.density = 2500
 
     def load(self):
         try:
@@ -1893,6 +1893,15 @@ class PRCurveEvaluation(object):
         gt_depths = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id))))
         print(gt_depths)
         assert len(gt_depths) == 5
+
+        gt_overhead_fg = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_overhead_mesh/{}/{}/overhead_fg.ply'.format(house_id, camera_id))))
+        assert len(gt_overhead_fg) == 1
+        gt_overhead_fg = gt_overhead_fg[0]
+        assert path.exists(gt_overhead_fg)
+
+        pred_depths = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
+        assert len(pred_depths) == 5
+
         # pred_files_list = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/*.ply'.format(house_id, camera_id))))
         # pred_files = {path.basename(item).split('.')[0]: item for item in pred_files_list}
         # f3d_pred = path.join(config.default_out_root, 'factored3d_pred/{}/{}/codes_transformed_clipped.ply'.format(house_id, camera_id))
@@ -1923,9 +1932,44 @@ class PRCurveEvaluation(object):
         # self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['3']), [gt_objects], [gt_depths[3]])
 
         self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0']), [gt_objects], [gt_depths[0]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['1']), [gt_objects], [gt_depths[1]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['2']), [gt_objects], [gt_depths[2]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['3']), [gt_objects], [gt_depths[3]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['overhead_fg']), [gt_objects], [gt_overhead_fg])
         self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1']), [gt_objects], [gt_depths[0], gt_depths[1]])
         self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2]])
         self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2', '3']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'obj', ['0', '1', '2', '3', 'overhead_fg']), [gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], gt_overhead_fg])
+
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0']), [gt_bg, gt_objects], [gt_depths[0]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['1']), [gt_bg, gt_objects], [gt_depths[1]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['2']), [gt_bg, gt_objects], [gt_depths[2]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['3']), [gt_bg, gt_objects], [gt_depths[3]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4']), [gt_bg, gt_objects], [gt_depths[4]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['overhead_fg']), [gt_bg, gt_objects], [gt_overhead_fg])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0', '1']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0], gt_depths[1]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0', '1', '2']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0], gt_depths[1], gt_depths[2]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0', '1', '2', '3']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], gt_overhead_fg])
+
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0']), [gt_objects], [pred_depths[0]])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['1']), [gt_objects], [pred_depths[1]])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['2']), [gt_objects], [pred_depths[2]])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['3']), [gt_objects], [pred_depths[3]])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1']), [gt_objects], [pred_depths[0], pred_depths[1]])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2']), [gt_objects], [pred_depths[0], pred_depths[1], pred_depths[2]])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', '3']), [gt_objects], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3]])
+
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_bg, gt_objects], [pred_depths[0]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['1']), [gt_bg, gt_objects], [pred_depths[1]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['2']), [gt_bg, gt_objects], [pred_depths[2]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['3']), [gt_bg, gt_objects], [pred_depths[3]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['4']), [gt_bg, gt_objects], [pred_depths[4]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0', '1']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0], pred_depths[1]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0', '1', '2']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0], pred_depths[1], pred_depths[2]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0', '1', '2', '3']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3]])
 
         # self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_files['overhead_fg_clipped']])
         # self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_bg, gt_objects], [pred_files['pred_0']])
@@ -1953,7 +1997,6 @@ class PRCurveEvaluation(object):
         #
         # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], ])
         # self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], ])
-
 
     def as_array(self, key, precision_or_recall):
         key = self.force_string_key(key)

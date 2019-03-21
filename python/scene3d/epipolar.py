@@ -32,6 +32,7 @@ if lib:
         ctypes.c_char_p,
         ctypes.c_uint32,
         ctypes.c_uint32,
+        ctypes.c_uint32,
         ndpointer(ctypes.c_float, flags="C_CONTIGUOUS"),
     ]
 
@@ -46,6 +47,7 @@ if lib:
         ctypes.c_uint32,  # W
         ctypes.c_uint32,  # C
         ctypes.POINTER(ctypes.c_char_p),
+        ctypes.c_uint32,
         ctypes.c_uint32,
         ctypes.c_uint32,
         ndpointer(ctypes.c_float, flags="C_CONTIGUOUS"),
@@ -83,7 +85,8 @@ def feature_transform(
         back_depth_data: np.ndarray,
         camera_filename: str,
         target_height,
-        target_width):
+        target_width,
+        gating_function_index=0):
     c_func_name = 'epipolar_feature_transform'
 
     assert feature_map_data.ndim == 3
@@ -94,6 +97,7 @@ def feature_transform(
     assert feature_map_data.dtype == np.float32
     assert back_depth_data.dtype == np.float32
     assert front_depth_data.dtype == np.float32
+    assert isinstance(gating_function_index, int)
 
     source_height = feature_map_data.shape[0]
     source_width = feature_map_data.shape[1]
@@ -119,6 +123,7 @@ def feature_transform(
         ctypes.c_char_p(camera_filename.encode()),
         target_height,
         target_width,
+        gating_function_index,
         out_data)
 
     return out_data
@@ -130,7 +135,19 @@ def feature_transform_parallel(
         back_depth_data: np.ndarray,
         camera_filenames: typing.Sequence[str],
         target_height: int,
-        target_width: int):
+        target_width: int,
+        gating_function_index=0):
+    """
+
+    :param feature_map_data:
+    :param front_depth_data:
+    :param back_depth_data:
+    :param camera_filenames:
+    :param target_height:
+    :param target_width:
+    :param gating_function_index: 0 is average. Anything else is z-buffering.
+    :return:
+    """
     c_func_name = 'epipolar_feature_transform_parallel'
 
     assert feature_map_data.ndim == 3 + 1  # (B, H, W, C)
@@ -144,6 +161,7 @@ def feature_transform_parallel(
     assert feature_map_data.shape[0] == len(camera_filenames)
     assert len(camera_filenames) > 0
     assert isinstance(camera_filenames[0], str)
+    assert isinstance(gating_function_index, int)
 
     batch_size = feature_map_data.shape[0]
     source_height = feature_map_data.shape[1]
@@ -174,6 +192,7 @@ def feature_transform_parallel(
         filenames_p,
         target_height,
         target_width,
+        gating_function_index,
         out_data)
 
     return out_data
@@ -190,7 +209,7 @@ def render_depth_from_another_view(
     assert depth.ndim == 3 or depth.ndim == 2
     assert depth.dtype == np.float32
 
-    if depth.ndim == 3:
+    if depth.ndim >= 3:
         source_num_images = depth.shape[0]
         source_height = depth.shape[1]
         source_width = depth.shape[2]

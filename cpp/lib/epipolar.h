@@ -11,7 +11,13 @@ struct XYLineSegment {
   // Can be negative if projected outside of image frame.
   array<int32_t, 2> xy1{0, 0};
   array<int32_t, 2> xy2{0, 0};
+  float depth1{0.0f};
+  float depth2{0.0f};
   bool has_xy2{false};  // If false, this is a segment of length 1.
+};
+
+enum class GatingFunction {
+  Average, ZBuffering
 };
 
 // For each non-nan pixel in the front and back input depth images, find the starting and ending XY coordinates in the target camera.
@@ -22,6 +28,7 @@ void EpipolarLineSegmentCoordinates(const Image<float> &front_depth, const Image
 void LineCoordinates(int x1, int y1, int x2, int y2, vector<array<int, 2>> *xy);
 
 void LineCoordinatesValidRange(int x1, int y1, int x2, int y2, int height, int width, vector<array<int, 2>> *xy);
+void LineCoordinatesWithDepthValidRange(int x1, int y1, float d1, int x2, int y2, float d2, int height, int width, vector<array<int, 2>> *xy, vector<float> *depths);
 
 // Memory ordering must be (H, W, C).
 void EpipolarFeatureTransform(const float *feature_map_data,
@@ -33,7 +40,7 @@ void EpipolarFeatureTransform(const float *feature_map_data,
                               const char *camera_filename,
                               uint32_t target_height,
                               uint32_t target_width,
-                              std::vector<float> *transformed);
+                              std::vector<float> *transformed, GatingFunction gating_function = GatingFunction::Average);
 
 // Memory ordering must be (N, H, W).
 void RenderDepthFromAnotherView(const float *depth_data,

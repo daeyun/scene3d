@@ -18,6 +18,7 @@ void epipolar_feature_transform(const float *feature_map_data,
                                 const char *camera_filename,
                                 uint32_t target_height,
                                 uint32_t target_width,
+                                uint32_t gating_function_index,
                                 float *out);
 
 void epipolar_feature_transform_parallel(const float *feature_map_data,
@@ -30,6 +31,7 @@ void epipolar_feature_transform_parallel(const float *feature_map_data,
                                          const char **camera_filenames,
                                          uint32_t target_height,
                                          uint32_t target_width,
+                                         uint32_t gating_function_index,
                                          float *out);
 
 void render_depth_from_another_view(const float *depth_data,
@@ -58,10 +60,18 @@ void epipolar_feature_transform(
     const char *camera_filename,
     uint32_t target_height,
     uint32_t target_width,
+    uint32_t gating_function_index,
     float *out
 ) {
   if (spdlog::get("console") == nullptr) {
     spdlog::stdout_color_mt("console");
+  }
+
+  scene3d::GatingFunction gating_function;
+  if (gating_function_index == 0) {
+    gating_function = scene3d::GatingFunction::Average;
+  } else {
+    gating_function = scene3d::GatingFunction::ZBuffering;
   }
 
   vector<float> transformed;
@@ -76,7 +86,8 @@ void epipolar_feature_transform(
                                     camera_filename,
                                     target_height,
                                     target_width,
-                                    &transformed);
+                                    &transformed,
+                                    gating_function);
   LOGGER->info("Elapsed: {} ms", scene3d::TimeSinceEpoch<std::milli>() - start_time);
 
   size_t size_bytes = transformed.size() * sizeof(float);
@@ -93,9 +104,17 @@ void epipolar_feature_transform_parallel(const float *feature_map_data,
                                          const char **camera_filenames,
                                          uint32_t target_height,
                                          uint32_t target_width,
+                                         uint32_t gating_function_index,
                                          float *out) {
   if (spdlog::get("console") == nullptr) {
     spdlog::stdout_color_mt("console");
+  }
+
+  scene3d::GatingFunction gating_function;
+  if (gating_function_index == 0) {
+    gating_function = scene3d::GatingFunction::Average;
+  } else {
+    gating_function = scene3d::GatingFunction::ZBuffering;
   }
 
   std::vector<std::string> filenames_vector;
@@ -121,7 +140,8 @@ void epipolar_feature_transform_parallel(const float *feature_map_data,
                                       filenames_vector[i].c_str(),
                                       target_height,
                                       target_width,
-                                      transformed_batch[i].get());
+                                      transformed_batch[i].get(),
+                                      gating_function);
     LOGGER->debug("[thread {}] {}: Elapsed: {} ms", omp_get_thread_num(), i, scene3d::TimeSinceEpoch<std::milli>() - start_time);
   }
 

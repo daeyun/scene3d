@@ -1,13 +1,320 @@
-# aleph1 
+## aleph1 
 python scripts/train.py --batch_size=128 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=/home/daeyuns/out_shared/scene3d/v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth --save_every=2000 --learning_rate=0.0025
 python scripts/train.py --batch_size=104 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=2000 --learning_rate=0.0025
 python scripts/train.py --batch_size=104 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=2000 --learning_rate=0.0001
 python scripts/train.py --batch_size=20 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=2000 --learning_rate=0.0001
+# 01028000
+python scripts/train.py --batch_size=104 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=2000 --learning_rate=0.0004
+# 01030000, removed bias and reset optimizer. new loss function
+python scripts/train.py --batch_size=36 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=2000 --learning_rate=0.00005
+# 01032000, higher learning rate
+python scripts/train.py --batch_size=36 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=2000 --learning_rate=0.0002
+# 01034000
+python scripts/train.py --batch_size=40 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=2000 --learning_rate=0.00015
 
-# aleph2 
+# 01042000
+python scripts/train.py --batch_size=60 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=1000 --learning_rate=0.001
+
+# 01046000
+python scripts/train.py --batch_size=36 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=1000 --learning_rate=0.00005
+
+# 1082000, validation error seems to be decreasing slowly. perhaps a bit too slow, but i dont want to increase the learning rate. im increasing the batch size and see what happens
+python scripts/train.py --batch_size=80 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=1000 --learning_rate=0.00005
+
+# 1083000, increasing the learning rate
+python scripts/train.py --batch_size=72 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=1000 --learning_rate=0.0001
+
+# 1120000, increasing batch size for final tuning
+python scripts/train.py --batch_size=104 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-multi_layer_depth_aligned_background_multi_branch/0 --experiment=v9-multi_layer_depth_aligned_background_multi_branch --model=unet_v2 --load_checkpoint=most_recent --save_every=1000 --learning_rate=0.0001
+
+
+## aleph2 
+
 python scripts/train.py --batch_size=80 --save_dir=/home/daeyuns/out_shared/scene3d/v9/tmp_2l_category/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --load_checkpoint=/home/daeyuns/out_shared/scene3d/v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth --save_every=2000 --learning_rate=0.0025
 python scripts/train.py --batch_size=68 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --save_every=2000 --load_checkpoint=most_recent --learning_rate=0.0001
 python scripts/train.py --batch_size=20 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --save_every=2000 --load_checkpoint=most_recent --learning_rate=0.0001
+# 01112000
+python scripts/train.py --batch_size=68 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --save_every=2000 --load_checkpoint=most_recent --learning_rate=0.0004
+python scripts/train.py --batch_size=68 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --save_every=2000 --load_checkpoint=most_recent --learning_rate=0.0004
+# 01114000, removed bias and reset optimizer. new loss function
+python scripts/train.py --batch_size=36 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --save_every=2000 --load_checkpoint=most_recent --learning_rate=0.00005
+# 01116000, higher learning rate
+python scripts/train.py --batch_size=36 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --save_every=2000 --load_checkpoint=most_recent --learning_rate=0.0002
+# 01118000, higher learning rate
+python scripts/train.py --batch_size=40 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --save_every=2000 --load_checkpoint=most_recent --learning_rate=0.00015
 
+### AAAHH    STARTING OVER
+
+python scripts/train.py --batch_size=36 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --load_checkpoint=/home/daeyuns/out_shared/scene3d/v8/v8-category_nyu40-1l/0/00960000_009_0009239.pth --save_every=2000 --learning_rate=0.001
+
+
+# 1013000, this is working well so far. perhaps i can leave as is for longer, but i want to see what happens if i fine tune the whole model.  because the optimizer has to be renewed, I'm going to start with very low learning rate
+python scripts/train.py --batch_size=36 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --load_checkpoint=most_recent --save_every=1000 --learning_rate=0.00001
+
+# 1015000, now that the optimizer stats probably stabilized, i can increase the learning rate
+python scripts/train.py --batch_size=36 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --load_checkpoint=most_recent --save_every=1000 --learning_rate=0.0002
+
+
+# 1089000, increasing batch size for final tuning
+python scripts/train.py --batch_size=68 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9-category_nyu40_merged_background-2l/0 --experiment=v9-category_nyu40_merged_background-2l --model=unet_v1 --load_checkpoint=most_recent --save_every=1000 --learning_rate=0.0001
+
+
+
+
+
+
+
+# aleph1
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0001_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0002_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=2  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0003_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0004_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+
+
+
+
+
+# aleph2
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0005_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0006_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=2  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0007_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0008_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+
+
+# aleph0
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0009_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0010_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=2  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0011_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0012_of_0013.txt --save_dir=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred
+
+
+
+# daeyun-lab
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/validation_s159.txt --save_dir=/data4/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/validation_s159.txt --use_gt_geometry=True  --save_dir=/data4/out/scene3d/overhead_gt
+# python scripts/generate_overhead_features_new.py  --device_id=1  --split_name= /data4/scene3d/v9/test.txt --save_dir=/data4/out/scene3d/overhead_pred
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/train_s150.txt --use_gt_geometry=True  --save_dir=/data4/out/scene3d/overhead_gt
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/train__shuffled_0013_of_0013.txt --save_dir=/data4/out/scene3d/overhead_pred
+
+
+
+python scripts/generate_overhead_features_new.py --device_id=1 --split_name=/data4/scene3d/v9/test_subset_factored3d.txt --save_dir=/data4/out/scene3d/overhead_pred --batch_size=10 --num_data_workers=5 --gating_function_index=0  --num_transformer_workers=5
+python scripts/generate_overhead_features_new.py --device_id=1 --split_name=/data4/scene3d/v9/validation_s159.txt --save_dir=/data4/out/scene3d/overhead_pred --batch_size=5 --num_data_workers=2 --gating_function_index=0  --num_transformer_workers=2
+python scripts/generate_overhead_features_new.py --device_id=1 --split_name=/data4/scene3d/v9/train_s150.txt --save_dir=/data4/out/scene3d/overhead_pred --batch_size=5 --num_data_workers=2 --gating_function_index=0  --num_transformer_workers=2
+
+python scripts/generate_overhead_features_new.py --device_id=1 --split_name=/data4/scene3d/v9/test_subset_factored3d.txt --save_dir=/data4/out/scene3d/overhead_zb_pred --batch_size=10 --num_data_workers=5 --gating_function_index=1  --num_transformer_workers=5
+python scripts/generate_overhead_features_new.py --device_id=1 --split_name=/data4/scene3d/v9/validation_s159.txt --save_dir=/data4/out/scene3d/overhead_zb_pred --batch_size=5 --num_data_workers=2 --gating_function_index=1  --num_transformer_workers=2
+python scripts/generate_overhead_features_new.py --device_id=1 --split_name=/data4/scene3d/v9/train_s150.txt --save_dir=/data4/out/scene3d/overhead_zb_pred --batch_size=5 --num_data_workers=2 --gating_function_index=1  --num_transformer_workers=2
+
+
+
+
+
+
+
+
+
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0001_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0001
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0002_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0002
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0003_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0003
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0004_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0004
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0005_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0005
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0006_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0006
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0007_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0007
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0008_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0008
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0009_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0009
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0010_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0010
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0011_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0011
+python scripts/overhead_features_move_shard.py  --split_file=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0012_of_0013.txt   --source_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred  --target_dirname=/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0012
+
+
+# daeyun-lab
+python scripts/overhead_features_move_shard.py  --split_file=/data4/scene3d/v9/train__shuffled_0013_of_0013.txt   --source_dirname=/data4/out/scene3d/overhead_pred  --target_dirname=/data4/out/scene3d/overhead_pred_shards/0013
+
+
+
+
+
+
+# aleph0
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0009   aleph1.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0010   aleph1.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0011   aleph1.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0012   aleph1.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0009   aleph2.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0010   aleph2.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0011   aleph2.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0012   aleph2.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+
+
+# aleph1
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0001   aleph2.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0002   aleph2.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0003   aleph2.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0004   aleph2.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0001   aleph0.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0002   aleph0.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0003   aleph0.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0004   aleph0.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+
+# aleph2
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0005   aleph1.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0006   aleph1.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0007   aleph1.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0008   aleph1.ics:/mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards
+
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0005   aleph0.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0006   aleph0.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0007   aleph0.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0008   aleph0.ics:/mnt/scratch0/daeyuns/data/out/scene3d/overhead_pred_shards
+
+
+# daeyun-lab
+rsync -av --info=name0,progress2   /data4/out/scene3d/overhead_pred_shards/0013   aleph0.ics:~/out/scene3d/overhead_pred_shards
+
+
+
+
+# aleph0
+mkdir -p /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0001 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0002 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0003 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0004 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0005 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0006 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0007 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch0/daeyuns/data/out/scene3d/overhead_pred_shards/0008 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0009 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0010 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0011 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0012 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf ~/out/scene3d/overhead_pred_shards/0013 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+
+# aleph1
+mkdir -p /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0001 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0002 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0003 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0004 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0005 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0006 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0007 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0008 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0009 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0010 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0011 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0012 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf ~/out/scene3d/overhead_pred_shards/0013 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+
+# aleph2
+mkdir -p /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0001 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0002 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0003 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0004 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0005 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0006 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0007 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0008 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0009 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0010 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0011 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf /mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards/0012 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+ln -sf ~/out/scene3d/overhead_pred_shards/0013 /mnt/scratch0/daeyuns/data/overhead_pred_shard_links/
+
+
+
+
+
+
+# aleph1
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_01/0 --experiment=v9_OVERHEAD_v1_heightmap_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
+
+# aleph0
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_02/0 --experiment=v9_OVERHEAD_v1_heightmap_02 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
+
+# aleph2
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_03/0 --experiment=v9_OVERHEAD_v1_heightmap_03 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
+
+
+
+
+
+
+#local
+
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/validation_s159.txt --save_dir=/data4/out/scene3d/overhead_zb_pred  --gating_function_index=1; python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/validation_s159.txt --save_dir=/data4/out/scene3d/overhead_zb_gt  --gating_function_index=1  --use_gt_geometry=True; python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/train_s150.txt --save_dir=/data4/out/scene3d/overhead_zb_pred  --gating_function_index=1; python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/train_s150.txt --save_dir=/data4/out/scene3d/overhead_zb_gt  --gating_function_index=1  --use_gt_geometry=True;
+
+
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/train__shuffled_0001_of_0013.txt --save_dir=/data4/out/scene3d/overhead_zb_pred_shards/0001  --gating_function_index=1;
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/train__shuffled_0002_of_0013.txt --save_dir=/data4/out/scene3d/overhead_zb_pred_shards/0002  --gating_function_index=1;
+
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/data4/scene3d/v9/train__shuffled_0003_of_0013.txt --save_dir=/data4/out/scene3d/overhead_zb_pred_shards/0003  --gating_function_index=1;
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/data4/scene3d/v9/train__shuffled_0004_of_0013.txt --save_dir=/data4/out/scene3d/overhead_zb_pred_shards/0004  --gating_function_index=1;
+
+
+
+
+# aleph2
+
+python scripts/generate_overhead_features_new.py  --device_id=2  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0005_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0005  --gating_function_index=1;
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0006_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0006  --gating_function_index=1;
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0007_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0007  --gating_function_index=1;
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0008_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0008  --gating_function_index=1;
+
+
+# aleph0
+
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0009_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0009  --gating_function_index=1;
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0010_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0010  --gating_function_index=1;
+python scripts/generate_overhead_features_new.py  --device_id=2  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0011_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0011  --gating_function_index=1;
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0012_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0012  --gating_function_index=1;
+
+
+
+# aleph1
+
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/mnt/scratch1/daeyuns/data/scene3d/v9/train__shuffled_0013_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0013  --gating_function_index=1;
+
+
+
+# daeyun-01
+rsync -av --info=name0,progress2   /mnt/scratch2/daeyuns/data/out/scene3d/overhead_pred_shards/0009   aleph1.ics:/mnt/scratch1/daeyuns/data/out/scene3d/overhead_pred_shards
+
+
+# daeyun-05
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0001_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0001  --gating_function_index=1  --num_data_workers=10  --batch_size=50
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0002_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0002  --gating_function_index=1  --num_data_workers=10  --batch_size=50
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0003_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0003  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0004_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0004  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+
+
+# daeyun-02
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0005_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0005  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0006_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0006  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=2  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0007_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0007  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0008_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0008  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=0  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0009_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0009  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0010_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0010  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=2  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0011_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0011  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0012_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0012  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/home/daeyuns/data/scene3d/v9/train__shuffled_0013_of_0013.txt --save_dir=/home/daeyuns/scene3d/overhead_zb_pred_shards/0013  --gating_function_index=1  --num_data_workers=10  --batch_size=25
+
+
+
+
+
+
+
+# aleph1
+
+# aleph0
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_04/0 --experiment=v9_OVERHEAD_v1_heightmap_04 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
+
+# aleph2
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_01/0 --experiment=v9_OVERHEAD_v2_heightmap_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
 
 

@@ -468,6 +468,14 @@ def assert_file_exists(filename):
         raise FileNotFoundError('Not found: {}'.format(filename))
 
 
+def does_file_exist_and_is_size_at_least(filename, size_bytes):
+    try:
+        size = path.getsize(filename)
+        return size >= size_bytes
+    except FileNotFoundError as ex:
+        return False
+
+
 def dir_child_basenames(dirpath):
     """
     Non recursively returns child directories and files in a directory.

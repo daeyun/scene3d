@@ -93,7 +93,7 @@ def parse_house_and_camera_ids_from_string(s) -> typing.Tuple[str, str]:
         Input: '/data2/pbrs/mlt_v2/0005b92a9ed6349df155a462947bfdfe/000017_mlt.png'
         Output: ('0005b92a9ed6349df155a462947bfdfe', '000017')
     """
-    m = re.search(r'(?:[^\da-f]|^)([\da-f]{32})(?:[^\da-f])([\d]+)(?:[\_\.]|$)', s)
+    m = re.search(r'(?:[^\da-f]|^)([\da-f]{32})(?:[^\da-f])([\d]+)(?:[^\d]|$)', s)
     if m is None:
         raise RuntimeError('Could not find house id in {} '.format(s))
     return m.group(1), m.group(2)

@@ -108,6 +108,18 @@ def list_files(hostname, dirname, extra_flags=''):
     return lines
 
 
+def ensure_remote_directory_exists(hostname, dirname):
+    # TODO: it might be useful to check read/write permissions.
+
+    assert dirname.startswith('/')
+    assert isinstance(dirname, str)
+
+    log.info('Making sure {} exists on {}'.format(dirname, hostname))
+    run_commands_over_ssh(hostname, [
+        'mkdir -p {}'.format(dirname)
+    ])
+
+
 def sync_files_remote_to_local(hostname, source_dirname, local_dirname, includes=None):
     """
     :param hostname: hostname, according to ~/.ssh/config
@@ -132,6 +144,61 @@ def sync_files_remote_to_local(hostname, source_dirname, local_dirname, includes
 
     # Notice the trailing slash in the source.
     command = ['rsync', '-av', '{}:{}/'.format(hostname, source_dirname), local_dirname]
+
+    tmp_dir = '/tmp/sync_remote_to_local/'
+    io_utils.ensure_dir_exists(tmp_dir)
+    random_code = '{}_{}'.format(int(time.time() * 1000), uuid.uuid4().hex[:12])
+    tmp_filename = path.join(tmp_dir, '{}.txt'.format(random_code))  # only used when `includes` is not None.
+
+    if not includes:
+        includes = None
+
+    if includes is not None:
+        assert isinstance(includes, (list, tuple))
+        assert len(includes) > 0
+        assert isinstance(includes[0], str)
+        with open(tmp_filename, 'w') as f:
+            f.write('\n'.join(includes))
+        command.insert(2, '--include-from={}'.format(tmp_filename))
+        command.insert(3, '--exclude=*')  # No quotes around *. Those are for the shell, not rsync.
+
+    p, stdout, stderr = exec_utils.run_command(
+        command=command
+    )
+    log.info('rsync stdout:\n{}'.format(stdout))
+
+    if path.isfile(tmp_filename):
+        os.remove(tmp_filename)
+
+    return stdout
+
+
+def sync_files_local_to_remote(hostname, local_dirname, target_dirname, includes=None):
+    """
+    :param hostname: hostname, according to ~/.ssh/config
+    :param target_dirname: full path
+    :param local_dirname: full path
+    :param includes: list of patterns or filenames to include
+    :return:
+    """
+    assert target_dirname.startswith('/')
+    assert local_dirname.startswith('/')
+
+    target_dirname = target_dirname.rstrip('/')
+    local_dirname = local_dirname.rstrip('/')
+
+    # basic sanity check to avoid those cases. there's probably a better way to do this.
+    assert ' ' not in target_dirname
+    assert ' ' not in local_dirname
+    assert '*' not in target_dirname
+    assert '*' not in local_dirname
+
+    assert path.isdir(local_dirname), local_dirname
+
+    ensure_remote_directory_exists(hostname, target_dirname)
+
+    # Notice the trailing slash in the source.
+    command = ['rsync', '-av', '{}/'.format(local_dirname), '{}:{}'.format(hostname, target_dirname)]
 
     tmp_dir = '/tmp/sync_remote_to_local/'
     io_utils.ensure_dir_exists(tmp_dir)

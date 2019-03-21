@@ -8,6 +8,7 @@ from os import path
 import numpy as np
 import numpy.linalg as la
 import torch
+from torch.backends import cudnn
 
 from scene3d import camera
 from scene3d import epipolar
@@ -15,7 +16,7 @@ from scene3d import io_utils
 from scene3d import log
 from scene3d import loss_fn
 from scene3d import torch_utils
-from scene3d import train_eval_pipeline_v9 #TODO: do not commit. need to revert to original because v9 is work in progress
+from scene3d import train_eval_pipeline
 from scene3d import transforms
 from scene3d.dataset import dataset_utils
 from scene3d.net import unet
@@ -119,7 +120,7 @@ def fix_ray_displacement(depth):
     return fixed.astype(depth.dtype)
 
 
-def overhead_features_from_trained_model(i, dataset, model):
+def overhead_features_from_trained_model(i, dataset, model, gating_function_index=0):
     """
     For preliminary experiment. Probably not needed long term.
     """
@@ -157,7 +158,7 @@ def overhead_features_from_trained_model(i, dataset, model):
     t_back = add_background(example['multi_layer_depth'][1].copy(), t_front)  # instance exit
     _, t_back_ordering_enforced = enforce_depth_order(p_front, t_back)
 
-    overhead_all_features = epipolar.feature_transform(all_features, p_front, t_back_ordering_enforced, camera_filename, 300, 300)  # (300, 300, 67)
+    overhead_all_features = epipolar.feature_transform(all_features, p_front, t_back_ordering_enforced, camera_filename, 300, 300, gating_function_index=gating_function_index)  # (300, 300, 67)
     overhead_all_features = overhead_all_features.transpose(2, 0, 1).copy()
 
     return overhead_all_features, p_front, t_back_ordering_enforced, t_front, t_back
@@ -227,6 +228,7 @@ def overhead_height_map_from_trained_models(i, dataset, model_overhead, model_ld
 
     example = dataset[i]
 
+    raise NotImplementedError()  # TODO: Need to specify gating function.
     overhead_features, front, back, t_front, t_back = overhead_features_from_trained_model(i, dataset, model_ldi)
     if use_gt_front:
         overhead_features = example['overhead_features']
@@ -339,14 +341,14 @@ def compute_overhead_camera(ref_position, ref_viewdir, ref_up, x, y, scale, thet
     return ['O'] + cam_pos.tolist() + view_dir.tolist() + up.tolist() + frustum
 
 
-def best_guess_depth_and_frustum_mask(frontal_depth_3layers, camera_filename):
-    assert frontal_depth_3layers.shape[0] == 3
-    assert frontal_depth_3layers.ndim == 3
+def best_guess_depth_and_frustum_mask(frontal_depth_4layers, camera_filename):
+    assert frontal_depth_4layers.shape[0] == 4
+    assert frontal_depth_4layers.ndim == 3
 
     height = 300
     width = 300
 
-    best_guess_ml = epipolar.render_depth_from_another_view(frontal_depth_3layers, camera_filename, target_height=height, target_width=width)
+    best_guess_ml = epipolar.render_depth_from_another_view(frontal_depth_4layers, camera_filename, target_height=height, target_width=width)
 
     fill_value = 0
 
@@ -411,7 +413,7 @@ def make_extra_features_batch(depth, overhead_camera_pose_4params, tmp_out_dir):
     :param tmp_out_dir:
     :return: (B, 2, 300, 300)
     """
-    assert depth.shape[1] == 4
+    assert depth.shape[1] == 5
     assert overhead_camera_pose_4params.dim() == 2
     batch_size = len(depth)
     ret = np.empty((batch_size, 2, 300, 300), dtype=np.float32)
@@ -419,8 +421,8 @@ def make_extra_features_batch(depth, overhead_camera_pose_4params, tmp_out_dir):
     io_utils.ensure_dir_exists(tmp_out_dir)
 
     for i in range(batch_size):
-        depth_i = torch_utils.recursive_torch_to_numpy(depth[i, :3])
-        assert depth_i.shape[0] == 3
+        depth_i = torch_utils.recursive_torch_to_numpy(depth[i, :4])  # all objects layers, excluding room layout
+        assert depth_i.shape[0] == 4
         x, y, scale, theta = overhead_camera_pose_4params[i]
         x, y, scale, theta = x.item(), y.item(), scale.item(), theta.item()
 
@@ -451,7 +453,7 @@ class FeatureGenerator(object):
 
 
 class Transformer(FeatureGenerator):
-    def __init__(self, depth_checkpoint_filename, segmentation_checkpoint_filename, device_id, num_workers=5, cam_param_regression_model=None, cam_param_feature_extractor_model=None):
+    def __init__(self, depth_checkpoint_filename, segmentation_checkpoint_filename, device_id, num_workers=5, cam_param_regression_model=None, cam_param_feature_extractor_model=None, gating_function_index=0):
         super().__init__()
         self.device_id = device_id
 
@@ -467,7 +469,10 @@ class Transformer(FeatureGenerator):
             self.cam_param_feature_extractor_model = None
         log.info('[Transformer] Device id: {}'.format(self.device_id))
 
+        cudnn.benchmark = True
+
         with torch.cuda.device(self.device_id):
+
             log.info('Loading model {}'.format(depth_checkpoint_filename))
             self.depth_model, _ = train_eval_pipeline.load_checkpoint_as_frozen_model(depth_checkpoint_filename, use_cpu=False)
             self.depth_model.cuda()
@@ -483,6 +488,10 @@ class Transformer(FeatureGenerator):
         io_utils.ensure_dir_exists(self.tmp_out_root)
         self.num_workers = num_workers
         self.pool = ThreadPool(self.num_workers)
+
+        # self.debug = False
+        self.cudnn_initialized = False
+        self.gating_function_index = gating_function_index
 
     @staticmethod
     def _get_batch_subset(batch, key, start_end):
@@ -508,8 +517,8 @@ class Transformer(FeatureGenerator):
             stime = time.time()
             assert isinstance(batch, dict)
             if use_gt_geometry:
-                required_fields = ['rgb', 'multi_layer_depth', 'multi_layer_depth_aligned_background', 'overhead_camera_pose_4params', 'camera_filename']
-                assert not self.use_gt_cam_params
+                required_fields = ['rgb', 'multi_layer_depth_aligned_background', 'overhead_camera_pose_4params', 'camera_filename']
+                # assert not self.use_gt_cam_params
             else:
                 if self.use_gt_cam_params:
                     required_fields = ['rgb', 'overhead_camera_pose_4params', 'camera_filename']
@@ -526,7 +535,7 @@ class Transformer(FeatureGenerator):
             in_rgb = in_rgb_np.cuda()
 
             batch_size = len(in_rgb_np)
-            # log.info('reading input rgb took {}'.format(time.time() - stime))
+            log.info('reading input rgb took {}'.format(time.time() - stime))
 
             if use_gt_geometry:
                 # (B, 48, 240, 320)
@@ -541,39 +550,75 @@ class Transformer(FeatureGenerator):
                 del feature_map2
                 assert feature_map2_np.shape[1] == 64
 
-                multi_layer_depth = torch_utils.recursive_torch_to_numpy(self._get_batch_subset(batch, 'multi_layer_depth', start_end_indices)[:, :2])
+                multi_layer_depth = torch_utils.recursive_torch_to_numpy(self._get_batch_subset(batch, 'multi_layer_depth_aligned_background', start_end_indices)[:, :4])
                 feat = dataset_utils.force_contiguous(np.concatenate([in_rgb_np, feature_map1_np, feature_map2_np], axis=1).transpose(0, 2, 3, 1))  # (B, H, W, C)
-                front = dataset_utils.force_contiguous(multi_layer_depth[:, 0])  # (B, H, W)
-                back = dataset_utils.force_contiguous(multi_layer_depth[:, 1])  # (B, H, W)
+
+                front_l1 = dataset_utils.force_contiguous(multi_layer_depth[:, 0])  # (B, H, W)
+                back_l1 = dataset_utils.force_contiguous(multi_layer_depth[:, 1])  # (B, H, W)
+                front_l2 = dataset_utils.force_contiguous(multi_layer_depth[:, 2])  # (B, H, W)
+                back_l2 = dataset_utils.force_contiguous(multi_layer_depth[:, 3])  # (B, H, W)
 
                 depth_aligned = self._get_batch_subset(batch, 'multi_layer_depth_aligned_background', start_end_indices)
             else:
                 # (B, 48, 240, 320)
                 stime = time.time()
                 feature_map1, predicted_depth = unet.get_feature_map_output_v2(self.depth_model, in_rgb, return_encoding=False, return_final_output=True)
-                predicted_depth = torch_utils.recursive_torch_to_numpy(loss_fn.undo_log_depth(predicted_depth))
+
+                # predicted_depth = torch_utils.recursive_torch_to_numpy(loss_fn.undo_log_depth(predicted_depth))  # Previously "undo log depth" was required.
+                predicted_depth = torch_utils.recursive_torch_to_numpy(predicted_depth)
                 feature_map1_np = torch_utils.recursive_torch_to_numpy(feature_map1)
                 del feature_map1
                 assert feature_map1_np.shape[1] == 48
 
                 # (B, 64, 240, 320)
-                feature_map2, predicted_ss = unet.get_feature_map_output_v1(self.segmentation_model, in_rgb, return_final_output=True)
-                assert predicted_ss.shape[1] == 80
-                predicted_ss = train_eval_pipeline.semantic_segmentation_from_raw_prediction(predicted_ss[:, :40])
+                feature_map2, predicted_ss_raw = unet.get_feature_map_output_v1(self.segmentation_model, in_rgb, return_final_output=True)
+                assert predicted_ss_raw.shape[1] == 80
+                predicted_ss_l1 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(predicted_ss_raw[:, :40])
+                predicted_ss_l2 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(predicted_ss_raw[:, 40:])
                 feature_map2_np = torch_utils.recursive_torch_to_numpy(feature_map2)
                 del feature_map2
                 assert feature_map2_np.shape[1] == 64
-                # log.info('feature map output took {}'.format(time.time() - stime))
+                log.info('feature map output took {}'.format(time.time() - stime))
 
                 stime = time.time()
-                predicted_depth_segmented = train_eval_pipeline.segment_predicted_depth(predicted_depth, predicted_ss)
+                predicted_depth_segmented = train_eval_pipeline.segment_predicted_depth(predicted_depth, predicted_ss_l1, predicted_ss_l2)
+                # (B, 5, 240, 320)
+                assert predicted_depth_segmented.shape[1] == 5  # making sure this is v9
                 depth_aligned = predicted_depth_segmented
 
-                feat = dataset_utils.force_contiguous(np.concatenate([in_rgb_np, feature_map1_np, feature_map2_np], axis=1).transpose(0, 2, 3, 1))  # (B, H, W, C)
+                # if self.debug:
+                #     import matplotlib.pyplot as pt
+                #     i = 0
+                #
+                #     pt.figure()
+                #     pt.imshow(predicted_ss_l1[i])
+                #     pt.colorbar()
+                #
+                #     pt.figure()
+                #     pt.imshow(predicted_ss_l2[i])
+                #     pt.colorbar()
+                #
+                #     pt.figure()
+                #     pt.imshow(predicted_depth_segmented[i][0])
+                #     pt.figure()
+                #     pt.imshow(predicted_depth_segmented[i][1])
+                #     pt.figure()
+                #     pt.imshow(predicted_depth_segmented[i][2])
+                #     pt.figure()
+                #     pt.imshow(predicted_depth_segmented[i][3])
+                #     pt.figure()
+                #     pt.imshow(predicted_depth_segmented[i][4])
 
-                front = dataset_utils.force_contiguous(train_eval_pipeline.traditional_depth_from_aligned_multi_layer_depth(predicted_depth_segmented))  # (B, H, W)
-                back = dataset_utils.force_contiguous(predicted_depth_segmented[:, 1])  # (B, H, W)
-                # log.info('memory stuff took {}'.format(time.time() - stime))
+                feat = dataset_utils.force_contiguous(np.concatenate([in_rgb_np, feature_map1_np, feature_map2_np], axis=1).transpose(0, 2, 3, 1))  # (B, H, W, C)  C=115
+
+                # Previously we were using traditional depth as the front layer, i dont remember why
+                # front = dataset_utils.force_contiguous(train_eval_pipeline.traditional_depth_from_aligned_multi_layer_depth(predicted_depth_segmented))  # (B, H, W)
+
+                front_l1 = dataset_utils.force_contiguous(predicted_depth_segmented[:, 0])  # (B, H, W)
+                back_l1 = dataset_utils.force_contiguous(predicted_depth_segmented[:, 1])  # (B, H, W)
+                front_l2 = dataset_utils.force_contiguous(predicted_depth_segmented[:, 2])  # (B, H, W)
+                back_l2 = dataset_utils.force_contiguous(predicted_depth_segmented[:, 3])  # (B, H, W)
+                log.info('memory stuff took {}'.format(time.time() - stime))
 
             if self.use_gt_cam_params:
                 camera_filenames = self._get_batch_subset(batch, 'camera_filename', start_end_indices)
@@ -603,18 +648,21 @@ class Transformer(FeatureGenerator):
 
             # (B, 300, 300, 115)
             stime = time.time()
-            tranformed_batch = epipolar.feature_transform_parallel(feat, front_depth_data=front, back_depth_data=back, camera_filenames=camera_filenames, target_height=300, target_width=300)
+
+            tranformed_batch_l1 = epipolar.feature_transform_parallel(feat, front_depth_data=front_l1, back_depth_data=back_l1, camera_filenames=camera_filenames, target_height=300, target_width=300, gating_function_index=self.gating_function_index)
+            tranformed_batch_l2 = epipolar.feature_transform_parallel(feat, front_depth_data=front_l2, back_depth_data=back_l2, camera_filenames=camera_filenames, target_height=300, target_width=300, gating_function_index=self.gating_function_index)
 
             if not self.use_gt_cam_params:
                 for fname in camera_filenames:
                     assert 'feat_ortho_cam_' in fname
                     os.remove(fname)  # clean up
 
-            ret = np.empty((batch_size, 117, 300, 300), dtype=np.float32)
+            ret = np.empty((batch_size, 115 * 2 + 2, 300, 300), dtype=np.float32)
 
             # (B, 115, 300, 300)
-            ret[:, 2:] = tranformed_batch.transpose(0, 3, 1, 2)
-            # log.info('feature_transform_parallel took {}'.format(time.time() - stime))
+            ret[:, 2:117] = tranformed_batch_l1.transpose(0, 3, 1, 2)
+            ret[:, 117:] = tranformed_batch_l2.transpose(0, 3, 1, 2)
+            log.info('feature_transform_parallel took {}'.format(time.time() - stime))
 
             # (B, 2, 300, 300)
             ret[:, :2] = make_extra_features_batch(depth_aligned, camparams, self.tmp_out_root)
@@ -635,7 +683,9 @@ class Transformer(FeatureGenerator):
                 batch, item, use_gt_geometry
             ])
 
+        stime = time.time()
         out = self.pool.starmap(self._get_transformed_features, args)
+        log.info('_get_transformed_features took {:.2f} seconds'.format(time.time() - stime))
 
         out_feat = []
         out_cam = []
@@ -649,6 +699,19 @@ class Transformer(FeatureGenerator):
 
     def _prefetch_worker(self, batch, start_end_indices, target_device_id, use_gt_geometry, out_dict):
         assert out_dict[target_device_id] is None
+
+        # There seems to be a bug that causes cuda to run out of memory when it runs for the first time, with cudnn.benchmark = True.
+        # This is very strange and the only workaround that works for the time being is letting it run out of memory and then ignoring the error.
+        # This slows down the first batch processed.  This should run only once per instance of `Transformer`.
+        if not self.cudnn_initialized:
+            self.cudnn_initialized = True
+            try:
+                log.info('Initializing cudnn. This line should appear only once.')
+                self.get_transformed_features(batch, start_end_indices, use_gt_geometry=use_gt_geometry)
+            except RuntimeError as ex:
+                # Expected to run out of memory.
+                pass
+
         out_feat, out_cam, out_names = self.get_transformed_features(batch, start_end_indices, use_gt_geometry=use_gt_geometry)
         out_dict[target_device_id] = (torch.Tensor(out_feat), out_cam, out_names)
 
@@ -660,6 +723,10 @@ class Transformer(FeatureGenerator):
         thread.start()
 
     def pop_batch(self, target_device_id):
+        """
+        :param target_device_id:
+        :return: `batch` is a tuple of ((B, 232, 300, 300) features, (B, 4) camera params, (B,) list of example names)
+        """
         stime = time.time()
         print_time = time.time()
         while target_device_id not in self.batches or self.batches[target_device_id] is None:

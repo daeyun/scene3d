@@ -71,6 +71,37 @@ def compute_masked_smooth_l1_loss(pred, target, apply_log_to_target=True):
     return loss
 
 
+def compute_masked_smooth_l1_loss_v9_frontal(pred, target):
+    assert pred.dim() == 4
+    assert target.size() == pred.size(), (target.shape, pred.shape)
+
+    valid = torch.isfinite(target)  # (B, C, H, W)
+
+    t = target
+
+    l1 = (t - pred).masked_fill(~valid, 0).abs()  # (B, C, H, W) contains nan values.
+    l2 = torch.pow(l1, 2.0)  # (B, C, H, W) contains nan values
+    select = l1 >= 1.0
+
+    # per-image mean huber loss
+    loss = (0.5 * l2).masked_scatter(select, l1[select] - 0.5)  # (B, C, H, W) float32
+
+    # heuristic: background layer loss is weighted down.
+    loss[:, 4] *= 0.5
+
+    loss = loss.view(l2.shape[0], -1).sum(dim=1)  # (B) float32
+
+    assert loss.dtype == torch.float32
+
+    area = valid.view(valid.shape[0], -1).sum(dim=1)  # (B) int64
+    assert area.dtype == torch.int64
+    assert area.shape == loss.shape
+
+    loss = (loss / (area.type(loss.dtype) + 1e-3)).mean()  # per-example mean
+
+    return loss
+
+
 def compute_masked_surface_normal_loss(pred, target, use_inverse_cosine=False):
     assert pred.dim() == 4
     assert pred.shape[1] == 3

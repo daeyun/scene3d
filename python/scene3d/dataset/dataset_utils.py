@@ -1,5 +1,6 @@
 import numpy as np
 from os import path
+import typing
 import re
 import glob
 import random
@@ -79,10 +80,76 @@ def force_contiguous(arr: np.ndarray):
 
 def divide_start_end_indices(size, num_chunks, offset=0):
     assert num_chunks <= size, (size, num_chunks)
-    indices = np.array_split(np.arange(size)+offset, num_chunks)
+    indices = np.array_split(np.arange(size) + offset, num_chunks)
     ret = [(ind[0], ind[-1] + 1) for ind in indices]
 
     for start, end in ret:
         assert start < end
 
     return ret
+
+
+def chunks(l, n):
+    """Yield successive n-sized chunks from l."""
+    # https://stackoverflow.com/a/312464
+    for i in range(0, len(l), n):
+        yield l[i:i + n]
+
+
+def shard_filenames(original_filename, set_name, n) -> typing.List[str]:
+    """
+    Shard names are 1-indexed.
+
+    :param original_filename: Original filename.
+    :param set_name: name of this set. e.g. shuffled, ordered.
+    :param n: Number of shards.
+    :return: List of strings.
+    """
+    assert n > 1
+    assert isinstance(set_name, str)
+    assert isinstance(original_filename, str)
+    assert isinstance(n, int)
+    prefix, ext = path.splitext(original_filename)
+
+    ret = []
+
+    for i in range(n):
+        fname = '{prefix}__{set_name}_{i:04d}_of_{n:04d}{ext}'.format(
+            prefix=prefix,
+            set_name=set_name,
+            ext=ext,
+            i=i + 1,
+            n=n,
+        )
+        ret.append(fname)
+
+    return ret
+
+
+def create_shards(split_filename, num_shards, shuffle=False):
+    lines = io_utils.read_lines_and_strip(split_filename)
+    assert len(lines) >= num_shards
+
+    if shuffle:
+        rand = random.Random()
+        rand.seed(42)
+        rand.shuffle(lines)
+        set_name = 'shuffled'
+    else:
+        set_name = 'ordered'
+
+    new_filenames = shard_filenames(split_filename, set_name, num_shards)
+
+    if len(lines) % num_shards == 0:
+        sharded_lines = list(chunks(lines, len(lines) // num_shards))
+    else:
+        sharded_lines = list(chunks(lines, len(lines) // num_shards + 1))
+    assert len(sharded_lines) == num_shards
+    assert len(sharded_lines) == len(new_filenames)
+
+    for sharded_lines_i, new_filename_i in zip(sharded_lines, new_filenames):
+        log.info('Writing {} lines in {}'.format(len(sharded_lines_i), new_filename_i))
+        with open(new_filename_i, 'w') as f:
+            f.write('\n'.join(sharded_lines_i))
+
+    return new_filenames

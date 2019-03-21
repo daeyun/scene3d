@@ -30,7 +30,8 @@ See https://www.jamescoyle.net/how-to/943-create-a-ram-disk-in-linux
 """
 
 num_threads = 12
-out_root = '/data4/scene3d/v9'
+# out_root = '/data4/scene3d/v9'
+out_root = '/data4/cs274c/pbrs-new-depth'  #TOOD: this is temporary
 
 # Can be any directory. Temporary output files are written here.
 # tmp_out_root = '/tmp/scene3d'
@@ -71,6 +72,7 @@ def generate_depth_images(thread_id, house_id):
     obj_filename, new_house_json_filename = suncg_utils.house_obj_from_json(house_id=house_id, out_file=tmp_house_obj_file, return_house_json_filename=True)
 
     source_room_camera_file = path.join(config.pbrs_root, 'camera_v2/{}/room_camera.txt'.format(house_id))
+    # source_room_camera_file = '/data4/cs274c/pbrs-new/pbrs_new/{}/camera_pbrs.txt'.format(house_id)  # TODO: remove this line
 
     # make new camera file. after filtering out ones ignored provided by pbrs.
     out_room_camera_file = path.join(tmp_out_root, '{}/room_camera.txt'.format(thread_id))
@@ -177,6 +179,7 @@ def thread_worker(thread_id):
 
 def main():
     files = pbrs_utils.load_pbrs_filenames()
+    # files = sorted(glob.glob('/data4/cs274c/pbrs-new/pbrs_new/**/*_mlt.png'))  #TODO: remove this later
     # files = pbrs_utils.load_pbrs_filenames('/data2/scene3d/v8/test_v2_subset_factored3d.txt')  # TODO: this is temporary. use the line above
     # files = ['/data2/pbrs/mlt_v2/050236b2dcaa484aad506207089cab5d/000008_mlt.png']
 
@@ -187,6 +190,7 @@ def main():
 
     for file in files:
         m = re.findall(r'mlt_v2/([^/]+?)/(\d+?)_mlt.png', file)
+        # m = re.findall(r'/([^/]+?)/(\d+?)_mlt.png', file)  # TODO: remove this
         house_id = m[0][0]
         camera_id = int(m[0][1])
         files_by_house_id[house_id].append(file)

@@ -27,7 +27,8 @@ from scene3d.eval import generate_gt_mesh
 from scene3d.eval import post_processing
 from scene3d import data_utils
 from scene3d.dataset import dataset_utils
-from scene3d.dataset import v8
+# from scene3d.dataset import v8
+from scene3d.dataset import v9
 from scene3d.dataset import v2
 from scene3d.net import unet
 from scene3d.net import unet_overhead
@@ -45,8 +46,11 @@ def main(force_indices=tuple()):
     :param force_indices: re-generate those indices even if it's already done
     :return:
     """
-    depth_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth')
-    seg_checkpoint = path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth')
+    depth_checkpoint = path.join(config.default_out_root, 'v9/v9-multi_layer_depth_aligned_background_multi_branch/0/01149000_005_0003355.pth')
+    seg_checkpoint = path.join(config.default_out_root, 'v9/v9-category_nyu40_merged_background-2l/0/01130000_005_0001780.pth')
+
+    # depth_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth')
+    # seg_checkpoint = path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth')
 
     torch.set_default_tensor_type('torch.cuda.FloatTensor')
     depth_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(depth_checkpoint)
@@ -54,9 +58,13 @@ def main(force_indices=tuple()):
     seg_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(seg_checkpoint)
     print(metadata)
 
-    dataset = v8.MultiLayerDepth(
-        split=path.join(config.scene3d_root, 'v8/test_v2_subset_factored3d.txt'),
-        subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=['rgb', 'camera_filename'])
+    dataset = v9.MultiLayerDepth(
+        split=[
+            path.join(config.scene3d_root, 'v9/validation_s159.txt'),
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
+            # path.join(config.scene3d_root, 'v9/train_s150.txt'),
+        ],
+        subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'camera_filename'))
 
     count = 0
     for i in range(len(dataset)):
@@ -69,44 +77,52 @@ def main(force_indices=tuple()):
         print(count, i, example['name'])
 
         house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(example['name'])
-        pred_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
+        pred_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
         if not force:
-            if len(pred_meshes) == 4:
+            if len(pred_meshes) == 5:
                 print('Already computed. Skipping this example.')
                 continue
-            elif len(pred_meshes) > 4:
+            elif len(pred_meshes) > 5:
                 print(pred_meshes)
                 raise RuntimeError()
 
         depth_pred = depth_model(torch.Tensor(example['rgb'][None]).cuda())
         seg_pred = seg_model(torch.Tensor(example['rgb'][None]).cuda())
+        assert depth_pred.shape[0] == 1
+        assert seg_pred.shape[0] == 1
 
-        seg_pred_argmax = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred[:, :40])
+        seg_pred_l1 = torch_utils.recursive_torch_to_numpy(seg_pred[:, :40])
+        seg_pred_l2 = torch_utils.recursive_torch_to_numpy(seg_pred[:, 40:])
+        seg_argmax_l1 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred_l1)
+        seg_argmax_l2 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred_l2)
 
-        segmented_depth = loss_fn.undo_log_depth(train_eval_pipeline.segment_predicted_depth(torch_utils.recursive_torch_to_numpy(depth_pred), seg_pred_argmax))
+        segmented_depth = train_eval_pipeline.segment_predicted_depth(torch_utils.recursive_torch_to_numpy(depth_pred), seg_argmax_l1, seg_argmax_l2)
         assert segmented_depth.shape[0] == 1
         segmented_depth = np.squeeze(segmented_depth)
 
-        out = train_eval_pipeline.save_mldepth_as_meshes(segmented_depth, example, force=True)
+        out = train_eval_pipeline.save_mldepth_as_meshes_v9(segmented_depth, example, force=True)
         print(out)
 
-        real_gt_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/gt_*.ply'.format(house_id, camera_id))))
-        depth_gt_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v8_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id))))
-        assert len(real_gt_meshes) == 2
-        assert len(depth_gt_meshes) == 4, depth_gt_meshes
+        # Sanity check to make sure corresponding ground truths exist. not necessary
+        real_gt_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/gt_*.ply'.format(house_id, camera_id))))
+        depth_gt_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id))))
+        assert len(real_gt_meshes) == 2, real_gt_meshes
+        assert len(depth_gt_meshes) == 5, depth_gt_meshes
 
         count += 1
 
 
 def overhead():
+    # need v9 updates
+
     checkpoint_filenames = {
-        'pose_3param': path.join(config.default_out_root, 'v8/v8-overhead_camera_pose/0/00420000_018_0014478.pth'),
-        'overhead_height_map_model': path.join(config.default_out_root, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
+        'pose_3param': path.join(config.default_out_root_v8, 'v8/v8-overhead_camera_pose/0/00420000_018_0014478.pth'),
+        'overhead_height_map_model': path.join(config.default_out_root_v8, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
     }
 
-    dataset = v8.MultiLayerDepth(
+    dataset = v9.MultiLayerDepth(
         # split='/data2/scene3d/v8/validation_s168.txt',
-        split=path.join(config.scene3d_root, 'v8/test_v2_subset_factored3d.txt'),
+        split=path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
         subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=['rgb', ])
 
     batch_size = 5
@@ -121,8 +137,8 @@ def overhead():
 
         skip = True
         for name in names:
-            if not path.isfile(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/overhead_bg_clipped.ply'.format(name))) \
-                    or not path.isfile(path.join(config.default_out_root, 'v8_pred_depth_mesh/{}/overhead_fg_clipped.ply'.format(name))):
+            if not path.isfile(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/overhead_bg_clipped.ply'.format(name))) \
+                    or not path.isfile(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/overhead_fg_clipped.ply'.format(name))):
                 skip = False
                 break
         if skip:
@@ -152,5 +168,6 @@ def overhead():
 
 
 if __name__ == '__main__':
-    main(force_indices=[426, 440])
-    # overhead()
+    # main(force_indices=[426, 440])
+    # main()
+    overhead()
