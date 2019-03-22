@@ -34,6 +34,7 @@ from scene3d.net import unet
 from scene3d.net import unet_overhead
 import cv2
 import torch
+from torch.backends import cudnn
 from torch import nn
 
 from scene3d import category_mapping
@@ -62,7 +63,6 @@ def main(force_indices=tuple()):
         split=[
             path.join(config.scene3d_root, 'v9/validation_s159.txt'),
             path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
-            # path.join(config.scene3d_root, 'v9/train_s150.txt'),
         ],
         subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'camera_filename'))
 
@@ -117,12 +117,26 @@ def overhead():
 
     checkpoint_filenames = {
         'pose_3param': path.join(config.default_out_root_v8, 'v8/v8-overhead_camera_pose/0/00420000_018_0014478.pth'),
-        'overhead_height_map_model': path.join(config.default_out_root_v8, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
+        # 'overhead_height_map_model': path.join(config.default_out_root_v8, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
+        'overhead_height_map_model': path.join(config.default_out_root, 'v9/v9_OVERHEAD_v1_heightmap_01/0/00056000_003_0011546.pth'),
+        'overhead_segmentation_model': path.join(config.default_out_root, 'v9/v9_OVERHEAD_v1_segmentation_01/0/00016000_000_0002000.pth'),
     }
 
     dataset = v9.MultiLayerDepth(
         # split='/data2/scene3d/v8/validation_s168.txt',
-        split=path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
+        # split=path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
+        [
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0001_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0002_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0003_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0004_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0005_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0006_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0007_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0007_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0008_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0009_of_0009.txt'),  # sharded for running on multiple machines
+        ],
         subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=['rgb', ])
 
     batch_size = 5
@@ -168,6 +182,7 @@ def overhead():
 
 
 if __name__ == '__main__':
+    cudnn.benchmark = True
     # main(force_indices=[426, 440])
     # main()
     overhead()

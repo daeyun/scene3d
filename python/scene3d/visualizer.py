@@ -1,10 +1,15 @@
 from pprint import pprint
+import glob
+import os
+import shutil
+import shutil
 from scene3d import geom2d
 from os import path
 import numpy as np
 import scipy as sp
 import scipy.misc
 from scene3d import pbrs_utils
+from scene3d import scannet_utils
 from scene3d import suncg_utils
 from scene3d import torch_utils
 from scene3d import render_depth
@@ -419,3 +424,162 @@ class Visualizer2(object):
         ax.set_title('"Ground Truth" Height Map\n(based on viewpoint selection\nheuristics on GT mesh)', {'fontsize': 14})
 
         pt.show()
+
+
+class ScannetMeshGenerator(object):
+    def __init__(self):
+        self.depth_checkpoint = path.join(config.default_out_root, 'v9/v9-multi_layer_depth_aligned_background_multi_branch/0/01149000_005_0003355.pth')
+        self.seg_checkpoint = path.join(config.default_out_root, 'v9/v9-category_nyu40_merged_background-2l/0/01130000_005_0001780.pth')
+
+        torch.set_default_tensor_type('torch.cuda.FloatTensor')
+        self.depth_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(self.depth_checkpoint)
+        print(metadata)
+        self.seg_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(self.seg_checkpoint)
+        print(metadata)
+
+        self.input_image_meansub_cuda = None
+        self.input_image_name = None
+        self.example = None
+
+        self.visualize = False
+
+    def minsub_rgb(self, img):
+        rgb_mean = np.array([178.1781, 158.5039, 142.5141], dtype=np.float32)  # same value as training set
+        # rgb_mean = np.array([150, 150, 150], dtype=np.float32)  # doesn't seem to matter
+        # rgb_mean = self.input_image.mean(0, keepdims=True).mean(1, keepdims=True).squeeze()
+        rgb_scale = 1 / 255.0
+        in_rgb = img.astype(np.float32)
+        in_rgb -= rgb_mean.reshape(3, 1, 1)
+        in_rgb *= rgb_scale
+        return in_rgb
+
+    def show_input_image(self):
+        print('example_name: {}'.format(self.input_image_name))
+        notebook_utils.quick_show_rgb(self.input_image)
+
+    def load_scannet(self, name, image_wh=(240, 320)):
+        self.filename_meshes = path.join(config.scannet_frustum_clipped_root, '{}/meshes.obj'.format(name))
+        self.filename_cam_info = path.join(config.scannet_frustum_clipped_root, '{}/cam_info.pkl'.format(name))
+        self.filename_img = path.join(config.scannet_frustum_clipped_root, '{}/img.jpg'.format(name))
+        self.filename_proposals = path.join(config.scannet_frustum_clipped_root, '{}/proposals.mat'.format(name))
+
+        img = io_utils.read_jpg(self.filename_img)
+        self.input_image_original = img
+        # remove undistortion artifacts
+        img = cv2.copyMakeBorder(img[5:-5, 6:-6], top=5, bottom=5, left=6, right=6, borderType=cv2.BORDER_REFLECT101)
+        if image_wh:
+            img = scipy.misc.imresize(img, image_wh)
+
+        self.input_image = img
+        self.input_image_meansub_cuda = torch.Tensor(self.minsub_rgb(img.transpose(2, 0, 1))[None]).cuda()
+        self.input_image_name = name
+
+    def generate_mesh(self, force=True):
+        """
+        TODO: this function is mostly used to generate visualization. name is misleading
+        :return:
+        """
+        depth_pred = self.depth_model(self.input_image_meansub_cuda)
+        seg_pred = self.seg_model(self.input_image_meansub_cuda)
+        name = self.input_image_name
+
+        assert seg_pred.shape[0] == 1
+        pred_l1 = seg_pred[:, :40]
+        pred_l2 = seg_pred[:, 40:]
+        argmax_l1 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(pred_l1)
+        argmax_l2 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(pred_l2)
+
+        depth_pred_np = torch_utils.recursive_torch_to_numpy(depth_pred)
+
+        segmented_depth = train_eval_pipeline.segment_predicted_depth(depth_pred_np, argmax_l1, argmax_l2)
+        segmented_depth = np.squeeze(segmented_depth)
+        assert segmented_depth.shape[0] == 5, segmented_depth.shape  # making sure this is v9
+
+        if self.visualize:
+            ### PREDICTED DEPTH
+            fig = pt.figure(figsize=(20, 8))
+            fig.suptitle('Multi-layer Surface Prediction', fontsize=19, y=0.75, fontweight=500)
+
+            ax = fig.add_subplot(151)
+            ax.imshow(segmented_depth[0])
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$D_1$', {'fontsize': 14})
+
+            ax = fig.add_subplot(152)
+            ax.imshow(segmented_depth[1])
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$D_2$', {'fontsize': 14})
+
+            ax = fig.add_subplot(153)
+            ax.imshow(segmented_depth[2])
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$D_3$', {'fontsize': 14})
+
+            ax = fig.add_subplot(154)
+            ax.imshow(segmented_depth[3])
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$D_4$', {'fontsize': 14})
+
+            ax = fig.add_subplot(155)
+            ax.imshow(segmented_depth[4])
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$D_5$', {'fontsize': 14})
+
+            ### PREDICTED SEGMENTATION
+            seg_img = evaluation.colorize_segmentation(argmax_l1[0])
+            fig = pt.figure(figsize=(40, 3.33))
+            ax = fig.add_subplot(141)
+            ax.imshow(seg_img)
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$D_1$ Segmentation  ($M_1$)', {'fontsize': 14})
+
+            seg_img2 = evaluation.colorize_segmentation(argmax_l2[0])
+            ax = fig.add_subplot(142)
+            ax.imshow(seg_img2)
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$D_3$ Segmentation  ($M_3$)', {'fontsize': 14})
+
+        with scannet_utils.temporary_camera_file_context(self.filename_cam_info) as cam_filename:
+            example = {
+                'name': name,
+                'camera_filename': cam_filename,
+            }
+            ret = train_eval_pipeline.save_mldepth_as_meshes_v9_scannet(segmented_depth, example, force=force)
+
+        return ret
+
+    def set_symlinks(self):
+        name = self.input_image_name
+        for old_item in glob.glob('/home/daeyun/mnt/v9_visualization_scannet/*'):
+            if path.exists(old_item):
+                os.remove(old_item)
+                print('rm {}'.format(old_item))
+
+        mesh_filename = path.join(config.scannet_frustum_clipped_root, name, 'meshes.obj')
+
+        new_gt_filename = path.join('/home/daeyun/mnt/v9_visualization_scannet', 'gt.obj')
+        shutil.copy(mesh_filename, new_gt_filename)
+        print(new_gt_filename)
+
+        files = glob.glob('/data4/out/scene3d/v9_scannet_pred_depth_mesh/{}/*'.format(name))
+
+        for fname in files:
+            new_fname = fname.replace('/data4/out/scene3d/v9_scannet_pred_depth_mesh/{}'.format(name), '/home/daeyun/mnt/v9_visualization_scannet')
+            io_utils.ensure_dir_exists(path.dirname(new_fname))
+            shutil.copy(fname, new_fname)
+
+        files = glob.glob('/data4/out/scene3d/factored3d_pred/scannet/{}/*'.format(name))
+        print('/data4/out/scene3d/factored3d_pred')
+        print(files)
+
+        for fname in files:
+            new_fname = fname.replace('/data4/out/scene3d/factored3d_pred/scannet/{}'.format(name), '/home/daeyun/mnt/v9_visualization_scannet')
+            io_utils.ensure_dir_exists(path.dirname(new_fname))
+            shutil.copy(fname, new_fname)

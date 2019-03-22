@@ -1,4 +1,5 @@
 import numpy as np
+import math
 import scipy.linalg as la
 import hashlib
 
@@ -247,3 +248,16 @@ def camera_fixation_centroid(cameras):
     b = np.array(b)[:, None]
     x = la.lstsq(A, b)[0].ravel()
     return x
+
+
+def make_perspective_frustum_params(hw_ratio, x_fov, near, far):
+    right = math.fabs(math.tan(x_fov) * near)
+    top = right * hw_ratio
+
+    left = -right
+    bottom = -top
+
+    near = near
+    far = far
+
+    return left, right, bottom, top, near, far

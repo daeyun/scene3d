@@ -17,6 +17,7 @@ hostname = socket.gethostname()
 
 if path.isfile(path.expanduser('~/.is_chase_ci')):
     default_out_root = '/home/daeyuns/scene3d_out'
+    etn_zb_features_root2 = path.expanduser('~/scene3d/overhead_zb_pred_shards')
 
     if hostname == 'daeyun-01':
         # suncg_root = '/data/daeyun-data-02/suncg_data'
@@ -81,6 +82,9 @@ elif hostname == 'daeyun-lab':
     etn_features_root = '/data3/out/scene3d/overhead_pred'
     nyu_root = '/data3/nyu'
     overhead_pred_out_root = '/data4/out/scene3d'
+    scannet_frustum_clipped_root = '/home/daeyun/mnt/frustum'
+
+    factored3d_mesh_dir = '/data4/out/scene3d/factored3d_pred'  # output of the script in my fork of the repo
 
 elif path.isfile(path.expanduser('~/.is_uci_vision_cluster')):
     suncg_root = '/home/daeyuns/data2/suncg_data'

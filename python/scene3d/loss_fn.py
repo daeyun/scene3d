@@ -22,8 +22,9 @@ def loss_calc_overhead_single_log(pred, target):
 
 def loss_calc_overhead_single_raw(pred, target):
     assert pred.shape[1] == 1
-    mask = ~torch.isnan(target)
-    return (target[mask] - pred[mask]).abs().mean()
+    mask = torch.isfinite(target)
+    mae = (target[mask] - pred[mask]).abs()
+    return mae.sum() / (mae.numel() + 1e-7)  # avoid nan values when mask is empty.
 
 
 def loss_calc_single_depth(pred, target):

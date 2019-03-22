@@ -310,11 +310,42 @@ python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/h
 
 
 # aleph1
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_segmentation_01/0 --experiment=v9_OVERHEAD_v1_segmentation_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
 
 # aleph0
 python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_04/0 --experiment=v9_OVERHEAD_v1_heightmap_04 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_05/0 --experiment=v9_OVERHEAD_v1_heightmap_05 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
 
 # aleph2
 python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_01/0 --experiment=v9_OVERHEAD_v2_heightmap_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
 
 
+
+#daeyun 02
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_01/0 --experiment=v9_OVERHEAD_v2_heightmap_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002  --load_checkpoint=most_recent
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_02/0 --experiment=v9_OVERHEAD_v2_heightmap_02 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002  --load_checkpoint=most_recent
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_03/0 --experiment=v9_OVERHEAD_v2_heightmap_03 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002  --load_checkpoint=most_recent
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_04/0 --experiment=v9_OVERHEAD_v2_heightmap_04 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002  --load_checkpoint=most_recent
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_05/0 --experiment=v9_OVERHEAD_v2_heightmap_05 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002 
+
+#daeyun 04
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_03/0 --experiment=v9_OVERHEAD_v2_heightmap_03 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
+
+
+
+
+CUDA_VISIBLE_DEVICES=0 python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_01/1 --experiment=v9_OVERHEAD_v2_heightmap_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_01/0/00025000_001_0010182.pth
+CUDA_VISIBLE_DEVICES=0 python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_01/1 --experiment=v9_OVERHEAD_v1_heightmap_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_01/0/00025000_001_0010182.pth
+
+
+python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_02/1 --experiment=v9_OVERHEAD_v2_heightmap_02 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_02/0/00025000_001_0010182.pth
+python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_03/1 --experiment=v9_OVERHEAD_v2_heightmap_03 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_03/0/00025000_001_0010182.pth
+python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_04/1 --experiment=v9_OVERHEAD_v2_heightmap_04 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_04/0/00025000_001_0010182.pth
+python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_05/1 --experiment=v9_OVERHEAD_v2_heightmap_05 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_05/0/00025000_001_0010182.pth
+
+CUDA_VISIBLE_DEVICES=0,1 python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_01/1 --experiment=v9_OVERHEAD_v1_heightmap_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_01/0/00025000_001_0010182.pth
+python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_02/1 --experiment=v9_OVERHEAD_v1_heightmap_02 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_02/0/00025000_001_0010182.pth
+
+python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_03/1 --experiment=v9_OVERHEAD_v1_heightmap_03 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_03/0/00025000_001_0010182.pth
+python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_04/1 --experiment=v9_OVERHEAD_v1_heightmap_04 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_04/0/00025000_001_0010182.pth
+python scripts/train.py --batch_size=20 --num_data_workers=10 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_05/1 --experiment=v9_OVERHEAD_v1_heightmap_05 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.00005  --load_checkpoint=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_05/0/00025000_001_0010182.pth

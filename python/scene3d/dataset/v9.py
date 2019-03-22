@@ -49,7 +49,7 @@ def is_filename_prefix_valid(value):
     return re.match(r'^[a-z0-9]{32}/\d{6}$', value) is not None
 
 
-if config.hostname.startswith('aleph'):
+if config.hostname.startswith('aleph') or path.isfile(path.expanduser('~/.is_chase_ci')):
     # this will down things down for a few seconds
     names_to_shard = shards.get_v9_train_name_to_shard_mapping()
 
@@ -82,6 +82,10 @@ def find_etn_zb_filename(example_name):
         return ret
     elif config.hostname == 'daeyun-lab':
         return path.join('/data4/out/scene3d/overhead_zb_pred', '{}.bin'.format(example_name))
+    elif path.isfile(path.expanduser('~/.is_chase_ci')):
+        shard = names_to_shard[example_name]
+        ret = path.join(config.etn_zb_features_root2, shard, '{}.bin'.format(example_name))
+        return ret
     else:
         raise NotImplementedError()
         filename = path.join(config.etn_features_root, '{}.bin'.format(example_name))
@@ -170,7 +174,7 @@ class MultiLayerDepth(data.Dataset):
             'category_nyu40_merged_background',
             # 'category_nyu40_merged_background_replicated',
             # 'overhead_category_nyu40',
-            # 'overhead_category_nyu40_merged_background',
+            'overhead_category_nyu40_merged_background',
             # 'overhead_camera_pose_3params',
             'overhead_camera_pose_4params',
         )
@@ -611,11 +615,13 @@ class MultiLayerDepth(data.Dataset):
         d = dataset_utils.force_contiguous(d)
         training_utils_cpp.model_index_to_category(d, mapping_name="nyuv2_40class_merged_background")
 
-        bg_mask = d[0] == 34  # merged into wall category (34). Ignored in layers >=1.
-        d[1][bg_mask] = d[2][bg_mask] = d[3][bg_mask] = 65535
+        # single layer segmentation
+        d = d[0]
+        d[d == 65535] = 34  # this includes "ignored" pixels (rare). it's better to treat them as background.
+        assert (d < 40).all()  # sanity check. this can be removed later, for performance reasons.
 
-        d = dataset_utils.force_contiguous(d)
-        ret[field_name] = d.astype(np.int)
+        d = dataset_utils.force_contiguous(d.astype(np.int))
+        ret[field_name] = d
 
     def get_overhead_camera_pose_3params(self, example_name, ret):
         field_name = 'overhead_camera_pose_3params'
@@ -745,7 +751,7 @@ class MultiLayerDepth(data.Dataset):
         self.get_category_nyu40(example_name, ret)
         self.get_category_nyu40_merged_background(example_name, ret)
         self.get_category_nyu40_merged_background_replicated(example_name, ret)
-        self.get_overhead_category_nyu40(example_name, ret)
+        # self.get_overhead_category_nyu40(example_name, ret)
         self.get_overhead_category_nyu40_merged_background(example_name, ret)
         self.get_overhead_camera_pose_3params(example_name, ret)
         self.get_overhead_camera_pose_4params(example_name, ret)

@@ -36,6 +36,7 @@ from scene3d.net import unet
 from scene3d.net import unet_no_bn
 from scene3d.net import unet_overhead
 from multiprocessing.pool import ThreadPool
+import itertools
 
 """
 When you add a new experiment, give it a unique experiment name in `available_experiments`.
@@ -1879,6 +1880,13 @@ class PRCurveEvaluation(object):
         with portalocker.Lock(self.save_filename, mode='wb', timeout=10) as f:
             pickle.dump(self.results, f)
 
+    def update(self, other):
+        assert isinstance(other, PRCurveEvaluation)
+        PRCurveEvaluation.dict_merge(self.results, other.results)
+
+    def all_keys(self):
+        return sorted(set(itertools.chain(*[list(item.keys()) for item in self.results.values()])))
+
     def run_evaluation(self, example):
         """
         This is the main function.
@@ -1901,6 +1909,10 @@ class PRCurveEvaluation(object):
 
         pred_depths = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
         assert len(pred_depths) == 5
+
+        pred_overhead_fg = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/overhead_fg_clipped.ply'.format(house_id, camera_id))))
+        assert len(pred_overhead_fg) == 1
+        pred_overhead_fg = pred_overhead_fg[0]
 
         # pred_files_list = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/*.ply'.format(house_id, camera_id))))
         # pred_files = {path.basename(item).split('.')[0]: item for item in pred_files_list}
@@ -1950,26 +1962,34 @@ class PRCurveEvaluation(object):
         self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0]])
         self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0', '1']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0], gt_depths[1]])
         self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0', '1', '2']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0], gt_depths[1], gt_depths[2]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0', '1', '2', '3']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3]])
-        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['4', '0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [gt_depths[4], gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], gt_overhead_fg])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3', '4']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], gt_depths[4]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3', '4', 'overhead_fg']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], gt_depths[4], gt_overhead_fg])
 
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0']), [gt_objects], [pred_depths[0]])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['1']), [gt_objects], [pred_depths[1]])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['2']), [gt_objects], [pred_depths[2]])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['3']), [gt_objects], [pred_depths[3]])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['overhead_fg']), [gt_objects], [pred_overhead_fg], force=True)
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', 'overhead_fg']), [gt_objects], [pred_depths[0], pred_overhead_fg])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1']), [gt_objects], [pred_depths[0], pred_depths[1]])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2']), [gt_objects], [pred_depths[0], pred_depths[1], pred_depths[2]])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', '3']), [gt_objects], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3]])
+        self.run_if_not_exists(name, self.key('pred', 'obj', ['0', '1', '2', '3', 'overhead_fg']), [gt_objects], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_overhead_fg], force=True)
 
         self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_bg, gt_objects], [pred_depths[0]])
         self.run_if_not_exists(name, self.key('pred', 'both', ['1']), [gt_bg, gt_objects], [pred_depths[1]])
         self.run_if_not_exists(name, self.key('pred', 'both', ['2']), [gt_bg, gt_objects], [pred_depths[2]])
         self.run_if_not_exists(name, self.key('pred', 'both', ['3']), [gt_bg, gt_objects], [pred_depths[3]])
         self.run_if_not_exists(name, self.key('pred', 'both', ['4']), [gt_bg, gt_objects], [pred_depths[4]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_overhead_fg], force=True)
         self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0]])
         self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0', '1']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0], pred_depths[1]])
         self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0', '1', '2']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0], pred_depths[1], pred_depths[2]])
         self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0', '1', '2', '3']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['4', '0', '1', '2', '3', 'overhead_fg']), [gt_bg, gt_objects], [pred_depths[4], pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_overhead_fg], force=True)
 
         # self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_bg, gt_objects], [pred_files['overhead_fg_clipped']])
         # self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_bg, gt_objects], [pred_files['pred_0']])
@@ -2062,12 +2082,24 @@ class PRCurveEvaluation(object):
         assert isinstance(key, str)
         assert precision_or_recall in ['p', 'r']
         arr = self.as_array(key, precision_or_recall)
-        y = np.mean(arr[:660], axis=0)
+        y = np.mean(arr, axis=0)
         try:
             index = np.where(np.isclose(self.thresholds, x))[0][0]
         except IndexError:
             raise ValueError('x={} is not in thresholds. x must be one of the values in self.thresholds.'.format(x))
         return y[index]
+
+    @staticmethod
+    def dict_merge(target, source):
+        """https://gist.github.com/angstwad/bf22d1822c38a92ec0a9
+        """
+        assert isinstance(target, dict)
+        assert isinstance(source, dict)
+        for k, v in source.items():
+            if (k in target and isinstance(target[k], dict) and isinstance(source[k], collections.Mapping)):
+                PRCurveEvaluation.dict_merge(target[k], source[k])
+            else:
+                target[k] = source[k]
 
 
 def nyu_pointcloud(name, out_filename):

@@ -177,3 +177,53 @@ class Unet1(nn.Module):
         out = self.dec5(out)  # (304, 304)
         out = self.unpad(out)  # (300, 300)
         return out
+
+
+class Unet1_seg(nn.Module):
+    # same as the other one but the loss function is not embeded in the model.
+    def __init__(self, in_channels, out_channels=1, ch=(64, 64, 128, 256, 768)):
+        super().__init__()
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, return_indices=False)
+
+        self.pad = torch.nn.ConstantPad2d(2, 0.0)
+        self.unpad = torch.nn.ConstantPad2d(-2, 0.0)
+
+        self.enc1 = conv_0_ip(in_channels, ch[0])
+        self.enc2 = conv_0_ip(ch[0], ch[1])
+        self.enc3 = conv_1_ip(ch[1], ch[2])
+        self.enc4 = conv_1_ip(ch[2], ch[3])
+        self.enc5 = conv_1_ip(ch[3], ch[4])
+
+        self.dec1 = conv_1_ip(ch[4] + ch[3], ch[3])
+        self.dec2 = conv_1_ip(ch[3] + ch[2], ch[2])
+        self.dec3 = conv_0_ip(ch[2] + ch[1], ch[1])
+        self.dec4 = conv_0_ip(ch[1] + ch[0], ch[0])
+
+        self.dec5 = nn.Conv2d(ch[0], out_channels, kernel_size=3, padding=1, bias=False)
+
+    def unpool(self, value):
+        return nn.functional.interpolate(value, scale_factor=2, mode='bilinear', align_corners=False)
+
+    def forward(self, x):
+        """
+        :param x: Tuple containing (input, target).
+        :return: Scalar loss.
+        """
+        assert not isinstance(x, (list, tuple))
+        in_features = x
+        padded_x = self.pad(in_features)
+
+        x1 = self.enc1(padded_x)  # (304, 304)
+        x2 = self.enc2(self.pool(x1))  # (152, 152)
+        x3 = self.enc3(self.pool(x2))  # (76, 76)
+        x4 = self.enc4(self.pool(x3))  # (38, 38)
+        out = self.enc5(self.pool(x4))  # (19, 19)
+
+        out = self.dec1(torch.cat([x4, self.unpool(out)], dim=1))  # (38, 38)
+        out = self.dec2(torch.cat([x3, self.unpool(out)], dim=1))  # (76, 76)
+        out = self.dec3(torch.cat([x2, self.unpool(out)], dim=1))  # (152, 152)
+        out = self.dec4(torch.cat([x1, self.unpool(out)], dim=1))  # (304, 304)
+        out = self.dec5(out)  # (304, 304)
+        out = self.unpad(out)  # (300, 300)
+
+        return out
