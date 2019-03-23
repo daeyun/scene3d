@@ -406,6 +406,46 @@ def make_overhead_camera_file(out_filename, x, y, scale, theta, ref_cam=None, ca
     return ref_cam, target_cam
 
 
+def make_overhead_camera_file_scannet(out_filename, x, y, scale, theta, ref_cam=None, camera_height_z=None):
+    """
+
+    :param out_filename:
+    :param x:
+    :param y:
+    :param scale:
+    :param theta:
+    :param ref_cam:
+    :param camera_height: y coordinate value of camera position.
+    :return:
+    """
+    if ref_cam is None:
+        ref_cam = [
+            'P',
+            0.0, 0.0, 0.0,  # position
+            0.0, 0.0, -1.0,  # viewing dir
+            0.0, 1.0, 0.0,  # up
+            -0.00617793056641, 0.00617793056641, -0.00463344946349, 0.00463344946349, 0.01, 100  # intrinsics
+        ]
+
+    ref_pos = np.array(ref_cam[1:4], dtype=np.float64)
+    ref_viewdir = np.array(ref_cam[4:7], dtype=np.float64)  # -z axis
+    ref_up = np.array(ref_cam[7:10], dtype=np.float64)  # y axis
+
+    target_cam = compute_overhead_camera(ref_pos, ref_viewdir, ref_up, x=x, y=y, scale=scale, theta=theta)
+
+    if camera_height_z is not None:
+        target_cam[3] = camera_height_z
+
+    out_camera_file_content = '\n'.join([' '.join([str(item) for item in ref_cam]), ' '.join([str(item) for item in target_cam])])
+
+    io_utils.ensure_dir_exists(path.dirname(out_filename))
+
+    with open(out_filename, 'w') as f:
+        f.write(out_camera_file_content)
+
+    return ref_cam, target_cam
+
+
 def make_extra_features_batch(depth, overhead_camera_pose_4params, tmp_out_dir):
     """
     :param depth: torch.Tensor or np.ndarray of shape (B, 4, 240, 320). Should be 'multi_layer_depth_aligned_background' if GT.
@@ -493,6 +533,12 @@ class Transformer(FeatureGenerator):
         self.cudnn_initialized = False
         self.gating_function_index = gating_function_index
 
+        self.theta = 1.37340092658996582031  # We can preidct this, but PBRS's cameras have a constant tilt.
+
+    def set_theta(self, value):
+        assert isinstance(value, float) or isinstance(value, (list, tuple))
+        self.theta = value
+
     @staticmethod
     def _get_batch_subset(batch, key, start_end):
         item = batch[key]
@@ -531,8 +577,9 @@ class Transformer(FeatureGenerator):
             for field in required_fields:
                 assert field in batch, field
 
-            in_rgb_np = self._get_batch_subset(batch, 'rgb', start_end_indices)
-            in_rgb = in_rgb_np.cuda()
+            in_rgb = self._get_batch_subset(batch, 'rgb', start_end_indices)
+            in_rgb_np = torch_utils.recursive_torch_to_numpy(in_rgb)
+            in_rgb = in_rgb.cuda()
 
             batch_size = len(in_rgb_np)
             log.info('reading input rgb took {}'.format(time.time() - stime))
@@ -630,19 +677,31 @@ class Transformer(FeatureGenerator):
                 assert pred_cam_params.shape[1] == 3  # could be 4 depending on the model.
                 assert pred_cam_params.ndim == 2
 
-                theta = 1.37340092658996582031  # We can preidct this, but PBRS's cameras have a constant tilt.
+                assert isinstance(self.theta, float) or (isinstance(self.theta, (list, tuple)) and len(self.theta) == batch_size)
                 camera_filenames = []
-                for row in pred_cam_params:
+                for ii, row in enumerate(pred_cam_params):
                     assert row.shape[0] == 3
                     random_string = uuid.uuid4().hex
                     new_cam_filename = path.join(self.tmp_out_root, 'feat_ortho_cam_{}.txt'.format(random_string))
                     x, y, scale = row.tolist()
                     if path.isfile(new_cam_filename):
                         os.remove(new_cam_filename)
-                    make_overhead_camera_file(new_cam_filename, x, y, scale, theta)
+
+                    if isinstance(self.theta, float):
+                        theta_i = self.theta
+                    else:
+                        theta_i = self.theta[ii]
+
+                    make_overhead_camera_file(new_cam_filename, x, y, scale, theta_i)
                     assert path.isfile(new_cam_filename)
                     camera_filenames.append(new_cam_filename)
-                camparams = torch_utils.recursive_numpy_to_torch(np.concatenate([pred_cam_params, np.full([batch_size, 1], fill_value=theta)], axis=1))
+
+                if isinstance(self.theta, float):
+                    thetas = np.full([batch_size, 1], fill_value=self.theta)
+                else:
+                    thetas = np.array(self.theta, dtype=np.float32).reshape(batch_size, 1)
+
+                camparams = torch_utils.recursive_numpy_to_torch(np.concatenate([pred_cam_params, thetas], axis=1))
                 assert camparams.shape[0] == batch_size
                 assert camparams.shape[1] == 4
 

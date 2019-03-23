@@ -2,6 +2,7 @@ from scene3d import train_eval_pipeline_v9  # TODO
 from os import path
 from scene3d.dataset import v9
 from scene3d import config
+from scene3d import io_utils
 
 skipped = [
     'e5e5e9fb2f46af947a72644a9c3fff51/000008',
@@ -14,6 +15,7 @@ skipped = [
     '7ab013e1a9f291b791575f341e711e6a/000022',
     'eeb725e88e257a39abaafeb0dff1753b/000003',
     '76911d7f0e62db7fc33de4b4f6e1a17c/000056',
+    '3099b4289757325d3ca9f267035a15f0/000013',
 ]
 
 
@@ -48,5 +50,27 @@ def main():
     pr_eval.save()
 
 
+def main_scannet():
+    pkl_filename = path.join(config.default_out_root, 'v9_pr_curves/pr_curve_scannet__1.pkl')
+    pr_eval = train_eval_pipeline_v9.PRCurveEvaluationScanNet(save_filename=pkl_filename)
+
+    # names = io_utils.read_lines_and_strip('/data4/scannet_frustum_clipped/test_2000__shuffled_0001_of_0005.txt')
+    names = io_utils.read_lines_and_strip('/data4/scannet_frustum_clipped/test_2000__shuffled_0003_of_0005.txt')
+
+    for i in range(len(names)):
+        example = {
+            'name': names[i]
+        }
+        print(i, example['name'])
+        if example['name'] in skipped:
+            print('skipped')
+            continue
+        pr_eval.run_evaluation(example)
+        if i % 2 == 0:
+            pr_eval.save()
+    pr_eval.save()
+
+
 if __name__ == '__main__':
-    main()
+    # main()
+    main_scannet()

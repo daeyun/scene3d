@@ -2102,6 +2102,221 @@ class PRCurveEvaluation(object):
                 target[k] = source[k]
 
 
+class PRCurveEvaluationScanNet(object):
+    def __init__(self, save_filename):
+        self.save_filename = save_filename
+        self.load()
+
+        step = 0.01
+        self.thresholds = np.array([0.001, 0.003, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04] + np.arange(0.05, 1 + step, step).tolist() + np.arange(1 + step * 2, 2 + step, step * 2).tolist())
+        self.density = 2500
+
+    def load(self):
+        try:
+            with portalocker.Lock(self.save_filename, mode='rb', timeout=10) as f:
+                self.results = pickle.load(f)
+        except FileNotFoundError as ex:
+            log.info('File not found. Initializing an empty dict. {}'.format(self.save_filename))
+            self.results = {}
+
+    def key(self, pred_or_gt, target_type, source_list):
+        assert pred_or_gt in ['pred', 'gt_depth']
+        assert target_type in ['obj', 'background', 'both']
+        if isinstance(source_list, str):
+            source_list = [source_list]
+        assert isinstance(source_list, (tuple, list)), source_list
+        return ','.join([pred_or_gt.strip(), target_type.strip(), '+'.join(sorted(source_list))])
+
+    def is_mesh_empty(self, mesh_filename):
+        if isinstance(mesh_filename, (list, tuple)):
+            return np.all([self.is_mesh_empty(item) for item in mesh_filename])
+        return path.getsize(mesh_filename) < 190 or not path.isfile(mesh_filename)
+
+    def mesh_precision_recall(self, gt_mesh_filenames, pred_mesh_filenames):
+        assert isinstance(gt_mesh_filenames, (list, tuple))
+        assert isinstance(pred_mesh_filenames, (list, tuple))
+        assert gt_mesh_filenames
+        assert pred_mesh_filenames
+
+        if self.is_mesh_empty(gt_mesh_filenames):
+            log.error('GT mesh is empty. This should not happen.    {}'.format(gt_mesh_filenames))
+            raise RuntimeError()
+        if self.is_mesh_empty(pred_mesh_filenames):
+            log.warn('Nothing was predicted. Precision=1, Recall=0')
+            return {'p': 1.0, 'r': 0.0, }  # for all thresholds.
+
+        precision, recall = depth_mesh_utils_cpp.mesh_precision_recall(gt_mesh_filenames, pred_mesh_filenames, self.density, thresholds=self.thresholds)
+        return {'p': precision, 'r': recall}
+
+    def run_if_not_exists(self, example_name, key, gt_mesh_filenames, pred_mesh_filenames, force=False):
+        assert isinstance(gt_mesh_filenames, (list, tuple))
+        assert isinstance(pred_mesh_filenames, (list, tuple))
+        assert gt_mesh_filenames
+        assert pred_mesh_filenames
+
+        if example_name not in self.results:
+            self.results[example_name] = {}
+        if not force and self.check_already_computed(example_name, key):
+            log.info('Already computed. Skipping. {}'.format(example_name, key))
+            return
+        pr = self.mesh_precision_recall(gt_mesh_filenames, pred_mesh_filenames)
+        self.results[example_name][key] = pr
+
+    def names(self):
+        return list(self.results.keys())
+
+    def check_already_computed(self, name, key):
+        key = self.force_string_key(key)
+        if key not in self.results[name]:
+            return False
+        elif 'p' not in self.results[name][key]:
+            return False
+        elif 'r' not in self.results[name][key]:
+            return False
+        elif (isinstance(self.results[name][key]['p'], (tuple, list)) and len(self.results[name][key]['p']) == 0) or self.results[name][key]['p'] is None:
+            return False
+        elif (isinstance(self.results[name][key]['r'], (tuple, list)) and len(self.results[name][key]['r']) == 0) or self.results[name][key]['r'] is None:
+            return False
+        return True
+
+    def count(self, key):
+        ret = 0
+        for name in self.names():
+            if self.check_already_computed(name, key):
+                ret += 1
+        return ret
+
+    def save(self):
+        log.info('Saving {}'.format(self.save_filename))
+        # TODO: merge before overwriting.
+        with portalocker.Lock(self.save_filename, mode='wb', timeout=10) as f:
+            pickle.dump(self.results, f)
+
+    def update(self, other):
+        assert isinstance(other, PRCurveEvaluation)
+        PRCurveEvaluation.dict_merge(self.results, other.results)
+
+    def all_keys(self):
+        return sorted(set(itertools.chain(*[list(item.keys()) for item in self.results.values()])))
+
+    def run_evaluation(self, example):
+        """
+        This is the main function.
+        """
+        assert isinstance(example, dict)
+        assert 'name' in example
+
+        name = example['name']
+        gt_mesh = path.join(config.scannet_frustum_clipped_root, name, 'meshes.obj')
+
+        pred_depths = sorted(glob.glob('/data4/out/scene3d/v9_scannet_pred_depth_mesh/{}/pred_*.ply'.format(name)))
+        assert len(pred_depths) == 5, pred_depths
+        pred_overhead = '/data4/out/scene3d/v9_scannet_pred_depth_mesh/{}/overhead_fg_clipped.ply'.format(name)
+        assert path.isfile(pred_overhead), pred_overhead
+        assert path.isfile(gt_mesh)
+
+        f3d_layout = '/data4/out/scene3d/factored3d_pred/scannet/{}/layout_farclipped_transformed_clipped.ply'.format(name)
+        f3d_objects = '/data4/out/scene3d/factored3d_pred/scannet/{}/codes_transformed_clipped.ply'.format(name)
+        assert path.isfile(f3d_objects)
+        assert path.isfile(f3d_layout)
+        assert path.isfile(gt_mesh)
+
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_mesh], [pred_depths[0]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['4']), [gt_mesh], [pred_depths[4]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_mesh], [pred_overhead])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', '4']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_depths[4]])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', '4', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_depths[4], pred_overhead])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_overhead])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['0', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_overhead])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['f3d_obj']), [gt_mesh], [f3d_objects])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['f3d_room']), [gt_mesh], [f3d_layout])
+        self.run_if_not_exists(name, self.key('pred', 'both', ['f3d_both']), [gt_mesh], [f3d_objects, f3d_layout])
+
+    def as_array(self, key, precision_or_recall):
+        key = self.force_string_key(key)
+        assert isinstance(key, str)
+        assert precision_or_recall in ['p', 'r']
+
+        collected = []
+        names = list(self.results.keys())
+        for name in names:
+            if key in self.results[name]:
+                pr = self.results[name][key]
+                if precision_or_recall in pr:
+                    values = pr[precision_or_recall]
+                    if isinstance(values, float):
+                        values = np.full(self.thresholds.shape, values, dtype=np.float32)
+                    collected.append(values)
+
+        print('{} measurements in key {}'.format(len(collected), key))
+
+        if len(collected) == 0:
+            raise RuntimeError('not found')
+
+        y = np.array(collected)
+        return y
+
+    def mean(self, key, precision_or_recall):
+        return self.as_array(key=key, precision_or_recall=precision_or_recall).mean(axis=0)
+
+    def std(self, key, precision_or_recall):
+        return self.as_array(key=key, precision_or_recall=precision_or_recall).std(axis=0)
+
+    def force_string_key(self, key):
+        if isinstance(key, str):
+            return key
+        elif isinstance(key, (tuple, list)):
+            pred_or_gt, target_type, source_list = key
+            return self.key(pred_or_gt, target_type, source_list)
+        raise RuntimeError('key error: {}'.format(key))
+
+    def plot(self, key, precision_or_recall, max_threshold, plot_quantile=False, **kwargs):
+        key = self.force_string_key(key)
+        assert isinstance(key, str)
+        assert precision_or_recall in ['p', 'r']
+        import matplotlib.pyplot as pt
+        arr = self.as_array(key, precision_or_recall)
+        y = np.mean(arr, axis=0)
+        x = self.thresholds
+
+        end = (x <= max_threshold).sum() + 1
+        x = x[:end]
+        y = y[:end]
+
+        pt.plot(x, y, **kwargs)
+
+        if plot_quantile:
+            color = kwargs.get('color', None)
+            upper = np.quantile(arr, q=0.75, axis=0)[:end]
+            lower = np.quantile(arr, q=0.25, axis=0)[:end]
+            pt.fill_between(x, lower, upper, alpha=0.1, facecolor=color, antialiased=True)
+
+    def value(self, key, precision_or_recall, x):
+        key = self.force_string_key(key)
+        assert isinstance(key, str)
+        assert precision_or_recall in ['p', 'r']
+        arr = self.as_array(key, precision_or_recall)
+        y = np.mean(arr, axis=0)
+        try:
+            index = np.where(np.isclose(self.thresholds, x))[0][0]
+        except IndexError:
+            raise ValueError('x={} is not in thresholds. x must be one of the values in self.thresholds.'.format(x))
+        return y[index]
+
+    @staticmethod
+    def dict_merge(target, source):
+        """https://gist.github.com/angstwad/bf22d1822c38a92ec0a9
+        """
+        assert isinstance(target, dict)
+        assert isinstance(source, dict)
+        for k, v in source.items():
+            if (k in target and isinstance(target[k], dict) and isinstance(source[k], collections.Mapping)):
+                PRCurveEvaluation.dict_merge(target[k], source[k])
+            else:
+                target[k] = source[k]
+
+
 def nyu_pointcloud(name, out_filename):
     m = sio.loadmat(path.join(config.nyu_root, 'depth/{}.mat'.format(name)))
 

@@ -2592,6 +2592,56 @@ def save_height_prediction_as_meshes(height_map_model_batch_out, hm_model, origi
     return out_ply_filenames
 
 
+def save_height_prediction_as_meshes_scannet(height_map_model_batch_out, hm_model, original_camera_filenames, example_names, heights, thetas):
+    import uuid
+
+    out_ply_filenames = []
+
+    assert len(original_camera_filenames) == len(height_map_model_batch_out['pred_cam'])
+    for i, row in enumerate(height_map_model_batch_out['pred_cam']):
+        assert row.shape[0] == 4
+        random_string = uuid.uuid4().hex
+        new_cam_filename = path.join(hm_model.transformer.tmp_out_root, 'eval_world_ortho_cam_{}.txt'.format(random_string))
+        x, y, scale, theta = row.tolist()
+        assert np.isclose(theta, thetas[i])
+        if path.isfile(new_cam_filename):
+            os.remove(new_cam_filename)
+
+        with open(original_camera_filenames[i], 'r') as f:
+            lines = f.readlines()
+        items = lines[0].strip().split()
+        ref_cam_components = items[:1] + [float(item) for item in items[1:]]
+
+        feat.make_overhead_camera_file_scannet(new_cam_filename, x, y, scale, theta, ref_cam=ref_cam_components, camera_height_z=heights[i])
+        print('Theta:  {}'.format(theta))
+        assert path.isfile(new_cam_filename)
+
+        overhead_heightmap = height_map_model_batch_out['pred_height_map'][i].squeeze()
+        overhead_depth = heights[i] - overhead_heightmap
+
+        out_filename_bg = path.join(config.default_out_root, 'v9_scannet_pred_depth_mesh/{}/overhead_bg.ply'.format(example_names[i]))  # TODO
+        out_filename_fg = path.join(config.default_out_root, 'v9_scannet_pred_depth_mesh/{}/overhead_fg.ply'.format(example_names[i]))  # TODO
+
+        overhead_depth_bg = overhead_depth.copy()
+        overhead_depth_bg[overhead_heightmap > 0.01] = np.nan
+
+        overhead_depth_fg = overhead_depth.copy()
+        overhead_depth_fg[overhead_heightmap <= 0.01] = np.nan
+
+        print('Out ', out_filename_fg)
+        depth_mesh_utils_cpp.depth_to_mesh(overhead_depth_fg, camera_filename=new_cam_filename, camera_index=1, dd_factor=6, out_ply_filename=out_filename_fg)
+        depth_mesh_utils_cpp.depth_to_mesh(overhead_depth_bg, camera_filename=new_cam_filename, camera_index=1, dd_factor=6, out_ply_filename=out_filename_bg)
+
+        out_ply_filenames.append([out_filename_bg, out_filename_fg])  # list of lists.
+
+        if path.isfile(new_cam_filename):
+            os.remove(new_cam_filename)
+
+    assert len(out_ply_filenames) == len(example_names)
+
+    return out_ply_filenames
+
+
 def save_height_mesh(overhead_heightmap, x, y, scale, theta, original_camera_filename, example_name):
     import uuid
 
@@ -2659,6 +2709,15 @@ def save_height_map_output_batch(height_map_model_batch_out, example_names):
     return ret
 
 
+def save_height_map_output_batch_of_size_one_scannet(height_map_model_batch_out, name):
+    pred = height_map_model_batch_out['pred_height_map']
+    out_file = path.join(config.default_out_root, 'v9_scannet_pred_depth_mesh/{}/overhead_fg.ply'.format(name))
+    io_utils.ensure_dir_exists(path.dirname(out_file))
+    io_utils.save_array_compressed(out_file, pred[0].squeeze())  # (300, 300)
+
+    return out_file
+
+
 def mesh_precision_recall_parallel(gt_pred_filename_pairs, sampling_density, thresholds):
     pool = ThreadPool(5)
 
@@ -2692,7 +2751,7 @@ def predict_cam_params(regression_model, feature_extrator_model, rgb_batch) -> n
 
 
 class HeightMapModel(object):
-    def __init__(self, checkpoint_filenames, device_id=0):
+    def __init__(self, checkpoint_filenames, device_id=0, num_transformer_workers=5):
         self.checkpoint_filenames = checkpoint_filenames
         self.device_id = device_id
         assert 'pose_3param' in self.checkpoint_filenames
@@ -2731,7 +2790,7 @@ class HeightMapModel(object):
                 depth_checkpoint_filename=depth_checkpoint_filename,
                 segmentation_checkpoint_filename=segmentation_checkpoint_filename,
                 device_id=self.device_id,
-                num_workers=5,
+                num_workers=num_transformer_workers,
                 cam_param_regression_model=self.regression_model,
                 cam_param_feature_extractor_model=self.regression_feature_extractor_model,
                 gating_function_index=0,
@@ -2767,6 +2826,11 @@ class HeightMapModel(object):
             assert pred_height_map.shape[1] == 1, pred_height_map.shape
             pred_height_map_np = torch_utils.recursive_torch_to_numpy(pred_height_map)
             pred_height_map_np[:, 0][argmax_l1 == 34] = 0  # set background to height zero.
+
+            import matplotlib.pyplot as pt
+            segres = SegmentationResultQualitativeSingleLayer()
+            pt.figure()
+            pt.imshow(segres.colorize_segmentation(argmax_l1[0]))
 
             if visualize_indices:
                 import matplotlib.pyplot as pt

@@ -1,5 +1,7 @@
 from pprint import pprint
 import glob
+import numpy.linalg as la
+import math
 import os
 import shutil
 import shutil
@@ -442,6 +444,9 @@ class ScannetMeshGenerator(object):
         self.example = None
 
         self.visualize = False
+        self.camera_height = None
+        self.cam = None
+        self.gravity_angle = None
 
     def minsub_rgb(self, img):
         rgb_mean = np.array([178.1781, 158.5039, 142.5141], dtype=np.float32)  # same value as training set
@@ -473,6 +478,17 @@ class ScannetMeshGenerator(object):
         self.input_image = img
         self.input_image_meansub_cuda = torch.Tensor(self.minsub_rgb(img.transpose(2, 0, 1))[None]).cuda()
         self.input_image_name = name
+
+        with open(self.filename_cam_info, 'rb') as f:
+            c = pickle.load(f)
+
+        self.camera_height = c['height']
+        self.cam = camera.OrthographicCamera.from_Rt(Rt=la.inv(c['pose'])[:3], is_world_to_cam=True)
+        self.cam.viewdir *= -1
+        self.cam.up_vector *= -1
+        self.gravity_angle = float(math.acos(np.inner(self.cam.viewdir, np.array([0, 0, -1], dtype=np.float64))))
+
+        print(c.keys())
 
     def generate_mesh(self, force=True):
         """
