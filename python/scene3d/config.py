@@ -83,6 +83,7 @@ elif hostname == 'daeyun-lab':
     nyu_root = '/data3/nyu'
     overhead_pred_out_root = '/data4/out/scene3d'
     scannet_frustum_clipped_root = '/home/daeyun/mnt/frustum'
+    scannet_frustum_clipped_highres_root = '/data4/frustum_new'
 
     factored3d_mesh_dir = '/data4/out/scene3d/factored3d_pred'  # output of the script in my fork of the repo
 

@@ -4,6 +4,7 @@ import gzip
 import scipy.misc
 import portalocker
 import pickle
+import shutil
 import glob
 import time
 import typing
@@ -28,6 +29,7 @@ from scene3d import log
 from scene3d import pbrs_utils
 from scene3d import loss_fn
 from scene3d import torch_utils
+from scene3d import transforms
 from scene3d.dataset import dataset_utils
 from scene3d.dataset import v1
 from scene3d.dataset import v2
@@ -1968,6 +1970,10 @@ class PRCurveEvaluation(object):
         self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3', '4']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], gt_depths[4]])
         self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '1', '2', '3', '4', 'overhead_fg']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[1], gt_depths[2], gt_depths[3], gt_depths[4], gt_overhead_fg])
 
+        # LDI
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '2', '4']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[2], gt_depths[4]])
+        self.run_if_not_exists(name, self.key('gt_depth', 'both', ['0', '2']), [gt_bg, gt_objects], [gt_depths[0], gt_depths[2]])
+
         self.run_if_not_exists(name, self.key('pred', 'obj', ['0']), [gt_objects], [pred_depths[0]])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['1']), [gt_objects], [pred_depths[1]])
         self.run_if_not_exists(name, self.key('pred', 'obj', ['2']), [gt_objects], [pred_depths[2]])
@@ -2111,6 +2117,8 @@ class PRCurveEvaluationScanNet(object):
         self.thresholds = np.array([0.001, 0.003, 0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.04] + np.arange(0.05, 1 + step, step).tolist() + np.arange(1 + step * 2, 2 + step, step * 2).tolist())
         self.density = 2500
 
+        self.first_n = None
+
     def load(self):
         try:
             with portalocker.Lock(self.save_filename, mode='rb', timeout=10) as f:
@@ -2207,13 +2215,15 @@ class PRCurveEvaluationScanNet(object):
         assert 'name' in example
 
         name = example['name']
-        gt_mesh = path.join(config.scannet_frustum_clipped_root, name, 'meshes.obj')
+        # gt_mesh = path.join(config.scannet_frustum_clipped_root, name, 'meshes.obj')
+        gt_mesh = path.join(config.scannet_frustum_clipped_highres_root, name, 'meshes.obj')
 
-        pred_depths = sorted(glob.glob('/data4/out/scene3d/v9_scannet_pred_depth_mesh/{}/pred_*.ply'.format(name)))
-        assert len(pred_depths) == 5, pred_depths
-        pred_overhead = '/data4/out/scene3d/v9_scannet_pred_depth_mesh/{}/overhead_fg_clipped.ply'.format(name)
-        assert path.isfile(pred_overhead), pred_overhead
-        assert path.isfile(gt_mesh)
+        # TODO
+        # pred_depths = sorted(glob.glob('/data4/out/scene3d/v9_scannet_pred_depth_mesh/{}/pred_*.ply'.format(name)))
+        # assert len(pred_depths) == 5, pred_depths
+        # pred_overhead = '/data4/out/scene3d/v9_scannet_pred_depth_mesh/{}/overhead_fg_clipped.ply'.format(name)
+        # assert path.isfile(pred_overhead), pred_overhead
+        # assert path.isfile(gt_mesh)
 
         f3d_layout = '/data4/out/scene3d/factored3d_pred/scannet/{}/layout_farclipped_transformed_clipped.ply'.format(name)
         f3d_objects = '/data4/out/scene3d/factored3d_pred/scannet/{}/codes_transformed_clipped.ply'.format(name)
@@ -2221,14 +2231,14 @@ class PRCurveEvaluationScanNet(object):
         assert path.isfile(f3d_layout)
         assert path.isfile(gt_mesh)
 
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_mesh], [pred_depths[0]])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['4']), [gt_mesh], [pred_depths[4]])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_mesh], [pred_overhead])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3]])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', '4']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_depths[4]])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', '4', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_depths[4], pred_overhead])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_overhead])
-        self.run_if_not_exists(name, self.key('pred', 'both', ['0', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_overhead])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0']), [gt_mesh], [pred_depths[0]])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['4']), [gt_mesh], [pred_depths[4]])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['overhead_fg']), [gt_mesh], [pred_overhead])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3]])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', '4']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_depths[4]])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', '4', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_depths[4], pred_overhead])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', '1', '2', '3', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_depths[1], pred_depths[2], pred_depths[3], pred_overhead])
+        # self.run_if_not_exists(name, self.key('pred', 'both', ['0', 'overhead_fg']), [gt_mesh], [pred_depths[0], pred_overhead])
         self.run_if_not_exists(name, self.key('pred', 'both', ['f3d_obj']), [gt_mesh], [f3d_objects])
         self.run_if_not_exists(name, self.key('pred', 'both', ['f3d_room']), [gt_mesh], [f3d_layout])
         self.run_if_not_exists(name, self.key('pred', 'both', ['f3d_both']), [gt_mesh], [f3d_objects, f3d_layout])
@@ -2248,6 +2258,8 @@ class PRCurveEvaluationScanNet(object):
                     if isinstance(values, float):
                         values = np.full(self.thresholds.shape, values, dtype=np.float32)
                     collected.append(values)
+                    if self.first_n and len(collected) >= self.first_n:
+                        break
 
         print('{} measurements in key {}'.format(len(collected), key))
 
@@ -2342,3 +2354,262 @@ def nyu_rgb_image(name):
     img = io_utils.read_jpg(path.join(config.nyu_root, 'images/{}.jpg'.format(name)))[3:-3]
     resized = scipy.misc.imresize(img, (240, 320))
     return resized
+
+
+def convert_mesh_to_camcoord(mesh_filename, camera_filename):
+    if isinstance(mesh_filename, str):
+        fv = io_utils.read_mesh_assimp(mesh_filename)
+    else:
+        fv = mesh_filename
+    cam_line = [float(item) for item in io_utils.read_lines_and_strip(camera_filename)[0].split()[1:]]
+    cam_pos = np.array(cam_line[:3])
+    cam_viewdir = np.array(cam_line[3:6])
+    cam_up = np.array(cam_line[6:9])
+    R = transforms.lookat_matrix(cam_pos, obj_xyz=cam_pos + cam_viewdir, up=cam_up)
+    v_transformed = R.dot(np.concatenate([fv['v'], np.ones((fv['v'].shape[0], 1))], 1).T).T
+    fv['v'] = v_transformed
+    return fv
+
+
+def convert_binvox_to_pcl(binvox_filename):
+    from third_party import binvox_rw
+    with open(binvox_filename, 'rb') as f:
+        model = binvox_rw.read_as_3d_array(f)
+    pts = (np.vstack(np.where(model.data)).T + 0.5) / model.dims * model.scale + model.translate
+    voxel_pcl_file = binvox_filename.replace('.binvox', '_binvox_pcl.ply')
+    io_utils.save_simple_points_ply(voxel_pcl_file, pts)
+
+
+def binvox_iou(filename1, filename2):
+    from third_party import binvox_rw
+    if isinstance(filename1, str):
+        with open(filename1, 'rb') as f:
+            vox1 = binvox_rw.read_as_3d_array(f).data.copy()
+    else:
+        vox1 = filename1
+
+    if isinstance(filename2, str):
+        with open(filename2, 'rb') as f:
+            vox2 = binvox_rw.read_as_3d_array(f).data.copy()
+    else:
+        vox2 = filename2
+
+    iou = float((vox1 & vox2).sum()) / (vox1 | vox2).sum()
+    return iou
+
+
+def voxels_to_mesh(pred_vol, thresh=0.5):
+    # import mcubes
+    # pred_vol_thresholded = np.pad(pred_vol, [(1, 1), (1, 1), (1, 1)], 'constant', constant_values=(0,)) > thresh
+    # v_all, f_all = mcubes.marching_cubes(pred_vol_thresholded, thresh)
+    # v_all = v_all - 1 + 0.5  # undo padding offset
+    # return v_all, f_all
+
+    # code from factored3d
+    cube_v = np.array([[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]])
+    cube_v = cube_v - 0.5
+    cube_f = np.array([[1, 7, 5], [1, 3, 7], [1, 4, 3], [1, 2, 4], [3, 8, 7], [3, 4, 8], [5, 7, 8], [5, 8, 6], [1, 5, 6], [1, 6, 2], [2, 6, 8], [2, 8, 4]]).astype(np.int)
+    v_counter = 0
+    tot_points = np.greater(pred_vol, thresh).sum()
+    v_all = np.tile(cube_v, [tot_points, 1])
+    f_all = np.tile(cube_f, [tot_points, 1])
+    f_offset = np.tile(np.linspace(0, 12 * tot_points - 1, 12 * tot_points), 3).reshape(3, 12 * tot_points).transpose()
+    f_offset = (f_offset // 12 * 8).astype(np.int)
+    f_all += f_offset
+    for x in range(pred_vol.shape[0]):
+        for y in range(pred_vol.shape[1]):
+            for z in range(pred_vol.shape[2]):
+                if pred_vol[x, y, z] > thresh:
+                    radius = pred_vol[x, y, z]
+                    v_all[v_counter:v_counter + 8, :] *= radius
+                    v_all[v_counter:v_counter + 8, :] += (np.array([[x, y, z]]) + 0.5)
+                    v_counter += 8
+    return v_all, f_all - 1
+
+
+def convert_binvox_to_mesh(binvox_filename):
+    from third_party import binvox_rw
+    with open(binvox_filename, 'rb') as f:
+        model = binvox_rw.read_as_3d_array(f)
+
+    v, f = voxels_to_mesh(model.data, thresh=0.95)
+    v = v / model.dims * model.scale + model.translate
+    fv = {'f': f, 'v': v, }
+
+    out_file = binvox_filename.replace('.binvox', '_binvox_mesh.off')
+    io_utils.save_off(fv, out_file)
+
+
+def carve_y(overhead_only_voxel_file, all_voxel_file):
+    from third_party import binvox_rw
+    with open(overhead_only_voxel_file, 'rb') as f:
+        model = binvox_rw.read_as_3d_array(f)
+    ovh_vox = model.data.copy()
+
+    with open(all_voxel_file, 'rb') as f:
+        model2 = binvox_rw.read_as_3d_array(f)
+    all_vox = model2.data.copy()
+
+    dx, _, dz = ovh_vox.shape
+    for xi in range(dx):
+        for zi in range(dz):
+            col = ovh_vox[xi, :, zi]
+            nz = np.nonzero(col)[0]
+            if nz.size == 0:
+                continue
+            all_vox[xi, nz[-1] + 1:, zi] = 0
+
+    return all_vox
+
+
+class VoxelIoUEvaluation(object):
+    def __init__(self, save_filename):
+        self.save_filename = save_filename
+        self.load()
+
+    def load(self):
+        try:
+            with portalocker.Lock(self.save_filename, mode='rb', timeout=10) as f:
+                self.results = pickle.load(f)
+        except FileNotFoundError as ex:
+            log.info('File not found. Initializing an empty dict. {}'.format(self.save_filename))
+            self.results = {}
+
+    def key(self, pred_or_gt, target_type, source_list):
+        assert pred_or_gt in ['pred', 'gt_depth']
+        assert target_type in ['obj']
+        if isinstance(source_list, str):
+            source_list = [source_list]
+        assert isinstance(source_list, (tuple, list)), source_list
+        return ','.join([pred_or_gt.strip(), target_type.strip(), '+'.join(sorted(source_list))])
+
+    def run_evaluation(self, example):
+        """
+        This is the main function.
+        """
+        assert isinstance(example, dict)
+        assert 'name' in example
+
+        name = example['name']
+        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(name)
+
+        gt_bg, gt_objects = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/gt*.ply'.format(house_id, camera_id))))
+        gt_depths = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/d*.ply'.format(house_id, camera_id))))
+        assert len(gt_depths) == 5
+
+        gt_overhead_fg = sorted(glob.glob(path.join(config.default_out_root, 'v9_gt_overhead_mesh/{}/{}/overhead_fg.ply'.format(house_id, camera_id))))
+        assert len(gt_overhead_fg) == 1
+        gt_overhead_fg = gt_overhead_fg[0]
+        assert path.exists(gt_overhead_fg)
+
+        pred_depths = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
+        assert len(pred_depths) == 5
+
+        pred_overhead_fg = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/overhead_fg_clipped.ply'.format(house_id, camera_id))))
+        assert len(pred_overhead_fg) == 1
+        pred_overhead_fg = pred_overhead_fg[0]
+
+        print('gt_depths', gt_depths)
+        print('gt_objects', gt_objects)
+        print('pred_depths', pred_depths)
+
+        # Not thread safe.
+        voxel_related_data_out_basedir = '/home/daeyun/mnt/ramdisk/voxels_data'
+        for fname in glob.glob(path.join(voxel_related_data_out_basedir, '*')):
+            os.remove(fname)
+
+        camera_filename = example['camera_filename']
+        fv = convert_mesh_to_camcoord(gt_objects, camera_filename)
+        gt_objects_camcoord = path.join(voxel_related_data_out_basedir, 'gt_objects_camcoord.off')
+        io_utils.save_off(fv, gt_objects_camcoord)
+
+        # vox_res = 64
+        vox_res = 50
+        vox_method_flags = '-e'
+
+        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, gt_objects_camcoord))
+        gt_object_voxel_file = gt_objects_camcoord.replace('.off', '.binvox')
+        convert_binvox_to_pcl(gt_object_voxel_file)
+        convert_binvox_to_mesh(gt_object_voxel_file)
+
+        ret = {}
+
+        # f3d voxelization
+        f3d_pred = path.join(config.default_out_root_v8, 'factored3d_pred/{}/{}/codes_transformed_clipped.ply'.format(house_id, camera_id))
+        assert path.isfile(f3d_pred), f3d_pred
+        fv = convert_mesh_to_camcoord(f3d_pred, camera_filename)
+        f3d_objects_camcoord = path.join(voxel_related_data_out_basedir, 'f3d_objects_camcoord.off')
+        io_utils.save_off(fv, f3d_objects_camcoord)
+
+        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, f3d_objects_camcoord))
+        f3d_objects_voxel_file = f3d_objects_camcoord.replace('.off', '.binvox')
+        convert_binvox_to_pcl(f3d_objects_voxel_file)
+        convert_binvox_to_mesh(f3d_objects_voxel_file)
+
+        iou = binvox_iou(f3d_objects_voxel_file, gt_object_voxel_file)
+        print('IoU_f3d', iou)
+        ret['IoU_f3d'] = iou
+
+        # depth overhead only
+        depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in [pred_overhead_fg]]
+        # depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in pred_depths[:4]]
+
+        depth_meshes_merged = io_utils.merge_meshes(*depth_meshes_fv_list)
+        fv = convert_mesh_to_camcoord(depth_meshes_merged, camera_filename)
+        depth_objects_camcoord = path.join(voxel_related_data_out_basedir, 'depth_meshes_ovh_camcoord.off')
+        io_utils.save_off(fv, depth_objects_camcoord)
+        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
+        depth_ovh_voxel_file = depth_objects_camcoord.replace('.off', '.binvox')
+        convert_binvox_to_pcl(depth_ovh_voxel_file)
+        convert_binvox_to_mesh(depth_ovh_voxel_file)
+        iou = binvox_iou(depth_ovh_voxel_file, gt_object_voxel_file)
+        print('IoU_overheadonly', iou)
+        ret['IoU_overheadonly'] = iou
+
+        # depth voxelization no overhead
+        depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in pred_depths[:4]]
+        # depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in pred_depths[:4]]
+
+        depth_meshes_merged = io_utils.merge_meshes(*depth_meshes_fv_list)
+        fv = convert_mesh_to_camcoord(depth_meshes_merged, camera_filename)
+        depth_objects_camcoord = path.join(voxel_related_data_out_basedir, 'depth_meshes_frontal4_camcoord.off')
+        io_utils.save_off(fv, depth_objects_camcoord)
+        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
+        depth_objects_voxel_file = depth_objects_camcoord.replace('.off', '.binvox')
+        convert_binvox_to_pcl(depth_objects_voxel_file)
+        convert_binvox_to_mesh(depth_objects_voxel_file)
+
+        iou = binvox_iou(depth_objects_voxel_file, gt_object_voxel_file)
+        print('IoU_frontaldepthonly', iou)
+        ret['IoU_frontaldepthonly'] = iou
+
+        # depth voxelization
+        depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in pred_depths[:4] + [pred_overhead_fg]]
+        # depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in pred_depths[:4]]
+
+        depth_meshes_merged = io_utils.merge_meshes(*depth_meshes_fv_list)
+        fv = convert_mesh_to_camcoord(depth_meshes_merged, camera_filename)
+        depth_objects_camcoord = path.join(voxel_related_data_out_basedir, 'depth_meshes_frontal4_and_ovh_camcoord.off')
+        io_utils.save_off(fv, depth_objects_camcoord)
+        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
+        depth_objects_voxel_file = depth_objects_camcoord.replace('.off', '.binvox')
+        convert_binvox_to_pcl(depth_objects_voxel_file)
+        convert_binvox_to_mesh(depth_objects_voxel_file)
+
+        iou = binvox_iou(depth_objects_voxel_file, gt_object_voxel_file)
+        print('IoU_alldepths', iou)
+        ret['IoU_alldepths'] = iou
+
+        # carved_voxels
+        carved_voxels = carve_y(depth_ovh_voxel_file, depth_objects_voxel_file)
+        v, f = voxels_to_mesh(carved_voxels, thresh=0.95)
+        v = v / vox_res * 10 + [-5, -5, -10]
+        carved_fv = {'f': f, 'v': v, }
+        carved_fv_filename = path.join(voxel_related_data_out_basedir, 'carved_vox_mesh.off')
+        io_utils.save_off(carved_fv, carved_fv_filename)
+
+        iou = binvox_iou(carved_voxels, gt_object_voxel_file)
+        print('IoU_carveddepths', iou)
+        ret['IoU_carveddepths'] = iou
+
+        return ret

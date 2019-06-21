@@ -112,6 +112,63 @@ def main(force_indices=tuple()):
         count += 1
 
 
+def save_frontal():
+    depth_checkpoint = path.join(config.default_out_root, 'v9/v9-multi_layer_depth_aligned_background_multi_branch/0/01149000_005_0003355.pth')
+    seg_checkpoint = path.join(config.default_out_root, 'v9/v9-category_nyu40_merged_background-2l/0/01130000_005_0001780.pth')
+
+    # depth_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth')
+    # seg_checkpoint = path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth')
+
+    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    depth_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(depth_checkpoint)
+    print(metadata)
+    seg_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(seg_checkpoint)
+    print(metadata)
+
+    dataset = v9.MultiLayerDepth(
+        split=[
+            # path.join(config.scene3d_root, 'v9/validation_s159.txt'),
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
+            # path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0001_of_0009.txt'),  # sharded for running on multiple machines
+            # path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0002_of_0009.txt'),  # sharded for running on multiple machines
+        ],
+        subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'camera_filename', 'multi_layer_depth_aligned_background'))
+
+    count = 0
+    for i in range(len(dataset)):
+        example = dataset[i]
+        print(count, i, example['name'])
+
+        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(example['name'])
+        pred_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
+
+        depth_pred = depth_model(torch.Tensor(example['rgb'][None]).cuda())
+        seg_pred = seg_model(torch.Tensor(example['rgb'][None]).cuda())
+        assert depth_pred.shape[0] == 1
+        assert seg_pred.shape[0] == 1
+
+        seg_pred_l1 = torch_utils.recursive_torch_to_numpy(seg_pred[:, :40])
+        seg_pred_l2 = torch_utils.recursive_torch_to_numpy(seg_pred[:, 40:])
+        seg_argmax_l1 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred_l1)
+        seg_argmax_l2 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred_l2)
+
+        segmented_depth = train_eval_pipeline.segment_predicted_depth(torch_utils.recursive_torch_to_numpy(depth_pred), seg_argmax_l1, seg_argmax_l2)
+        assert segmented_depth.shape[0] == 1
+        segmented_depth = np.squeeze(segmented_depth)
+
+        # TODO: temporary hardcoded paths
+        io_utils.ensure_dir_exists('/data4/out/scene3d/pred_segmented_depth/{}'.format(example['name']))
+        with open('/data4/out/scene3d/pred_segmented_depth/{}/segmented_depth.pkl'.format(example['name']), 'wb') as f:
+            pickle.dump(segmented_depth, f)
+        with open('/data4/out/scene3d/pred_segmented_depth/{}/raw_depth.pkl'.format(example['name']), 'wb') as f:
+            pickle.dump(torch_utils.recursive_torch_to_numpy(depth_pred), f)
+        with open('/data4/out/scene3d/pred_segmented_depth/{}/example.pkl'.format(example['name']), 'wb') as f:
+            pickle.dump(example, f)
+
+        count += 1
+        print(count)
+
+
 def overhead():
     # need v9 updates
 
@@ -185,4 +242,5 @@ if __name__ == '__main__':
     cudnn.benchmark = True
     # main(force_indices=[426, 440])
     # main()
-    overhead()
+    save_frontal()
+    # overhead()

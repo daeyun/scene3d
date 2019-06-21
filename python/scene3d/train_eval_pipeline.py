@@ -113,6 +113,7 @@ available_experiments = [
     'v9_OVERHEAD_v2_heightmap_05',  # zbuffered, no depth and semantics
 
     'v9_OVERHEAD_v1_segmentation_01',  # semantic segmentation.
+    'v9_OVERHEAD_v2_segmentation_01',  # semantic segmentation.
 ]
 
 available_models = [
@@ -266,6 +267,8 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
 
     elif experiment_name == 'v9_OVERHEAD_v1_segmentation_01':
         dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_all', 'camera_filename', 'overhead_category_nyu40_merged_background'))
+    elif experiment_name == 'v9_OVERHEAD_v2_segmentation_01':
+        dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_all', 'camera_filename', 'overhead_category_nyu40_merged_background'))
     else:
         raise NotImplementedError()
 
@@ -369,6 +372,8 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
         elif experiment_name == 'v9_OVERHEAD_v2_heightmap_05':
             model = unet_overhead.Unet1(in_channels=232 - 48 * 2 - 64 * 2, out_channels=1, ch=(32, 48, 128, 192, 256))
         elif experiment_name == 'v9_OVERHEAD_v1_segmentation_01':
+            model = unet_overhead.Unet1_seg(in_channels=232, out_channels=40, ch=(48, 64, 128, 192, 256))
+        elif experiment_name == 'v9_OVERHEAD_v2_segmentation_01':
             model = unet_overhead.Unet1_seg(in_channels=232, out_channels=40, ch=(48, 64, 128, 192, 256))
         else:
             raise NotImplementedError()
@@ -723,6 +728,31 @@ def compute_loss(pytorch_model: nn.Module, batch, experiment_name: str, frozen_m
         example_name = batch['name']
 
         input_features_all = batch['overhead_features_v9_v1_all'].cuda()
+        assert input_features_all.shape[1] == 232
+        assert input_features_all.dim() == 4
+
+        # 0: best guess depth
+        # 1: frustum visibility map
+        # 2-5: rgb features
+        # 5-53 depth features
+        # 53-117 semantic segmentation features
+        # 117-120: rgb features
+        # 120-168 depth features
+        # 168-232 semantic segmentation features
+
+        input_features = input_features_all
+        assert input_features.shape[1] == 232, input_features.shape[1]
+        target = batch['overhead_category_nyu40_merged_background'].cuda()  # (B, 240, 320)
+        pred = pytorch_model(input_features)  # (B, C, 240, 320)
+        assert pred.shape[1] == 40
+        # nothing should be ignored
+        loss = loss_fn.loss_calc_classification(pred, target, ignore_index=65535)  # ignore empty. background is merged to the wall category (34), which is not ignored.
+        loss_all = loss
+
+    elif experiment_name == 'v9_OVERHEAD_v2_segmentation_01':
+        example_name = batch['name']
+
+        input_features_all = batch['overhead_features_v9_v2_all'].cuda()
         assert input_features_all.shape[1] == 232
         assert input_features_all.dim() == 4
 
@@ -2209,6 +2239,8 @@ class EvaluationV9:
                     dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_nodepthandsemantics', 'camera_filename', 'multi_layer_overhead_depth'))
                 elif experiment == 'v9_OVERHEAD_v1_segmentation_01':
                     dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v1_all', 'camera_filename', 'overhead_category_nyu40_merged_background'))
+                elif experiment == 'v9_OVERHEAD_v2_segmentation_01':
+                    dataset = v9.MultiLayerDepth(split=split_name, subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'overhead_features_v9_v2_all', 'camera_filename', 'overhead_category_nyu40_merged_background'))
                 else:
                     raise NotImplementedError()
         else:
@@ -2800,7 +2832,14 @@ class HeightMapModel(object):
         features, cam, transformer_names = self.transformer._get_transformed_features(batch, [0, 1], use_gt_geometry=False)
         pred_height_map = self.height_map_model.get_output(torch.Tensor(features).cuda())
 
-        return torch_utils.recursive_torch_to_numpy(pred_height_map).squeeze(), features.squeeze()
+        pred_overhead_segmentation = self.overhead_segmentation_model(torch.Tensor(features).cuda())
+        print(pred_overhead_segmentation.shape)
+        print(batch['name'])
+        assert pred_overhead_segmentation.shape[0] == len(batch['name'])
+        assert pred_overhead_segmentation.shape[1] == 40
+        argmax_l1 = semantic_segmentation_from_raw_prediction(pred_overhead_segmentation).astype(np.uint16)
+
+        return torch_utils.recursive_torch_to_numpy(pred_height_map).squeeze(), features.squeeze(), argmax_l1.squeeze()
 
     def predict_height_map(self, batch, visualize_indices=None):
         input_batch = {

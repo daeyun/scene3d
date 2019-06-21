@@ -96,6 +96,11 @@ python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/d
 python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/train_s150.txt --use_gt_geometry=True  --save_dir=/data4/out/scene3d/overhead_gt
 python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/train__shuffled_0013_of_0013.txt --save_dir=/data4/out/scene3d/overhead_pred
 
+python scripts/generate_overhead_features_new.py  --device_id=1  --split_name=/data4/scene3d/v9/validation_s159.txt --use_gt_geometry=True  --save_dir=/data4/out/scene3d/overhead_gt
+
+python scripts/generate_overhead_features_new.py --device_id=1 --split_name=train --save_dir=/data4/out/scene3d/overhead_gt --batch_size=10 --num_data_workers=5 --gating_function_index=0 --num_transformer_workers=5 --use_gt_geometry=1
+python scripts/generate_overhead_features_new.py --device_id=1 --split_name=train --save_dir=/data4/out/scene3d/overhead_zb_gt --batch_size=10 --num_data_workers=5 --gating_function_index=1 --num_transformer_workers=5 --use_gt_geometry=1
+
 
 
 python scripts/generate_overhead_features_new.py --device_id=1 --split_name=/data4/scene3d/v9/test_subset_factored3d.txt --save_dir=/data4/out/scene3d/overhead_pred --batch_size=10 --num_data_workers=5 --gating_function_index=0  --num_transformer_workers=5
@@ -310,7 +315,7 @@ python scripts/generate_overhead_features_new.py  --device_id=3  --split_name=/h
 
 
 # aleph1
-python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_segmentation_01/0 --experiment=v9_OVERHEAD_v1_segmentation_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_segmentation_01/0 --experiment=v9_OVERHEAD_v1_segmentation_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002 --load_checkpoint=most_recent
 
 # aleph0
 python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v1_heightmap_04/0 --experiment=v9_OVERHEAD_v1_heightmap_04 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
@@ -318,6 +323,8 @@ python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/da
 
 # aleph2
 python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_heightmap_01/0 --experiment=v9_OVERHEAD_v2_heightmap_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
+
+python scripts/train.py --batch_size=36 --num_data_workers=9 --save_dir=/home/daeyuns/out_shared/scene3d/v9/v9_OVERHEAD_v2_segmentation_01/0 --experiment=v9_OVERHEAD_v2_segmentation_01 --model=unet_v1_overhead --save_every=1000 --learning_rate=0.0002
 
 
 

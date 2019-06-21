@@ -197,12 +197,19 @@ class Visualizer2(object):
         self.seg_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(self.seg_checkpoint)
         print(metadata)
 
+        # checkpoint_filenames = {
+        #     'pose_3param': path.join(config.default_out_root_v8, 'v8/v8-overhead_camera_pose/0/00420000_018_0014478.pth'),
+        #     # 'overhead_height_map_model': path.join(config.default_out_root_v8, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
+        # }
         checkpoint_filenames = {
-            'pose_3param': path.join(config.default_out_root, 'v8/v8-overhead_camera_pose/0/00420000_018_0014478.pth'),
-            # 'overhead_height_map_model': path.join(config.default_out_root, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
+            'pose_3param': path.join(config.default_out_root_v8, 'v8/v8-overhead_camera_pose/0/00420000_018_0014478.pth'),
+            # 'overhead_height_map_model': path.join(config.default_out_root_v8, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
+            'overhead_height_map_model': path.join(config.default_out_root, 'v9/v9_OVERHEAD_v1_heightmap_01/0/00056000_003_0011546.pth'),
+            'overhead_segmentation_model': path.join(config.default_out_root, 'v9/v9_OVERHEAD_v1_segmentation_01/0/00016000_000_0002000.pth'),
         }
 
-        self.hm_model = train_eval_pipeline.HeightMapModel(checkpoint_filenames, device_id=0)
+        # self.hm_model = train_eval_pipeline.HeightMapModel(checkpoint_filenames, device_id=0)
+        self.hm_model = train_eval_pipeline.HeightMapModel(checkpoint_filenames, device_id=0, num_transformer_workers=1)
 
         self.input_image_meansub_cuda = None
         self.input_image_name = None
@@ -217,9 +224,9 @@ class Visualizer2(object):
         in_rgb *= rgb_scale
         return in_rgb
 
-    def show_input_image(self):
+    def show_input_image(self, scale=1.0):
         print('example_name: {}'.format(self.input_image_name))
-        notebook_utils.quick_show_rgb(self.input_image)
+        notebook_utils.quick_show_rgb(cv2.resize(self.input_image, (int(self.input_image.shape[1] * scale), int(self.input_image.shape[0] * scale))))
 
     def load_pbrs(self, dataset, index):
         self.example = dataset[index]
@@ -237,110 +244,137 @@ class Visualizer2(object):
         seg_pred = self.seg_model(self.input_image_meansub_cuda)
         name = self.input_image_name
 
-        seg_pred_argmax = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred[:, :40])
+        assert seg_pred.shape[0] == 1
+        pred_l1 = seg_pred[:, :40]
+        pred_l2 = seg_pred[:, 40:]
+        argmax_l1 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(pred_l1)
+        argmax_l2 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(pred_l2)
 
         depth_pred_np = torch_utils.recursive_torch_to_numpy(depth_pred)
 
-        segmented_depth = loss_fn.undo_log_depth(train_eval_pipeline.segment_predicted_depth(depth_pred_np, seg_pred_argmax))
-        assert segmented_depth.shape[0] == 1
+        segmented_depth = train_eval_pipeline.segment_predicted_depth(depth_pred_np, argmax_l1, argmax_l2)
         segmented_depth = np.squeeze(segmented_depth)
+        assert segmented_depth.shape[0] == 5, segmented_depth.shape  # making sure this is v9
 
-        segmented_depth_single = segmented_depth.copy()
-
-        nan_mask = np.isnan(segmented_depth_single[0])
-        segmented_depth_single[3][~nan_mask] = np.nan
-
-        out_filename = '/mnt/ramdisk/vis_mesh/single0.ply'
-        depth_mesh_utils_cpp.depth_to_mesh(segmented_depth_single[0], self.example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
-        out_filename = '/mnt/ramdisk/vis_mesh/single1.ply'
-        depth_mesh_utils_cpp.depth_to_mesh(segmented_depth_single[3], self.example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        # out_filename = '/mnt/ramdisk/vis_mesh/single0.ply'
+        # depth_mesh_utils_cpp.depth_to_mesh(segmented_depth_single[0], self.example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
+        # out_filename = '/mnt/ramdisk/vis_mesh/single1.ply'
+        # depth_mesh_utils_cpp.depth_to_mesh(segmented_depth_single[3], self.example['camera_filename'], camera_index=0, dd_factor=10, out_ply_filename=out_filename)
 
         # Factored3d
         # aligned_filenames = f3d_utils.align_factored3d_mesh_with_our_gt('/data3/out/scene3d/factored3d_pred/{}/layout.obj'.format(name), self.example['name'])
 
+        gt_depth = self.example['multi_layer_depth_aligned_background']
+
+        gt_pixel_values = sorted(gt_depth[np.isfinite(gt_depth)].tolist())
+        # minimum and maximum after removing outliers
+        cmin = gt_pixel_values[50]
+        cmax = gt_pixel_values[-50]
+        clim = [cmin, cmax]
+
+        figsize = [20, 8]
+
         ### PREDICTED DEPTH
-        fig = pt.figure(figsize=(20, 8))
-        fig.suptitle('Multi-layer Surface Prediction', fontsize=19, y=0.75, fontweight=500)
+        fig = pt.figure(figsize=figsize)
+        fig.suptitle('Prediction', fontsize=17, y=0.75, x=0.54, fontweight=500)
 
-        ax = fig.add_subplot(141)
-        ax.imshow(segmented_depth[0])
+        ax = fig.add_subplot(151)
+        im = ax.imshow(segmented_depth[0], clim=clim)
         ax.axes.get_xaxis().set_ticks([])
         ax.axes.get_yaxis().set_ticks([])
-        ax.set_title('$D_1$', {'fontsize': 14})
+        ax.set_title('$D_1 \odot M_1$', {'fontsize': 14})
 
-        ax = fig.add_subplot(142)
-        ax.imshow(segmented_depth[1])
+        ax = fig.add_subplot(152)
+        ax.imshow(segmented_depth[1], clim=clim)
         ax.axes.get_xaxis().set_ticks([])
         ax.axes.get_yaxis().set_ticks([])
-        ax.set_title('$D_2$', {'fontsize': 14})
+        ax.set_title('$D_2 \odot M_2$', {'fontsize': 14})
 
-        ax = fig.add_subplot(143)
-        ax.imshow(segmented_depth[2])
+        ax = fig.add_subplot(153)
+        ax.imshow(segmented_depth[2], clim=clim)
         ax.axes.get_xaxis().set_ticks([])
         ax.axes.get_yaxis().set_ticks([])
-        ax.set_title('$D_3$', {'fontsize': 14})
+        ax.set_title('$D_3 \odot M_3$', {'fontsize': 14})
 
-        ax = fig.add_subplot(144)
-        ax.imshow(segmented_depth[3])
+        ax = fig.add_subplot(154)
+        ax.imshow(segmented_depth[3], clim=clim)
         ax.axes.get_xaxis().set_ticks([])
         ax.axes.get_yaxis().set_ticks([])
-        ax.set_title('$D_4$', {'fontsize': 14})
+        ax.set_title('$D_4 \odot M_4$', {'fontsize': 14})
 
-        seg_img = evaluation.colorize_segmentation(seg_pred_argmax[0])
-
-        ### PREDICTED SEGMENTATION
-        fig = pt.figure(figsize=(40, 3.33))
-        ax = fig.add_subplot(141)
-        ax.imshow(seg_img)
+        ax = fig.add_subplot(155)
+        ax.imshow(segmented_depth[4], clim=clim)
         ax.axes.get_xaxis().set_ticks([])
         ax.axes.get_yaxis().set_ticks([])
-        ax.set_title('$D_1$ Segmentation  ($M_1$)', {'fontsize': 14})
+        ax.set_title('$D_5 \odot M_5$', {'fontsize': 14})
 
-        seg_pred_argmax2 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred[:, 40:])
-        seg_pred_argmax2[seg_pred_argmax == 34] = 34
-        seg_img2 = evaluation.colorize_segmentation(seg_pred_argmax2[0])
-        ax = fig.add_subplot(142)
-        ax.imshow(seg_img2)
-        ax.axes.get_xaxis().set_ticks([])
-        ax.axes.get_yaxis().set_ticks([])
-        ax.set_title('$D_3$ Segmentation  ($M_3$)', {'fontsize': 14})
+        fig.subplots_adjust(right=0.96)
+        cbar_ax = fig.add_axes([0.99, 0.365, 0.01, 0.273])
+        fig.colorbar(im, cax=cbar_ax)
+
+        seg_img = evaluation.colorize_segmentation(argmax_l1[0])
+
+        # ### PREDICTED SEGMENTATION
+        # fig = pt.figure(figsize=(40, 3.33))
+        # ax = fig.add_subplot(141)
+        # ax.imshow(seg_img)
+        # ax.axes.get_xaxis().set_ticks([])
+        # ax.axes.get_yaxis().set_ticks([])
+        # ax.set_title('$D_1$ Segmentation  ($M_1$)', {'fontsize': 14})
+        #
+        # seg_img2 = evaluation.colorize_segmentation(argmax_l2[0])
+        # ax = fig.add_subplot(142)
+        # ax.imshow(seg_img2)
+        # ax.axes.get_xaxis().set_ticks([])
+        # ax.axes.get_yaxis().set_ticks([])
+        # ax.set_title('$D_3$ Segmentation  ($M_3$)', {'fontsize': 14})
 
         pt.show()
         print('')
 
         if visualize_gt:
-            gt_depth = self.example['multi_layer_depth_aligned_background']
             ### GT DEPTH
-            fig = pt.figure(figsize=(20, 8))
-            fig.suptitle('Multi-layer Surface Ground Truth', fontsize=19, y=0.75, fontweight=500)
+            fig = pt.figure(figsize=figsize)
+            fig.suptitle('Ground Truth', fontsize=17, y=0.75, x=0.54, fontweight=500)
 
-            ax = fig.add_subplot(141)
-            ax.imshow(gt_depth[0])
+            ax = fig.add_subplot(151)
+            im = ax.imshow(gt_depth[0], clim=clim)
             ax.axes.get_xaxis().set_ticks([])
             ax.axes.get_yaxis().set_ticks([])
-            ax.set_title('$\\bar D_1$', {'fontsize': 14})
+            ax.set_title('$\\bar D_1  \odot \\bar M_1$', {'fontsize': 14})
 
-            ax = fig.add_subplot(142)
-            ax.imshow(gt_depth[1])
+            ax = fig.add_subplot(152)
+            ax.imshow(gt_depth[1], clim=clim)
             ax.axes.get_xaxis().set_ticks([])
             ax.axes.get_yaxis().set_ticks([])
-            ax.set_title('$\\bar D_2$', {'fontsize': 14})
+            ax.set_title('$\\bar D_2  \odot \\bar M_1$', {'fontsize': 14})
 
-            ax = fig.add_subplot(143)
-            ax.imshow(gt_depth[2])
+            ax = fig.add_subplot(153)
+            ax.imshow(gt_depth[2], clim=clim)
             ax.axes.get_xaxis().set_ticks([])
             ax.axes.get_yaxis().set_ticks([])
-            ax.set_title('$\\bar D_3$', {'fontsize': 14})
+            ax.set_title('$\\bar D_3  \odot \\bar M_1$', {'fontsize': 14})
 
-            ax = fig.add_subplot(144)
-            ax.imshow(gt_depth[3])
+            ax = fig.add_subplot(154)
+            ax.imshow(gt_depth[3], clim=clim)
             ax.axes.get_xaxis().set_ticks([])
             ax.axes.get_yaxis().set_ticks([])
-            ax.set_title('$\\bar D_4$', {'fontsize': 14})
+            ax.set_title('$\\bar D_4  \odot \\bar M_1$', {'fontsize': 14})
+
+            ax = fig.add_subplot(155)
+            ax.imshow(gt_depth[4], clim=clim)
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$\\bar D_5  \odot \\bar M_1$', {'fontsize': 14})
 
             gt_seg = self.example['category_nyu40_merged_background'].copy()
             gt_seg[gt_seg == 65535] = 34
             gt_seg = gt_seg.astype(np.uint8)
+
+            fig.subplots_adjust(right=0.96)
+            cbar_ax = fig.add_axes([0.99, 0.365, 0.01, 0.273])
+            fig.colorbar(im, cax=cbar_ax)
+
             seg_img = evaluation.colorize_segmentation(gt_seg[0])
 
             ### GT SEGMENTATION
@@ -351,7 +385,75 @@ class Visualizer2(object):
             ax.axes.get_yaxis().set_ticks([])
             ax.set_title('$\\bar D_1$ Segmentation  ($\\bar M_1$)', {'fontsize': 14})
 
-            seg_img2 = evaluation.colorize_segmentation(gt_seg[2])
+            seg_img2 = evaluation.colorize_segmentation(gt_seg[1])
+            ax = fig.add_subplot(142)
+            ax.imshow(seg_img2)
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$\\bar D_3$ Segmentation  ($\\bar M_3$)', {'fontsize': 14})
+
+            pt.show()
+            print('')
+
+            assert depth_pred_np.shape[0] == 1
+            assert depth_pred_np.shape[1] == 5
+            mae_map = np.abs(depth_pred_np[0] - gt_depth)
+
+            error_clim = [0, 1.5]
+
+            ### Error map
+            fig = pt.figure(figsize=figsize)
+            fig.suptitle('L1 Error Map', fontsize=17, y=0.75, x=0.54, fontweight=500)
+
+            ax = fig.add_subplot(151)
+            im = ax.imshow(mae_map[0], clim=error_clim, cmap='Reds')
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$| D_1 - \\bar D_1 |  \odot \\bar M_1$', {'fontsize': 14})
+
+            ax = fig.add_subplot(152)
+            ax.imshow(mae_map[1], clim=error_clim, cmap='Reds')
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$| D_2 - \\bar D_2 |  \odot \\bar M_2$', {'fontsize': 14})
+
+            ax = fig.add_subplot(153)
+            ax.imshow(mae_map[2], clim=error_clim, cmap='Reds')
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$| D_3 - \\bar D_3 |  \odot \\bar M_3$', {'fontsize': 14})
+
+            ax = fig.add_subplot(154)
+            ax.imshow(mae_map[3], clim=error_clim, cmap='Reds')
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$| D_4 - \\bar D_4 |  \odot \\bar M_4$', {'fontsize': 14})
+
+            ax = fig.add_subplot(155)
+            ax.imshow(mae_map[4], clim=error_clim, cmap='Reds')
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$| D_5 - \\bar D_5 |  \odot \\bar M_5$', {'fontsize': 14})
+
+            gt_seg = self.example['category_nyu40_merged_background'].copy()
+            gt_seg[gt_seg == 65535] = 34
+            gt_seg = gt_seg.astype(np.uint8)
+
+            fig.subplots_adjust(right=0.96)
+            cbar_ax = fig.add_axes([0.99, 0.365, 0.01, 0.273])
+            fig.colorbar(im, cax=cbar_ax)
+
+            seg_img = evaluation.colorize_segmentation(gt_seg[0])
+
+            ### GT SEGMENTATION
+            fig = pt.figure(figsize=(40, 3.33))
+            ax = fig.add_subplot(141)
+            ax.imshow(seg_img)
+            ax.axes.get_xaxis().set_ticks([])
+            ax.axes.get_yaxis().set_ticks([])
+            ax.set_title('$\\bar D_1$ Segmentation  ($\\bar M_1$)', {'fontsize': 14})
+
+            seg_img2 = evaluation.colorize_segmentation(gt_seg[1])
             ax = fig.add_subplot(142)
             ax.imshow(seg_img2)
             ax.axes.get_xaxis().set_ticks([])
@@ -364,66 +466,80 @@ class Visualizer2(object):
 
         input_batch = {
             'rgb': self.input_image_meansub_cuda,
-            'name': 'nyu_0',
+            'name': [self.example['name']],
         }
 
-        out, features = torch_utils.recursive_torch_to_numpy(self.hm_model.predict_height_map_single(input_batch))
+        out, features, overhead_argmax_l1 = torch_utils.recursive_torch_to_numpy(self.hm_model.predict_height_map_single(input_batch))
 
-        f, axarr = pt.subplots(1, 5, figsize=(28, 4))
+        # f, axarr = pt.subplots(1, 5, figsize=(28, 4))
+        #
+        # ax = axarr[0]
+        # ax.imshow(v8.undo_rgb_whitening(features[2:5]).transpose(1, 2, 0))
+        # notebook_utils.remove_ticks(ax)
+        # ax.set_title('Transformed Virtual View\nRGB Features', {'fontsize': 14})
+        #
+        # ax = axarr[1]
+        # plot = ax.imshow(features[0])
+        # pt.colorbar(plot, ax=ax)
+        # notebook_utils.remove_ticks(ax)
+        # ax.set_title('Virtual View Best Guess Depth', {'fontsize': 14})
+        #
+        # ax = axarr[2]
+        # ax.imshow(features[1], cmap='gray')
+        # notebook_utils.remove_ticks(ax)
+        # ax.set_title('Input View Frustum Mask Relative to\nProposed Virtual Camera Pose', {'fontsize': 14})
+        #
+        # ax = axarr[3]
+        # feat_montage = geom2d.montage(features[5:5 + 25], gridwidth=None, empty_value=np.nan)
+        # plot = ax.imshow(feat_montage)
+        # ax.set_xticks(np.arange(0, feat_montage.shape[1], features.shape[2]))
+        # ax.set_yticks(np.arange(0, feat_montage.shape[0], features.shape[1]))
+        # ax.grid(which='major', color='w', linestyle='-', linewidth=1)
+        # ax.set_xticklabels([])
+        # ax.set_yticklabels([])
+        # pt.colorbar(plot, ax=ax)
+        # ax.set_title('Transformed Virtual View\nDepth Feature Map (first 25 channels)', {'fontsize': 14})
+        #
+        # ax = axarr[4]
+        # feat_montage = geom2d.montage(features[53:53 + 25], gridwidth=None, empty_value=np.nan)
+        # plot = ax.imshow(feat_montage)
+        # ax.set_xticks(np.arange(0, feat_montage.shape[1], features.shape[2]))
+        # ax.set_yticks(np.arange(0, feat_montage.shape[0], features.shape[1]))
+        # ax.grid(which='major', color='w', linestyle='-', linewidth=1)
+        # ax.set_xticklabels([])
+        # ax.set_yticklabels([])
+        # pt.colorbar(plot, ax=ax)
+        # ax.set_title('Transformed Virtual VIew\nSegmentation Feature Map (first 25 channels)', {'fontsize': 14})
+        #
+        # f.suptitle('Epipolar Feature Transformers', fontsize=19, y=1.13, fontweight=500, x=0.427)
 
+        gt_height_map = self.example['multi_layer_overhead_depth'][0]
+        height_map_values = sorted(gt_height_map[np.isfinite(gt_height_map)].tolist())
+        h_clim = [0, height_map_values[-20]]
+
+        f, axarr = pt.subplots(1, 3, figsize=(15, 3))
         ax = axarr[0]
-        ax.imshow(v8.undo_rgb_whitening(features[2:5]).transpose(1, 2, 0))
+        out_segmented = out.copy()
+        out_segmented[overhead_argmax_l1 == 34] = 0
+        plot = ax.imshow(out_segmented, clim=h_clim)
         notebook_utils.remove_ticks(ax)
-        ax.set_title('Transformed Virtual View\nRGB Features', {'fontsize': 14})
+        pt.colorbar(plot, ax=ax)
+        ax.set_title('Virtual View\nPredicted Surface', {'fontsize': 14})
 
         ax = axarr[1]
-        plot = ax.imshow(features[0])
-        pt.colorbar(plot, ax=ax)
+        gt_height_map_copy = gt_height_map.copy()
+        gt_height_map_copy[np.isnan(gt_height_map_copy)] = 0
+        plot = ax.imshow(gt_height_map_copy, clim=h_clim)
         notebook_utils.remove_ticks(ax)
-        ax.set_title('Virtual View Best Guess Depth', {'fontsize': 14})
+        pt.colorbar(plot, ax=ax)
+        ax.set_title('Virtual View\nGround Truth Surface', {'fontsize': 14})
 
         ax = axarr[2]
-        ax.imshow(features[1], cmap='gray')
-        notebook_utils.remove_ticks(ax)
-        ax.set_title('Input View Frustum Mask Relative to\nProposed Virtual Camera Pose', {'fontsize': 14})
-
-        ax = axarr[3]
-        feat_montage = geom2d.montage(features[5:5 + 25], gridwidth=None, empty_value=np.nan)
-        plot = ax.imshow(feat_montage)
-        ax.set_xticks(np.arange(0, feat_montage.shape[1], features.shape[2]))
-        ax.set_yticks(np.arange(0, feat_montage.shape[0], features.shape[1]))
-        ax.grid(which='major', color='w', linestyle='-', linewidth=1)
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        pt.colorbar(plot, ax=ax)
-        ax.set_title('Transformed Virtual View\nDepth Feature Map (first 25 channels)', {'fontsize': 14})
-
-        ax = axarr[4]
-        feat_montage = geom2d.montage(features[53:53 + 25], gridwidth=None, empty_value=np.nan)
-        plot = ax.imshow(feat_montage)
-        ax.set_xticks(np.arange(0, feat_montage.shape[1], features.shape[2]))
-        ax.set_yticks(np.arange(0, feat_montage.shape[0], features.shape[1]))
-        ax.grid(which='major', color='w', linestyle='-', linewidth=1)
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        pt.colorbar(plot, ax=ax)
-        ax.set_title('Transformed Virtual VIew\nSegmentation Feature Map (first 25 channels)', {'fontsize': 14})
-
-        f.suptitle('Epipolar Feature Transformers', fontsize=19, y=1.13, fontweight=500, x=0.427)
-
-        f, axarr = pt.subplots(1, 2, figsize=(10, 4))
-        ax = axarr[0]
-        plot = ax.imshow(out)
+        overhead_error_map = np.abs(gt_height_map - out)
+        plot = ax.imshow(overhead_error_map, clim=[0, 1.5], cmap='Reds')
         notebook_utils.remove_ticks(ax)
         pt.colorbar(plot, ax=ax)
-        ax.set_title('Predicted\nVirtual View Height Map', {'fontsize': 14})
-
-        ax = axarr[1]
-        gt_height_map = self.example['multi_layer_overhead_depth'][0]
-        plot = ax.imshow(gt_height_map)
-        notebook_utils.remove_ticks(ax)
-        pt.colorbar(plot, ax=ax)
-        ax.set_title('"Ground Truth" Height Map\n(based on viewpoint selection\nheuristics on GT mesh)', {'fontsize': 14})
+        ax.set_title('Virtual View\nL1 Error Map', {'fontsize': 14})
 
         pt.show()
 
@@ -458,9 +574,9 @@ class ScannetMeshGenerator(object):
         in_rgb *= rgb_scale
         return in_rgb
 
-    def show_input_image(self):
+    def show_input_image(self, scale=1.0):
         print('example_name: {}'.format(self.input_image_name))
-        notebook_utils.quick_show_rgb(self.input_image)
+        notebook_utils.quick_show_rgb(cv2.resize(self.input_image, (int(self.input_image.shape[1] * scale), int(self.input_image.shape[0] * scale))))
 
     def load_scannet(self, name, image_wh=(240, 320)):
         self.filename_meshes = path.join(config.scannet_frustum_clipped_root, '{}/meshes.obj'.format(name))

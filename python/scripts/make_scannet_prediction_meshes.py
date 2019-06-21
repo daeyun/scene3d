@@ -134,8 +134,8 @@ def overhead():
         'overhead_segmentation_model': path.join(config.default_out_root, 'v9/v9_OVERHEAD_v1_segmentation_01/0/00016000_000_0002000.pth'),
     }
 
-    # names = io_utils.read_lines_and_strip('/data4/scannet_frustum_clipped/test_2000__shuffled_0001_of_0005.txt')
-    names = io_utils.read_lines_and_strip('/data4/scannet_frustum_clipped/test_2000__shuffled_0003_of_0005.txt')
+    names = io_utils.read_lines_and_strip('/data4/scannet_frustum_clipped/test_2000__shuffled_0001_of_0005.txt')
+    # names = io_utils.read_lines_and_strip('/data4/scannet_frustum_clipped/test_2000__shuffled_0003_of_0005.txt')
 
     hm_model = train_eval_pipeline.HeightMapModel(checkpoint_filenames, device_id=1, num_transformer_workers=1)
 
@@ -174,27 +174,27 @@ def overhead():
             out = hm_model.predict_height_map(batch)
             # train_eval_pipeline.save_height_map_output_batch_of_size_one_scannet(out, batch['name'])
 
-            try:
-                out_ply_filenames = train_eval_pipeline.save_height_prediction_as_meshes_scannet(out, hm_model, batch['camera_filename'], batch['name'], heights=heights, thetas=thetas)
+            # try:
+            #     out_ply_filenames = train_eval_pipeline.save_height_prediction_as_meshes_scannet(out, hm_model, batch['camera_filename'], batch['name'], heights=heights, thetas=thetas)
+            #
+            # except (Exception, pyassimp.errors.AssimpError) as ex:
+            #     print('ERROR')
+            #     print(ex)
+            #     continue
+            #
+            # assert len(out_ply_filenames) == 1
+            #
+            # try:
+            #     post_processing.extract_mesh_inside_frustum(out_filename, batch['camera_filename'][0], 0, out_filename=out_filename_clipped)
+            # except Exception as ex:
+            #     print('ERROR')
+            #     print(ex)
+            #     continue
 
-            except (Exception, pyassimp.errors.AssimpError) as ex:
-                print('ERROR')
-                print(ex)
-                continue
-
-            assert len(out_ply_filenames) == 1
-
-            try:
-                post_processing.extract_mesh_inside_frustum(out_filename, batch['camera_filename'][0], 0, out_filename=out_filename_clipped)
-            except Exception as ex:
-                print('ERROR')
-                print(ex)
-                continue
-
-            # pt.figure()
-            # sn.scan.set_symlinks()
-            # pt.imshow(sn.scan.input_image)
-            # pt.show()
+            pt.figure()
+            sn.scan.set_symlinks()
+            pt.imshow(sn.scan.input_image)
+            pt.show()
             print('#######################33')
 
 
