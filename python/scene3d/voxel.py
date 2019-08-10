@@ -29,3 +29,37 @@ def voxel2mesh(voxels, surface_view, scale=0.01, cube_dist_scale=1.1):
             curr_vert += len(cube_verts)
 
     return np.array(verts), np.array(faces)
+
+
+def binvox_model_to_pts(model):
+    pts = (np.vstack(np.where(model.data)).T + 0.5) / model.dims * model.scale + model.translate
+    return pts
+
+
+def project_cam_voxels_to_image(binvox_model):
+    pts = binvox_model_to_pts(binvox_model)
+
+    # specific to pbrs for now
+    height = 240
+    width = 320
+
+    xfov = 0.5534
+    yfov = 0.43389587
+
+    fx = width / np.tan(xfov) * 0.5
+    fy = height / np.tan(yfov) * 0.5
+
+    K = np.array([
+        [-fx, 0, width/2],
+        [0, fy, height/2],
+        [0, 0, 1],
+    ], dtype=np.float32)
+
+    proj_xy = K.dot(pts.T)
+    proj_xy = np.rint(proj_xy[:2, :]/proj_xy[2, :]).astype(np.int64).T
+
+    in_image = ((proj_xy >= np.array([0,0])) & (proj_xy < np.array([width,height]))).all(axis=1)
+    linear_indices = np.where(in_image)[0]
+    depth_values = -pts[:,2]
+
+    return proj_xy[in_image], depth_values[in_image], linear_indices

@@ -467,6 +467,7 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     params = list(filter(lambda p: p.requires_grad, model.parameters()))
     log.info('Number of pytorch parameter tensors %d', len(params))
     optimizer = optim.Adam(params, lr=learning_rate)
+    # optimizer = optim.AdamW(params, lr=learning_rate, weight_decay=0.0003, amsgrad=True)  # TODOTODO
     optimizer.zero_grad()
 
     return model, optimizer, frozen_model
@@ -1175,6 +1176,9 @@ class Trainer(object):
         log.add_stream_handler(self.logger, level=log.INFO)
         log.add_file_handler(self.logger, filename=self.log_filename, level=log.DEBUG)
 
+        self.latest_checkpoint_filename = None
+        self.is_latest_checkpoint_evaluated = False
+
         if self.load_checkpoint == 'most_recent':
             saved_checkpoints = sorted(glob.glob(path.join(self.save_dir, '*.pth')))  # sorting is important
             self.logger.info('\n' + '\n'.join(saved_checkpoints))
@@ -1225,7 +1229,8 @@ class Trainer(object):
             self.training_mode = 'end_to_end'
 
         if self.load_checkpoint:
-            self.model, self.optimizer, self.loaded_metadata, self.frozen_model = load_checkpoint(self.load_checkpoint, use_cpu=self.use_cpu)
+            # self.model, self.optimizer, self.loaded_metadata, self.frozen_model = load_checkpoint(self.load_checkpoint, use_cpu=self.use_cpu, load_optimizer=False)  # TODO(daeyun): TODOTODO  switch these two lines for adamw experiment.  look somewhere else in this file for "TODOTODO" and make changes accordingly
+            self.model, self.optimizer, self.loaded_metadata, self.frozen_model = load_checkpoint(self.load_checkpoint, use_cpu=self.use_cpu)  # TODO(daeyun): TODOTODO
             self.logger.info('Loaded metadata from {}:\n{}'.format(self.load_checkpoint, self.loaded_metadata))
 
             if not (self.experiment_name == 'v9-multi_layer_depth_aligned_background_multi_branch' or self.experiment_name == 'v9-category_nyu40_merged_background-2l'):  # TODO: specific to this experiment. needs refactoring
@@ -1273,8 +1278,35 @@ class Trainer(object):
             metadata_to_save = self.metadata()
             saved_filename = save_checkpoint(save_dir=self.save_dir, pytorch_model=self.model, optimizer=self.optimizer, metadata=metadata_to_save)
             self.logger.info('Saved {}'.format(saved_filename))
+            self.latest_checkpoint_filename = saved_filename
+            self.is_latest_checkpoint_evaluated = False
             return True
         return False
+
+    def try_evaluation(self):
+        if self.latest_checkpoint_filename is None:
+            return
+        if self.is_latest_checkpoint_evaluated:
+            return
+
+        # Hardcoded. Not ideal.
+        if 'v9-multi_layer_depth_aligned_background_multi_branch' in self.latest_checkpoint_filename:
+            metrics = ['mae', 'absrel', 'delta1', 'huber']
+        elif 'v9-category_nyu40_merged_background-2l' in self.latest_checkpoint_filename:
+            metrics = ['accuracy', 'foreground_iou', 'cross_entropy']
+        else:
+            raise NotImplementedError()
+
+        ret = sanity_check_checkpoint(self.latest_checkpoint_filename,
+                                      [
+                                          path.join(config.scene3d_root, 'v9/train_factored3d_subset200.txt'),
+                                          path.join(config.scene3d_root, 'v9/test_factored3d_subset200.txt'),
+                                          path.join(config.scene3d_root, 'v9/validation_factored3d_subset200.txt'),
+                                          path.join(config.scene3d_root, 'v9/validation_s159.txt'),
+                                      ])
+
+        print_checkpoint_sanity_check_results(ret, metrics, logger=self.logger)
+        self.is_latest_checkpoint_evaluated = True
 
     def train(self):
         if self.max_epochs is None or self.max_epochs == 0:
@@ -1318,6 +1350,7 @@ class Trainer(object):
                     self.logger.info('%08d, %03d, %07d, %.5f', self.global_step, self.epoch, self.iter, loss_all.mean().item())
 
                     self.try_save_checkpoint()
+                    self.try_evaluation()
                     io_bottleneck_detector.tic()
             elif self.training_mode == 'multi_stage':
                 it = enumerate(self.data_loader)
@@ -1376,6 +1409,7 @@ class Trainer(object):
 
                         # log.info('try save')
                         self.try_save_checkpoint()
+                        self.try_evaluation()
 
                         i_iter = next_i_iter
                         batch = next_batch
@@ -2398,6 +2432,7 @@ class EvaluationV9:
             result_list, result_list_qualitative = self._compute_error(model, frozen_model_or_transformer, metadata, batch, include_qualitative=include_qualitative)
             ret.extend(result_list)
             ret_qualitative.extend(result_list_qualitative)  # can be empty if include_qualitative is false.
+            print(i_iter, len(batch['name']))
 
         res = {
             'metadata': metadata,
@@ -3249,6 +3284,39 @@ def nyu_rgb_image(name):
     img = io_utils.read_jpg(path.join(config.nyu_root, 'images/{}.jpg'.format(name)))[3:-3]
     resized = scipy.misc.imresize(img, (240, 320))
     return resized
+
+
+def sanity_check_checkpoint(checkpoint_filename, split_names):
+    assert isinstance(split_names, (list, tuple))
+    evaluation = EvaluationV9()
+    ret = {}
+    for split_name in split_names:
+        plain_name = path.basename(split_name).split('.')[0]
+        out = evaluation.evaluate(checkpoint_filename, split_name=split_name)
+        keys = list(out['results'][0].__dict__.keys())
+        means = {}
+        medians = {}
+        stds = {}
+        for key in keys:
+            means[key] = float(np.mean([item.__dict__[key] for item in out['results']]))
+            medians[key] = float(np.median([item.__dict__[key] for item in out['results']]))
+            stds[key] = float(np.std([item.__dict__[key] for item in out['results']]))
+        ret[plain_name] = {
+            'mean': means,
+            'median': medians,
+            'std': stds,
+        }
+    return ret
+
+
+def print_checkpoint_sanity_check_results(ret, metrics, logger=None):
+    if logger is None:
+        logger = log
+    for metric in metrics:
+        logger.info('{:<40} mean    median  std'.format('[{}]'.format(metric)))
+        for key, value in ret.items():
+            logger.info('{:<40} {:.04f}  {:.04f}  {:.04f}'.format(key, value['mean'][metric], value['median'][metric], value['std'][metric]))
+        logger.info('')
 
 
 colormap40 = np.array([[0, 0, 143],

@@ -1,6 +1,9 @@
 import argparse
+import random
 import io
+import warnings
 import gzip
+import string
 import scipy.misc
 import portalocker
 import pickle
@@ -24,6 +27,7 @@ from torch.backends import cudnn
 
 from scene3d import config
 from scene3d import feat
+from scene3d import voxel
 from scene3d import io_utils
 from scene3d import log
 from scene3d import pbrs_utils
@@ -2380,6 +2384,11 @@ def convert_binvox_to_pcl(binvox_filename):
     io_utils.save_simple_points_ply(voxel_pcl_file, pts)
 
 
+def save_binvox_model_as_pcl(model, out_filename):
+    pts = (np.vstack(np.where(model.data)).T + 0.5) / model.dims * model.scale + model.translate
+    io_utils.save_simple_points_ply(out_filename, pts)
+
+
 def binvox_iou(filename1, filename2):
     from third_party import binvox_rw
     if isinstance(filename1, str):
@@ -2462,6 +2471,11 @@ def carve_y(overhead_only_voxel_file, all_voxel_file):
     return all_vox
 
 
+def random_string(l=10):
+    letters = string.ascii_lowercase
+    return ''.join(random.choice(letters) for i in range(l))
+
+
 class VoxelIoUEvaluation(object):
     def __init__(self, save_filename):
         self.save_filename = save_filename
@@ -2482,6 +2496,10 @@ class VoxelIoUEvaluation(object):
             source_list = [source_list]
         assert isinstance(source_list, (tuple, list)), source_list
         return ','.join([pred_or_gt.strip(), target_type.strip(), '+'.join(sorted(source_list))])
+
+    def run_command(self, command):
+        print(command)
+        os.system(command)
 
     def run_evaluation(self, example):
         """
@@ -2513,8 +2531,7 @@ class VoxelIoUEvaluation(object):
         print('gt_objects', gt_objects)
         print('pred_depths', pred_depths)
 
-        # Not thread safe.
-        voxel_related_data_out_basedir = '/home/daeyun/mnt/ramdisk/voxels_data'
+        voxel_related_data_out_basedir = '/mnt/ramdisk/voxels_data/tmp_{}'.format(name.replace('/', '_'))
         for fname in glob.glob(path.join(voxel_related_data_out_basedir, '*')):
             os.remove(fname)
 
@@ -2524,13 +2541,13 @@ class VoxelIoUEvaluation(object):
         io_utils.save_off(fv, gt_objects_camcoord)
 
         # vox_res = 64
-        vox_res = 50
-        vox_method_flags = '-e'
+        vox_res = 400
+        vox_method_flags = '-pb'
 
-        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, gt_objects_camcoord))
+        self.run_command('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, gt_objects_camcoord))
         gt_object_voxel_file = gt_objects_camcoord.replace('.off', '.binvox')
         convert_binvox_to_pcl(gt_object_voxel_file)
-        convert_binvox_to_mesh(gt_object_voxel_file)
+        # convert_binvox_to_mesh(gt_object_voxel_file)
 
         ret = {}
 
@@ -2541,15 +2558,16 @@ class VoxelIoUEvaluation(object):
         f3d_objects_camcoord = path.join(voxel_related_data_out_basedir, 'f3d_objects_camcoord.off')
         io_utils.save_off(fv, f3d_objects_camcoord)
 
-        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, f3d_objects_camcoord))
+        self.run_command('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, f3d_objects_camcoord))
         f3d_objects_voxel_file = f3d_objects_camcoord.replace('.off', '.binvox')
         convert_binvox_to_pcl(f3d_objects_voxel_file)
-        convert_binvox_to_mesh(f3d_objects_voxel_file)
+        # convert_binvox_to_mesh(f3d_objects_voxel_file)
 
         iou = binvox_iou(f3d_objects_voxel_file, gt_object_voxel_file)
         print('IoU_f3d', iou)
         ret['IoU_f3d'] = iou
 
+        '''
         # depth overhead only
         depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in [pred_overhead_fg]]
         # depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in pred_depths[:4]]
@@ -2558,13 +2576,14 @@ class VoxelIoUEvaluation(object):
         fv = convert_mesh_to_camcoord(depth_meshes_merged, camera_filename)
         depth_objects_camcoord = path.join(voxel_related_data_out_basedir, 'depth_meshes_ovh_camcoord.off')
         io_utils.save_off(fv, depth_objects_camcoord)
-        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
+        self.run_command('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
         depth_ovh_voxel_file = depth_objects_camcoord.replace('.off', '.binvox')
         convert_binvox_to_pcl(depth_ovh_voxel_file)
         convert_binvox_to_mesh(depth_ovh_voxel_file)
         iou = binvox_iou(depth_ovh_voxel_file, gt_object_voxel_file)
         print('IoU_overheadonly', iou)
         ret['IoU_overheadonly'] = iou
+        '''
 
         # depth voxelization no overhead
         depth_meshes_fv_list = [io_utils.read_mesh_assimp(pred_d) for pred_d in pred_depths[:4]]
@@ -2574,10 +2593,10 @@ class VoxelIoUEvaluation(object):
         fv = convert_mesh_to_camcoord(depth_meshes_merged, camera_filename)
         depth_objects_camcoord = path.join(voxel_related_data_out_basedir, 'depth_meshes_frontal4_camcoord.off')
         io_utils.save_off(fv, depth_objects_camcoord)
-        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
+        self.run_command('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
         depth_objects_voxel_file = depth_objects_camcoord.replace('.off', '.binvox')
         convert_binvox_to_pcl(depth_objects_voxel_file)
-        convert_binvox_to_mesh(depth_objects_voxel_file)
+        # convert_binvox_to_mesh(depth_objects_voxel_file)
 
         iou = binvox_iou(depth_objects_voxel_file, gt_object_voxel_file)
         print('IoU_frontaldepthonly', iou)
@@ -2591,15 +2610,16 @@ class VoxelIoUEvaluation(object):
         fv = convert_mesh_to_camcoord(depth_meshes_merged, camera_filename)
         depth_objects_camcoord = path.join(voxel_related_data_out_basedir, 'depth_meshes_frontal4_and_ovh_camcoord.off')
         io_utils.save_off(fv, depth_objects_camcoord)
-        os.system('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
+        self.run_command('/home/daeyun/usr/bin/binvox {} -d {} -bb -5 -5 -10 5 5 0 {}'.format(vox_method_flags, vox_res, depth_objects_camcoord))
         depth_objects_voxel_file = depth_objects_camcoord.replace('.off', '.binvox')
         convert_binvox_to_pcl(depth_objects_voxel_file)
-        convert_binvox_to_mesh(depth_objects_voxel_file)
+        # convert_binvox_to_mesh(depth_objects_voxel_file)
 
         iou = binvox_iou(depth_objects_voxel_file, gt_object_voxel_file)
         print('IoU_alldepths', iou)
         ret['IoU_alldepths'] = iou
 
+        '''
         # carved_voxels
         carved_voxels = carve_y(depth_ovh_voxel_file, depth_objects_voxel_file)
         v, f = voxels_to_mesh(carved_voxels, thresh=0.95)
@@ -2611,5 +2631,49 @@ class VoxelIoUEvaluation(object):
         iou = binvox_iou(carved_voxels, gt_object_voxel_file)
         print('IoU_carveddepths', iou)
         ret['IoU_carveddepths'] = iou
+        '''
 
-        return ret
+        return voxel_related_data_out_basedir, ret
+
+
+def read_voxels(filename):
+    from third_party import binvox_rw
+    with open(filename, 'rb') as f:
+        vox = binvox_rw.read_as_3d_array(f)
+    return vox
+
+
+def voxelize_multi_layer_depth(ground_truth_voxels, depths):
+    # TODO(daeyun): ground_truth_voxels isn't necessary
+    from third_party import binvox_rw
+    if isinstance(ground_truth_voxels, str):
+        model = read_voxels(ground_truth_voxels)
+    else:
+        model = ground_truth_voxels
+
+    new_model = model.clone()
+    new_model.data.fill(1)
+    proj_xy, depth_values, linear_indices = voxel.project_cam_voxels_to_image(new_model)
+
+    assert depths.shape[0] >= 4
+    assert depths.shape[0] <= 5
+    assert depths.ndim == 3
+
+    indexed = depths[:4, proj_xy[:, 1], proj_xy[:, 0]].T.copy()
+    indexed = np.sort(indexed, axis=1)
+
+    warnings.simplefilter(action="ignore", category=RuntimeWarning)
+    is_between = ((indexed[:, 0] <= depth_values) & (indexed[:, 1] >= depth_values)) | ((indexed[:, 2] <= depth_values) & (indexed[:, 3] >= depth_values))
+
+    # s = model.scale/np.mean(model.dims) * 0.5
+    # is_between = ((indexed[:,0] <= depth_values - s) & (indexed[:,1] >= depth_values + s)) | ((indexed[:,2] <= depth_values - s) & (indexed[:,3] >= depth_values + s))
+    # is_between = ((indexed[:,0] <= depth_values - s) & (indexed[:,1] >= depth_values)) | ((indexed[:,2] <= depth_values - s) & (indexed[:,3] >= depth_values))
+    # is_between = ((indexed[:,0] <= depth_values) & (indexed[:,1] >= depth_values + s)) | ((indexed[:,2] <= depth_values) & (indexed[:,3] >= depth_values + s))
+    # is_between = ((indexed[:,0] <= depth_values + s) & (indexed[:,1] >= depth_values - s)) | ((indexed[:,2] <= depth_values + s) & (indexed[:,3] >= depth_values - s))
+
+    warnings.simplefilter(action="default", category=RuntimeWarning)
+
+    new_model.data.fill(False)
+    new_model.data.flat[linear_indices[is_between]] = True
+
+    return new_model

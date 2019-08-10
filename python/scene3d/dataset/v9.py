@@ -103,7 +103,7 @@ class MultiLayerDepth(data.Dataset):
     def __init__(self, split='train', first_n=None, start_index=None, rgb_scale=1.0, subtract_mean=True, image_hw=(240, 320),
                  fields=('name', 'camera_filename', 'rgb')):
         if split == 'train':
-            split_filename = path.join(config.scene3d_root, 'v9/train.txt')
+            split_filename = path.join(config.scene3d_root, 'v9/train_factored3d.txt')  # TODO: check
         elif split == 'test':
             # split_filename = path.join(config.scene3d_root, 'v9/validation.txt')
             split_filename = path.join(config.scene3d_root, 'v9/test.txt')

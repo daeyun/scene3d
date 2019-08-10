@@ -1,4 +1,5 @@
 from scene3d import train_eval_pipeline_v9  # TODO
+import multiprocessing as mp
 from os import path
 from scene3d.dataset import v9
 from scene3d import config
@@ -22,10 +23,37 @@ skipped = [
 ]
 
 
+def generate_voxels(i, dataset, pr_eval):
+    example = dataset[i]
+    print(i, example['name'])
+    if example['name'] in skipped:
+        print('skipped')
+        return None
+
+    import pyassimp
+    out = None
+    target_directory = '/data5/out/scene3d/voxelization_experiment_res400_cv/{}'.format(example['name'].replace('/', '_'))
+    if path.isdir(target_directory):
+        return None
+    try:
+        outdir, out = pr_eval.run_evaluation(example)
+
+        shutil.move(outdir, target_directory)
+    except pyassimp.AssimpError as ex:
+        print('mesh io error. skipping..', ex)
+
+    print('Done: Index {}'.format(i))
+
+    if out is not None:
+        for k, val in out.items():
+            print('OUT {}: {}'.format(k, val))
+    return out
+
+
 def main():
     dataset = v9.MultiLayerDepth(
         split=[
-            # path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt')
+            # path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
             path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0001_of_0009.txt'),  # sharded for running on multiple machines
             path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0002_of_0009.txt'),  # sharded for running on multiple machines
             path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0003_of_0009.txt'),  # sharded for running on multiple machines
@@ -36,39 +64,18 @@ def main():
             # path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0008_of_0009.txt'),  # sharded for running on multiple machines
             # path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0009_of_0009.txt'),  # sharded for running on multiple machines
         ],
-        subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=[])
+        subtract_mean=True, image_hw=(240, 320), rgb_scale=1.0 / 255, fields=[])
+    print('######### {} TOTAL'.format(len(dataset)))
 
     pkl_filename = path.join(config.default_out_root, 'v9_voxel_iou/voxel_iou_0.pkl')
     pr_eval = train_eval_pipeline_v9.VoxelIoUEvaluation(save_filename=pkl_filename)
 
-    count = 0
-    for i in list(range(len(dataset))):
-        example = dataset[i]
-        print(i, example['name'])
-        if example['name'] in skipped:
-            print('skipped')
-            continue
+    with mp.pool.Pool(processes=12) as pool:
+        args = []
+        for i in range(len(dataset)):
+            args.append((i, dataset, pr_eval))
 
-        import pyassimp
-        try:
-            out = pr_eval.run_evaluation(example)
-        except pyassimp.AssimpError as ex:
-            print('mesh io error. skipping..')
-
-        for k, val in out.items():
-            print('OUT {}: {}'.format(k, val))
-
-        shutil.copytree('/home/daeyun/mnt/ramdisk/voxels_data', '/data4/out/scene3d/voxelization_experiment_res50/{}'.format(example['name']))
-
-        count += 1
-        print(count, file=sys.stderr)
-
-        if count >= 200:
-            break
-
-    #     if i % 2 == 0:
-    #         pr_eval.save()
-    # pr_eval.save()
+        pool.starmap(generate_voxels, args)
 
 
 if __name__ == '__main__':
