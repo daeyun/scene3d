@@ -232,6 +232,51 @@ def save_frontal():
         print(count)
 
 
+def save_frontal_sementic_segmentation_labels():
+    depth_checkpoint = path.join(config.default_out_root, 'v9/v9-multi_layer_depth_aligned_background_multi_branch/0/01149000_005_0003355.pth')
+    seg_checkpoint = path.join(config.default_out_root, 'v9/v9-category_nyu40_merged_background-2l/0/01130000_005_0001780.pth')
+
+    # depth_checkpoint = path.join(config.default_out_root, 'v8/v8-multi_layer_depth_aligned_background_multi_branch/1/00906000_010_0000080.pth')
+    # seg_checkpoint = path.join(config.default_out_root, 'v8/v8-category_nyu40_merged_background-2l/0/00966000_009_0005272.pth')
+
+    torch.set_default_tensor_type('torch.cuda.FloatTensor')
+    seg_model, metadata = train_eval_pipeline.load_checkpoint_as_frozen_model(seg_checkpoint)
+    print(metadata)
+
+    dataset = v9.MultiLayerDepth(
+        split=[
+            # path.join(config.scene3d_root, 'v9/validation_s159.txt'),
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
+            # path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0001_of_0009.txt'),  # sharded for running on multiple machines
+            # path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0002_of_0009.txt'),  # sharded for running on multiple machines
+        ],
+        subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=('rgb', 'camera_filename', 'multi_layer_depth_aligned_background'))
+
+    count = 0
+    for i in range(len(dataset)):
+        example = dataset[i]
+        print(count, i, example['name'])
+
+        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(example['name'])
+        pred_meshes = sorted(glob.glob(path.join(config.default_out_root, 'v9_pred_depth_mesh/{}/{}/pred_*.ply'.format(house_id, camera_id))))
+
+        seg_pred = seg_model(torch.Tensor(example['rgb'][None]).cuda())
+        assert seg_pred.shape[0] == 1
+
+        seg_pred_l1 = torch_utils.recursive_torch_to_numpy(seg_pred[:, :40])
+        seg_pred_l2 = torch_utils.recursive_torch_to_numpy(seg_pred[:, 40:])
+        seg_argmax_l1 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred_l1)
+        seg_argmax_l2 = train_eval_pipeline.semantic_segmentation_from_raw_prediction(seg_pred_l2)
+
+        # TODO: temporary hardcoded paths
+        io_utils.ensure_dir_exists('/data4/out/scene3d/pred_segmented_depth/{}'.format(example['name']))
+        with open('/data4/out/scene3d/pred_segmented_depth/{}/semantic_segmentation_l1_l2.pkl'.format(example['name']), 'wb') as f:
+            pickle.dump((seg_argmax_l1, seg_argmax_l2), f)
+
+        count += 1
+        print(count)
+
+
 def overhead():
     # need v9 updates
 
@@ -301,10 +346,53 @@ def overhead():
                     continue
 
 
+def save_overhead():
+    # need v9 updates
+
+    checkpoint_filenames = {
+        'pose_3param': path.join(config.default_out_root_v8, 'v8/v8-overhead_camera_pose/0/00420000_018_0014478.pth'),
+        # 'overhead_height_map_model': path.join(config.default_out_root_v8, 'v8/OVERHEAD_offline_01/0/00050000_001_0004046.pth'),
+        'overhead_height_map_model': path.join(config.default_out_root, 'v9/v9_OVERHEAD_v1_heightmap_01/0/00056000_003_0011546.pth'),
+        'overhead_segmentation_model': path.join(config.default_out_root, 'v9/v9_OVERHEAD_v1_segmentation_01/0/00016000_000_0002000.pth'),
+    }
+
+    dataset = v9.MultiLayerDepth(
+        # split='/data2/scene3d/v8/validation_s168.txt',
+        # split=path.join(config.scene3d_root, 'v9/test_subset_factored3d.txt'),
+        [
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0001_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0002_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0003_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0004_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0005_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0006_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0007_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0007_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0008_of_0009.txt'),  # sharded for running on multiple machines
+            path.join(config.scene3d_root, 'v9/test_subset_factored3d__shuffled_0009_of_0009.txt'),  # sharded for running on multiple machines
+        ],
+        subtract_mean=True, image_hw=(240, 320), first_n=None, rgb_scale=1.0 / 255, fields=['rgb', ])
+
+    batch_size = 5
+    num_data_workers = 0
+    loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=num_data_workers, shuffle=False, drop_last=False, pin_memory=False)
+
+    hm_model = train_eval_pipeline.HeightMapModel(checkpoint_filenames, device_id=1)
+
+    for i_iter, batch in enumerate(loader):
+        print(i_iter)
+        names = batch['name']
+
+        out = hm_model.predict_height_map(batch)
+        train_eval_pipeline.save_height_map_output_batch_v9(out, names)
+
+
 if __name__ == '__main__':
     cudnn.benchmark = True
     # main(force_indices=[426, 440])
     # main()
-    main_runtime()
+    # main_runtime()
     # save_frontal()
+    save_frontal_sementic_segmentation_labels()
     # overhead()
+    # save_overhead()

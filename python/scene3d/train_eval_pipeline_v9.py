@@ -1781,6 +1781,35 @@ def find_gt_floor_height(house_id, camera_id):
     return ret
 
 
+def find_gt_floor_height_v9(house_id, camera_id):
+    gt_mesh_filename1 = path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/gt_bg.ply'.format(house_id, camera_id))
+    gt_mesh_filename2 = path.join(config.default_out_root, 'v9_gt_mesh/{}/{}/gt_objects.ply'.format(house_id, camera_id))
+    floor_filename = path.join(path.dirname(gt_mesh_filename1), 'floor.txt')
+    if path.isfile(floor_filename):
+        with open(floor_filename, 'r') as f:
+            content = f.read()
+            try:
+                height = float(content.strip())
+                return height
+            except ValueError as ex:
+                pass
+
+    fv = io_utils.read_mesh(gt_mesh_filename1)
+    ycoords = sorted(fv['v'][:, 1].tolist())
+    height1 = np.median(ycoords[:int(max(len(ycoords) * 0.01, 100))]).item()
+
+    fv = io_utils.read_mesh(gt_mesh_filename2)
+    ycoords = sorted(fv['v'][:, 1].tolist())
+    height2 = np.median(ycoords[:int(max(len(ycoords) * 0.01, 100))]).item()
+
+    ret = min(height1, height2)
+
+    with open(floor_filename, 'w') as f:
+        f.write('{:.8f}'.format(ret))
+
+    return ret
+
+
 def symlink_all_files_in_dir(src_dir, tgt_dir):
     files = glob.glob(path.join(src_dir, '*'))
     io_utils.ensure_dir_exists(tgt_dir)
@@ -2619,20 +2648,6 @@ class VoxelIoUEvaluation(object):
         print('IoU_alldepths', iou)
         ret['IoU_alldepths'] = iou
 
-        '''
-        # carved_voxels
-        carved_voxels = carve_y(depth_ovh_voxel_file, depth_objects_voxel_file)
-        v, f = voxels_to_mesh(carved_voxels, thresh=0.95)
-        v = v / vox_res * 10 + [-5, -5, -10]
-        carved_fv = {'f': f, 'v': v, }
-        carved_fv_filename = path.join(voxel_related_data_out_basedir, 'carved_vox_mesh.off')
-        io_utils.save_off(carved_fv, carved_fv_filename)
-
-        iou = binvox_iou(carved_voxels, gt_object_voxel_file)
-        print('IoU_carveddepths', iou)
-        ret['IoU_carveddepths'] = iou
-        '''
-
         return voxel_related_data_out_basedir, ret
 
 
@@ -2643,7 +2658,7 @@ def read_voxels(filename):
     return vox
 
 
-def voxelize_multi_layer_depth(ground_truth_voxels, depths):
+def voxelize_multi_layer_depth(ground_truth_voxels, depths, two_layer_only=False):
     # TODO(daeyun): ground_truth_voxels isn't necessary
     from third_party import binvox_rw
     if isinstance(ground_truth_voxels, str):
@@ -2663,7 +2678,11 @@ def voxelize_multi_layer_depth(ground_truth_voxels, depths):
     indexed = np.sort(indexed, axis=1)
 
     warnings.simplefilter(action="ignore", category=RuntimeWarning)
-    is_between = ((indexed[:, 0] <= depth_values) & (indexed[:, 1] >= depth_values)) | ((indexed[:, 2] <= depth_values) & (indexed[:, 3] >= depth_values))
+
+    if two_layer_only:
+        is_between = ((indexed[:, 2] <= depth_values) & (indexed[:, 3] >= depth_values))
+    else:
+        is_between = ((indexed[:, 0] <= depth_values) & (indexed[:, 1] >= depth_values)) | ((indexed[:, 2] <= depth_values) & (indexed[:, 3] >= depth_values))
 
     # s = model.scale/np.mean(model.dims) * 0.5
     # is_between = ((indexed[:,0] <= depth_values - s) & (indexed[:,1] >= depth_values + s)) | ((indexed[:,2] <= depth_values - s) & (indexed[:,3] >= depth_values + s))
@@ -2675,5 +2694,76 @@ def voxelize_multi_layer_depth(ground_truth_voxels, depths):
 
     new_model.data.fill(False)
     new_model.data.flat[linear_indices[is_between]] = True
+
+    return new_model
+
+
+def convert_height_map_to_depth(height_map, example_name):
+    camera_filename = path.join(config.scene3d_root, 'v9/renderings', example_name + '_cam.txt')
+    with open(camera_filename, 'r') as f:
+        content = f.readlines()
+    cam_o = content[1].strip().split()
+    assert cam_o[0] == 'O'
+
+    campos = np.array([float(item) for item in cam_o[1:4]])
+
+    house_id, camera_id = example_name.split('/')
+    floor_height = find_gt_floor_height_v9(house_id=house_id, camera_id=camera_id)
+
+    ret = - height_map - (floor_height - campos[1])
+    return ret
+
+
+def project_point_cloud_to_orthographic_depth_image(pts, campos, viewdir, up, lrbt, im_hw):
+    """
+    This is not really a good implementation. Mostly used for debugging purposes.
+    :return:
+    """
+    Rt = transforms.lookat_matrix(campos, campos + viewdir, up=up)
+    transformed = Rt.dot(np.hstack((pts, np.ones([pts.shape[0], 1]))).T).T
+
+    x = (transformed[:, 0] - lrbt[0]) / (lrbt[1] - lrbt[0]) * (im_hw[1])
+    y = (transformed[:, 1] - lrbt[2]) / (lrbt[3] - lrbt[2]) * (im_hw[0])
+    d = transformed[:, 2]
+
+    ret = np.full(im_hw, fill_value=np.nan)
+    for i in range(x.shape[0]):
+        yi = im_hw[0] - int(round(y[i]))
+        xi = int(round(x[i]))
+        if yi < 0 or yi >= im_hw[0] or xi < 0 or xi >= im_hw[1]:
+            continue
+        if np.isnan(ret[yi, xi]):
+            ret[yi, xi] = d[i]
+        else:
+            ret[yi, xi] = min(ret[yi, xi], d[i])
+
+    return ret
+
+
+def carve_voxels_using_height_map(voxels, overhead_height_map, example_name):
+    if isinstance(voxels, str):
+        model = read_voxels(voxels)
+    else:
+        model = voxels
+    proj_xy, depth_values, linear_indices = voxel.project_cam_voxels_to_overhead_image(model, example_name)
+
+    overhead_depth = convert_height_map_to_depth(overhead_height_map, example_name)
+
+    indexed = overhead_depth[proj_xy[:, 1], proj_xy[:, 0]].T.copy()
+
+    warnings.simplefilter(action="ignore", category=RuntimeWarning)
+    is_in_front = depth_values < indexed
+    warnings.simplefilter(action="default", category=RuntimeWarning)
+    new_model = model.clone()
+    new_model.data.flat[linear_indices[is_in_front]] = False
+
+    new_model2 = model.clone()
+    new_model2.data.fill(True)
+    proj_xy, depth_values, linear_indices = voxel.project_cam_voxels_to_overhead_image(new_model2, example_name)
+    indexed = overhead_depth[proj_xy[:, 1], proj_xy[:, 0]].T.copy()
+    warnings.simplefilter(action="ignore", category=RuntimeWarning)
+    is_aligned = (depth_values >= indexed) & ((depth_values - indexed) < (10 / 400))
+    warnings.simplefilter(action="default", category=RuntimeWarning)
+    new_model.data.flat[linear_indices[is_aligned]] = True
 
     return new_model

@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="4774091c-9aaa-4716-ab4b-152229e657c3" name="Default Changelist" comment="k">
+      <change afterPath="$PROJECT_DIR$/python/scripts/generate_projection_based_voxelization.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpp/third_party/repos/assimp" beforeDir="false" afterPath="$PROJECT_DIR$/cpp/third_party/repos/assimp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpp/third_party/repos/assimp/samples/SimpleTexturedDirectx11/SimpleTexturedDirectx11/PixelShader.hlsl" beforeDir="false" afterPath="$PROJECT_DIR$/cpp/third_party/repos/assimp/samples/SimpleTexturedDirectx11/SimpleTexturedDirectx11/PixelShader.hlsl" afterDir="false" />
@@ -30,7 +31,6 @@
       <change beforePath="$PROJECT_DIR$/cpp/third_party/repos/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorContractionThreadPool.h" beforeDir="false" afterPath="$PROJECT_DIR$/cpp/third_party/repos/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorContractionThreadPool.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpp/third_party/repos/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorSyclConvertToDeviceExpression.h" beforeDir="false" afterPath="$PROJECT_DIR$/cpp/third_party/repos/eigen/unsupported/Eigen/CXX11/src/Tensor/TensorSyclConvertToDeviceExpression.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cpp/third_party/repos/eigen/unsupported/Eigen/src/SpecialFunctions/arch/CUDA/CudaSpecialFunctions.h" beforeDir="false" afterPath="$PROJECT_DIR$/cpp/third_party/repos/eigen/unsupported/Eigen/src/SpecialFunctions/arch/CUDA/CudaSpecialFunctions.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/python/scene3d/dataset/v9.py" beforeDir="false" afterPath="$PROJECT_DIR$/python/scene3d/dataset/v9.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/python/scene3d/train_eval_pipeline.py" beforeDir="false" afterPath="$PROJECT_DIR$/python/scene3d/train_eval_pipeline.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/python/scene3d/train_eval_pipeline_v9.py" beforeDir="false" afterPath="$PROJECT_DIR$/python/scene3d/train_eval_pipeline_v9.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/python/scene3d/voxel.py" beforeDir="false" afterPath="$PROJECT_DIR$/python/scene3d/voxel.py" afterDir="false" />
@@ -128,7 +128,7 @@
       <workItem from="1555646995135" duration="6703000" />
       <workItem from="1561002228000" duration="25016000" />
       <workItem from="1565386926391" duration="823000" />
-      <workItem from="1565397871584" duration="10076000" />
+      <workItem from="1565397871584" duration="39701000" />
     </task>
     <option name="localTasksCounter" value="2" />
     <servers />

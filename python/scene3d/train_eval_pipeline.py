@@ -467,7 +467,7 @@ def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> ty
     params = list(filter(lambda p: p.requires_grad, model.parameters()))
     log.info('Number of pytorch parameter tensors %d', len(params))
     optimizer = optim.Adam(params, lr=learning_rate)
-    # optimizer = optim.AdamW(params, lr=learning_rate, weight_decay=0.0003, amsgrad=True)  # TODOTODO
+    # optimizer = optim.AdamW(params, lr=learning_rate, weight_decay=0.001, amsgrad=True)  # TODOTODO
     optimizer.zero_grad()
 
     return model, optimizer, frozen_model
@@ -2769,6 +2769,21 @@ def save_height_map_output_batch(height_map_model_batch_out, example_names):
     for i, name in enumerate(example_names):
         house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(name)
         out_file = path.join(config.default_out_root, 'v8_pred/{}/{}/pred_height_map.bin'.format(house_id, camera_id))
+        io_utils.ensure_dir_exists(path.dirname(out_file))
+        io_utils.save_array_compressed(out_file, pred[i].squeeze())  # (300, 300)
+        ret.append(out_file)
+
+    return ret
+
+
+def save_height_map_output_batch_v9(height_map_model_batch_out, example_names):
+    pred = height_map_model_batch_out['pred_height_map']
+    assert len(pred) == len(example_names)
+
+    ret = []
+    for i, name in enumerate(example_names):
+        house_id, camera_id = pbrs_utils.parse_house_and_camera_ids_from_string(name)
+        out_file = path.join(config.default_out_root, 'v9_height_map_pred/{}/{}/pred_height_map.bin'.format(house_id, camera_id))
         io_utils.ensure_dir_exists(path.dirname(out_file))
         io_utils.save_array_compressed(out_file, pred[i].squeeze())  # (300, 300)
         ret.append(out_file)
