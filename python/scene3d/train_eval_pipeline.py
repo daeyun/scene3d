@@ -1,56 +1,54 @@
-import argparse
-import torch
-import pprint
-import math
-import io
-import gzip
-import scipy.misc
-import portalocker
-import pickle
-import glob
-import time
-import typing
-from scene3d import depth_mesh_utils_cpp
-import collections
-import os
-from os import path
-import scipy
-import scipy.io as sio
-
-import numpy as np
-import torch
-import torch.utils.data
-import torch.nn.parallel
-import torch.distributed
-from torch import nn
-from torch import optim
-from torch.backends import cudnn
-
-from scene3d import config
-from scene3d import config
-from scene3d import feat
-from scene3d import io_utils
-from scene3d import log
-from scene3d import pbrs_utils
-from scene3d import loss_fn
-from scene3d import torch_utils
-from scene3d.dataset import dataset_utils
-from scene3d.dataset import v1
-from scene3d.dataset import v2
-from scene3d.dataset import v8
-from scene3d.dataset import v9
-from scene3d.net import unet
-from scene3d.net import unet_no_bn
-from scene3d.net import unet_overhead
-from multiprocessing.pool import ThreadPool
-
 """
 When you add a new experiment, give it a unique experiment name in `available_experiments`.
 Every experiment is uniquely identified by (experiment_name, model_name).
 
-Then youo need to edit the following three functions:
+Then you need to edit the following three functions:
 `get_dataset`, `get_pytorch_model_and_optimizer`, `compute_loss`
 """
+
+
+from os import path
+from torch import nn
+from torch import optim
+from torch.backends import cudnn
+
+import argparse
+import collections
+import glob
+import gzip
+import io
+import math
+import numpy as np
+import os
+import pickle
+import portalocker
+import pprint
+import scipy
+import scipy.io as sio
+import scipy.misc
+import time
+import torch
+import torch
+import torch.distributed
+import torch.nn.parallel
+import torch.utils.data
+import typing
+
+from scene3d import config
+from scene3d import depth_mesh_utils_cpp
+from scene3d import feat
+from scene3d import io_utils
+from scene3d import log
+from scene3d import loss_fn
+from scene3d import pbrs_utils
+from scene3d import torch_utils
+from scene3d.dataset import dataset_utils
+from scene3d.dataset import v1, v2, v8, v9
+from scene3d.net import unet
+from scene3d.net import unet_no_bn
+from scene3d.net import unet_overhead
+
+from multiprocessing.pool import ThreadPool
 
 available_experiments = [
     'multi-layer',
@@ -140,7 +138,13 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
 
     if experiment_name == 'multi-layer':
         assert split_name in ('train', 'test')
-        dataset = v1.MultiLayerDepth(train=split_name == 'train', subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255)
+        dataset = v1.MultiLayerDepth(
+            train=split_name == 'train',
+            subtract_mean=True,
+            image_hw=(240, 320),
+            first_n=first_n,
+            rgb_scale=1.0 / 255)
+
     elif experiment_name == 'single-layer':
         assert split_name in ('train', 'test')
         dataset = v1.MultiLayerDepth(train=split_name == 'train', subtract_mean=True, image_hw=(240, 320), first_n=first_n, rgb_scale=1.0 / 255)
@@ -275,7 +279,10 @@ def get_dataset(experiment_name, split_name) -> torch.utils.data.Dataset:
     return dataset
 
 
-def get_pytorch_model_and_optimizer(model_name: str, experiment_name: str) -> typing.Tuple[nn.Module, optim.Optimizer, nn.Module]:
+def get_pytorch_model_and_optimizer(
+      model_name: str, experiment_name: str) -> typing.Tuple[nn.Module, optim.Optimizer, nn.Module]:
+    """
+    """
     frozen_model = None
 
     # This is just a default learning rate. It will be overridden by --learning_rate.
